@@ -127,6 +127,24 @@ jobs:
             -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
           mv Aristocrat*.AppImage AristocratVideoConverter-x86_64.AppImage
 
+      - name: Проверка запуска (скриншот в журнал)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          sudo apt-get install -y xvfb imagemagick x11-utils > /dev/null
+          T=AppDir/usr/bin/tools
+          $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=440" \
+            -t 8 -vf "interlace" -c:v libx264 -flags +ilme+ildct -c:a aac -shortest "$PWD/Кассета 1994.mp4"
+          xvfb-run -s "-screen 0 1600x960x24" bash -c '
+            ./AristocratVideoConverter-x86_64.AppImage "$PWD/Кассета 1994.mp4" & APP=$!
+            sleep 12
+            if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
+            import -window root screenshot.png
+            kill $APP
+          '
+          convert screenshot.png -resize 1200x -quality 70 shot.jpg
+          echo "SCREENSHOT_BEGIN"; base64 -w0 shot.jpg; echo; echo "SCREENSHOT_END"
+
       - uses: actions/upload-artifact@v4
         with:
           name: AristocratVideoConverter-Linux-x86_64
