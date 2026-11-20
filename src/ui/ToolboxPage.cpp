@@ -2,6 +2,7 @@
 #include "core/Theme.h"
 #include "core/I18n.h"
 #include "Widgets.h"
+#include "ChaptersDialog.h"
 #include "core/MediaInfo.h"
 #include "core/FfmpegCommand.h"
 #include "core/Dvd.h"
@@ -134,9 +135,25 @@ ToolboxPage::ToolboxPage(QWidget *parent)
         menu.exec(pickDvd->mapToGlobal(QPoint(0, pickDvd->height())));
     });
 
+    // ---- Главы (сцены) ----
+    QVBoxLayout *b4 = nullptr;
+    auto *chap = card(this, "film", T("Главы (сцены)"),
+                      T("Вставка глав в MKV и MP4, как в MKVToolNix. По ссылке на фильм Adult Empire сцены и тайм-коды "
+                        "заполняются сами, названия переводятся на русский — всё можно поправить перед записью."),
+                      b4);
+    auto *openChap = Ui::primaryButton(T("Открыть редактор глав…"), chap);
+    b4->addSpacing(6);
+    b4->addWidget(openChap);
+    b4->addStretch();
+    connect(openChap, &QPushButton::clicked, this, [this] {
+        ChaptersDialog d(QString(), QString(), window());
+        d.exec();
+    });
+
     grid->addWidget(vhs, 0, 0);
     grid->addWidget(dvd, 0, 1);
-    grid->addWidget(mods, 1, 0, 1, 2);
+    grid->addWidget(chap, 1, 0);
+    grid->addWidget(mods, 1, 1);
     root->addLayout(grid);
     root->addStretch();
 }

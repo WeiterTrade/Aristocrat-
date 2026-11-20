@@ -185,6 +185,19 @@ jobs:
             -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
           mv Aristocrat*.AppImage "Aristocrat Видеоконвертер-x86_64.AppImage"
 
+      - name: Отладка запуска (стек потоков)
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y gdb xvfb > /dev/null
+          ./"Aristocrat Видеоконвертер-x86_64.AppImage" --appimage-extract > /dev/null
+          xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
+            squashfs-root/AppRun --page=1 > dbg.log 2>&1 & APP=$!
+            sleep 12
+            sudo gdb -p $(pgrep -f "squashfs-root/usr/bin/AristocratVideoConverter" | head -1) -batch -ex "thread apply all bt 25" 2>&1 | grep -E "^#|^Thread" | head -120
+            kill $APP
+          '
+          tail -20 dbg.log
+
       - name: Проверка запуска (скриншот в журнал)
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1

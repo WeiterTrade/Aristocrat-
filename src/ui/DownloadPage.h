@@ -47,6 +47,7 @@ struct DownloadItem {
     bool noCookies = false;    // вход из браузера не удался — качаем без него
     bool external = false;     // пришло из расширения браузера
     QStringList headers;       // заголовки запроса из браузера (Referer, Cookie…)
+    QString pageUrl;           // страница фильма (для глав)
 };
 using DownloadPtr = QSharedPointer<DownloadItem>;
 
@@ -92,9 +93,11 @@ signals:
     void pauseResume(const DownloadPtr &item);
     void removeRequested(const DownloadPtr &item);
     void convertRequested(const QString &file);
+    void chaptersRequested(const QString &file, const QString &pageUrl);
 
 private:
     DownloadPtr m_item;
+    QPushButton *m_chapters;
     QLabel *m_thumb;
     QLabel *m_title;
     QLabel *m_meta;

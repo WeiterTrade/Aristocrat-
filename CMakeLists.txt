@@ -23,6 +23,7 @@ set(SOURCES
     src/core/Theme.cpp
     src/core/LocalServer.cpp
     src/core/Dvd.cpp
+    src/core/Chapters.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp
@@ -39,6 +40,7 @@ set(SOURCES
     src/ui/Frameless.cpp
     src/ui/DownloadPage.cpp
     src/ui/SettingsDialog.cpp
+    src/ui/ChaptersDialog.cpp
 )
 
 set(RESOURCES resources/resources.qrc browser-extension/extension.qrc)
@@ -55,7 +57,7 @@ if(WITH_WEBENGINE)
     find_package(Qt5 QUIET COMPONENTS WebEngineWidgets)
 endif()
 if(Qt5WebEngineWidgets_FOUND)
-    list(APPEND SOURCES src/ui/BrowserWindow.cpp src/ui/PageGrabber.cpp)
+    list(APPEND SOURCES src/ui/BrowserWindow.cpp src/ui/PageGrabber.cpp src/ui/SceneTools.cpp)
     message(STATUS "Встроенный браузер: включён")
 else()
     message(STATUS "Встроенный браузер: Qt WebEngine не найден, браузер отключён")

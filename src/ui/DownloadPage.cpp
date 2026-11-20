@@ -1,6 +1,7 @@
 #include "DownloadPage.h"
 #include "core/I18n.h"
 #include "Widgets.h"
+#include "ChaptersDialog.h"
 #ifdef HAVE_WEBENGINE
 #include "BrowserWindow.h"
 #include "PageGrabber.h"
@@ -329,10 +330,13 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
     m_pause = Ui::iconButton("pause", T("Пауза"), this, 22);
     m_open = new QPushButton(T("Открыть папку"), this);
     m_convert = new QPushButton(T("Конвертировать"), this);
+    m_chapters = new QPushButton(T("Главы"), this);
+    m_chapters->setToolTip(T("Вставить главы (сцены) с сайта в этот файл"));
     actions->addStretch();
     actions->addWidget(m_pause, 0, Qt::AlignHCenter);
     actions->addWidget(m_open);
     actions->addWidget(m_convert);
+    actions->addWidget(m_chapters);
     actions->addStretch();
     row->addLayout(actions);
     auto *close = Ui::iconButton("close", T("Убрать из списка"), this, 14);
@@ -342,6 +346,7 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
     connect(close, &QToolButton::clicked, this, [this] { emit removeRequested(m_item); });
     connect(m_open, &QPushButton::clicked, this, [this] { Ui::showInFolder(m_item->filePath, downloadDir()); });
     connect(m_convert, &QPushButton::clicked, this, [this] { emit convertRequested(m_item->filePath); });
+    connect(m_chapters, &QPushButton::clicked, this, [this] { emit chaptersRequested(m_item->filePath, m_item->pageUrl); });
     refresh();
 }
 
@@ -365,6 +370,7 @@ void DownloadCard::refresh()
     m_progress->setVisible(d.status != DownloadItem::Done);
     m_open->setVisible(d.status == DownloadItem::Done);
     m_convert->setVisible(d.status == DownloadItem::Done);
+    m_chapters->setVisible(d.status == DownloadItem::Done && !d.pageUrl.isEmpty());
     m_pause->setVisible(d.status != DownloadItem::Done);
     const bool canResume = d.status == DownloadItem::Paused || d.status == DownloadItem::Failed;
     m_pause->setIcon(Ui::icon(canResume ? "resume" : "pause", true));
@@ -774,6 +780,7 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
             if (!gd.pageTitle().trimmed().isEmpty())
                 item->title = safeFileName(gd.pageTitle());
             item->site = Sites::siteName(url);
+            item->pageUrl = urlText;
             if (!gd.thumb().isEmpty())
                 item->thumbUrl = gd.thumb();
             addItem(item);
@@ -843,6 +850,10 @@ void DownloadPage::addItem(const DownloadPtr &item)
     connect(card, &DownloadCard::pauseResume, this, &DownloadPage::pauseResume);
     connect(card, &DownloadCard::removeRequested, this, &DownloadPage::removeItem);
     connect(card, &DownloadCard::convertRequested, this, [this](const QString &f) { emit convertRequested(f, false); });
+    connect(card, &DownloadCard::chaptersRequested, this, [this](const QString &f, const QString &page) {
+        ChaptersDialog d(f, page, window());
+        d.exec();
+    });
     m_segActive->setChecked(true);
     if (item->thumb.isNull())
         loadThumb(item);
@@ -1072,6 +1083,7 @@ void DownloadPage::saveQueue() const
         o["thumb"] = d->thumbUrl; o["height"] = d->height; o["audio"] = d->audioOnly; o["noCookies"] = d->noCookies;
         o["progress"] = d->progress;
         o["external"] = d->external;
+        o["page"] = d->pageUrl;
         o["headers"] = QJsonArray::fromStringList(d->headers);
         arr << o;
     }
@@ -1095,6 +1107,7 @@ void DownloadPage::loadQueue()
         d->duration = o["duration"].toDouble(); d->thumbUrl = o["thumb"].toString(); d->height = o["height"].toInt();
         d->audioOnly = o["audio"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
         d->external = o["external"].toBool();
+        d->pageUrl = o["page"].toString();
         for (const QJsonValue &h : o["headers"].toArray()) d->headers << h.toString();
         d->status = resume ? DownloadItem::Queued : DownloadItem::Paused;
         if (!d->url.isEmpty())
@@ -1135,6 +1148,7 @@ void DownloadPage::addExternal(const QJsonObject &o)
     item->duration = o.value("duration").toDouble();
     item->thumbUrl = o.value("thumbnail").toString();
     const QString page = o.value("pageUrl").toString();
+    item->pageUrl = page;
     item->site = QUrl(page).host();
     if (item->site.isEmpty())
         item->site = QUrl(item->url).host();
