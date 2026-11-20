@@ -194,9 +194,9 @@ jobs:
             QT_LOGGING_RULES="qt.qpa.*=false" squashfs-root/AppRun --page=1 > dbg.log 2>&1 & APP=$!
             sleep 12
             ps aux | grep -i aristocrat | grep -v grep | cut -c1-200
-            PID=$(pidof AristocratVideoConverter | cut -d" " -f1)
+            PID=$(pgrep -f AppRun.wrapped | head -1)
             echo "PID=$PID"
-            if [ -n "$PID" ]; then sudo gdb -p $PID -batch -ex "thread apply 1 bt 40" 2>&1 | grep -E "^#|^Thread" | head -60; fi
+            if [ -n "$PID" ]; then sudo gdb -p $PID -batch -ex "thread apply 1 bt 60" 2>&1 | grep -E "^#|^Thread" | head -60; fi
             kill $APP
           '
           tail -20 dbg.log
