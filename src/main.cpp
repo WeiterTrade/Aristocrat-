@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
             continue;
         else if (a.startsWith(QLatin1String("--demo-dvd=")))
             w.demoDvd(a.mid(11));
+        else if (a.startsWith(QLatin1String("--demo-chapters=")))
+            w.demoChapters(a.mid(16).section(QLatin1Char('|'), 0, 0), a.mid(16).section(QLatin1Char('|'), 1));
         else if (a.startsWith(QLatin1String("--demo-theme=")))
             w.demoTheme(a.mid(13));
         else if (a.startsWith(QLatin1String("--demo-grab=")))

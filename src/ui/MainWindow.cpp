@@ -15,6 +15,7 @@
 #include <QProcess>
 #include "PlaceholderPage.h"
 #include "ToolboxPage.h"
+#include "ChaptersDialog.h"
 #include "Widgets.h"
 
 #include <QApplication>
@@ -173,6 +174,17 @@ void MainWindow::demoDvd(const QString &path)
 {
     showPage(4);
     QTimer::singleShot(1500, this, [this, path] { m_toolbox->openDvd(path); });
+}
+
+void MainWindow::demoChapters(const QString &file, const QString &url)
+{
+    // Автопроверка редактора глав: файл + ссылка → сцены загружаются сами
+    showPage(4);
+    QTimer::singleShot(1000, this, [this, file, url] {
+        auto *d = new ChaptersDialog(file, url, this);
+        d->setAttribute(Qt::WA_DeleteOnClose);
+        d->show();
+    });
 }
 
 void MainWindow::demoTheme(const QString &theme)

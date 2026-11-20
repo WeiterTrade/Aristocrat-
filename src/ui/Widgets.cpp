@@ -95,7 +95,7 @@ QIcon navIcon(const QString &name)
 void themedStyle(QWidget *w, const QString &qss)
 {
     w->setProperty("aristoStyle", qss);
-    Ui::themedStyle(w, qss);
+    w->setStyleSheet(Theme::map(qss));
 }
 
 void svgLabel(QLabel *l, const QString &path, const QSize &size)
@@ -111,7 +111,7 @@ void refreshTheme()
     for (QWidget *w : QApplication::allWidgets()) {
         const QVariant st = w->property("aristoStyle");
         if (st.isValid())
-            Ui::themedStyle(w, st.toString());
+            w->setStyleSheet(Theme::map(st.toString()));
         const QVariant svg = w->property("aristoSvg");
         if (svg.isValid())
             if (auto *l = qobject_cast<QLabel *>(w))

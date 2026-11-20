@@ -20,6 +20,7 @@ public:
     void demoGrab(const QString &url);
     void demoTheme(const QString &theme);
     void demoDvd(const QString &path);
+    void demoChapters(const QString &file, const QString &url);
     void openSettings(int tab = 0);
     void applyTheme();
     void restartApp();

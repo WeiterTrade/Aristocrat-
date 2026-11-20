@@ -185,22 +185,6 @@ jobs:
             -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
           mv Aristocrat*.AppImage "Aristocrat Видеоконвертер-x86_64.AppImage"
 
-      - name: Отладка запуска (стек потоков)
-        continue-on-error: true
-        run: |
-          sudo apt-get install -y gdb xvfb > /dev/null
-          ./"Aristocrat Видеоконвертер-x86_64.AppImage" --appimage-extract > /dev/null
-          xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
-            QT_LOGGING_RULES="qt.qpa.*=false" squashfs-root/AppRun --page=1 > dbg.log 2>&1 & APP=$!
-            sleep 12
-            ps aux | grep -i aristocrat | grep -v grep | cut -c1-200
-            PID=$(pgrep -f AppRun.wrapped | head -1)
-            echo "PID=$PID"
-            if [ -n "$PID" ]; then sudo gdb -p $PID -batch -ex "thread apply 1 bt 60" 2>&1 | grep -E "^#|^Thread" | head -60; fi
-            kill $APP
-          '
-          tail -20 dbg.log
-
       - name: Проверка запуска (скриншот в журнал)
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
@@ -213,7 +197,7 @@ jobs:
             name=$1; shift
             xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
               "./Aristocrat Видеоконвертер-x86_64.AppImage" "$@" > app-shot.log 2>&1 & APP=$!
-              sleep 14
+              sleep ${SHOT_WAIT:-14}
               if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
               import -window root shot.png
               kill $APP
@@ -233,6 +217,8 @@ jobs:
           $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=500" \
             -t 30 -target pal-dvd -shortest dvd/VIDEO_TS/VTS_01_1.VOB
           ARISTOCRAT_LANG=ru shot dvd "--demo-dvd=$PWD/dvd"
+          cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
+          SHOT_WAIT=30 ARISTOCRAT_LANG=ru shot chapters "--demo-chapters=$PWD/Кассета 1994.mp4|http://127.0.0.1:8790/scenes.html"
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера
