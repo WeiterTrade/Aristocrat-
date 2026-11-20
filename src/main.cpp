@@ -12,6 +12,12 @@ int main(int argc, char *argv[])
 {
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+    QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);   // нужно встроенному браузеру
+#ifdef Q_OS_LINUX
+    // В AppImage песочница Chromium часто недоступна — отключаем, чтобы встроенный браузер запускался
+    if (qEnvironmentVariableIsEmpty("QTWEBENGINE_DISABLE_SANDBOX"))
+        qputenv("QTWEBENGINE_DISABLE_SANDBOX", "1");
+#endif
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("Aristocrat"));
     QApplication::setApplicationName(QStringLiteral("Aristocrat Видеоконвертер"));
@@ -42,6 +48,8 @@ int main(int argc, char *argv[])
             w.showPage(a.mid(7).toInt());
         else if (a == QLatin1String("--demo-trim"))
             w.demoTrim();
+        else if (a.startsWith(QLatin1String("--demo-browser=")))
+            w.demoBrowser(a.mid(15));
         else if (a.startsWith(QLatin1String("--demo-settings")))
             w.demoSettings(a.section('=', 1).toInt());
         else

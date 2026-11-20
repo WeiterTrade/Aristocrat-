@@ -110,6 +110,12 @@ void MainWindow::showPage(int index)
     }
 }
 
+void MainWindow::demoBrowser(const QString &url)
+{
+    showPage(1);
+    QTimer::singleShot(1500, this, [this, url] { m_download->openBrowser(url); });
+}
+
 void MainWindow::demoSettings(int tab)
 {
     QTimer::singleShot(2500, this, [this, tab] { openSettings(tab); });

@@ -1,7 +1,12 @@
 #include "Widgets.h"
 #include "core/Theme.h"
 
+#include <QDesktopServices>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QUrl>
 #include <QFont>
 #include <QHash>
 #include <QSvgRenderer>
@@ -133,6 +138,25 @@ QPixmap formatBadge(const QString &text, int size, bool highlighted)
     p.setPen(gold);
     p.drawText(QRectF(x, y + h * 0.42, w, h * 0.5), Qt::AlignCenter, text.left(6));
     return pm;
+}
+
+void showInFolder(const QString &file, const QString &fallbackDir)
+{
+    const QFileInfo fi(file);
+    if (file.isEmpty() || !fi.exists()) {
+        const QString dir = !fallbackDir.isEmpty() ? fallbackDir : fi.absolutePath();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+        return;
+    }
+#ifdef Q_OS_WIN
+    // Проводнику нужен ровно один аргумент вида /select,"путь" — без лишних кавычек от QProcess
+    QProcess p;
+    p.setProgram(QStringLiteral("explorer.exe"));
+    p.setNativeArguments(QStringLiteral("/select,\"%1\"").arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
+    p.startDetached();
+#else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+#endif
 }
 
 void runAsync(QObject *context, std::function<void()> work, std::function<void()> done)

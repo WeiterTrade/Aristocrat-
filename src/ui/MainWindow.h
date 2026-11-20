@@ -16,6 +16,7 @@ public:
     void showPage(int index);
     void demoTrim();
     void demoSettings(int tab);
+    void demoBrowser(const QString &url);
     void openSettings(int tab = 0);
 
 protected:

@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QProcessEnvironment>
 #include <QStringList>
 
 // Поиск внешних программ: FFmpeg, ffprobe, Real-ESRGAN.
@@ -13,6 +14,7 @@ QString realesrgan();
 QString realesrganModelsDir();
 
 QString ytdlp();
+QProcessEnvironment utf8Env();   // окружение для yt-dlp: вывод в UTF-8 (иначе русские имена файлов искажаются)
 QString deno();
 
 bool hasFfmpeg();

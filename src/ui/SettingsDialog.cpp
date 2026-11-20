@@ -236,6 +236,7 @@ QWidget *SettingsDialog::buildDownload()
                                  + T(". Сайты часто меняются — если загрузка перестала работать, обновите модуль."));
             p->deleteLater();
         });
+        p->setProcessEnvironment(Tools::utf8Env());
         p->start(Tools::ytdlp(), {"--version"});
     };
     showVersion();
@@ -257,6 +258,7 @@ QWidget *SettingsDialog::buildDownload()
                 m_ytdlpInfo->setText(T("Не удалось обновить: ") + (lines.isEmpty() ? QString() : lines.last()));
             }
         });
+        p->setProcessEnvironment(Tools::utf8Env());
         p->start(Tools::ytdlp(), {"-U"});
     });
     return w;

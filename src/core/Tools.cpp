@@ -65,6 +65,14 @@ QString ytdlp()
     return p;
 }
 
+QProcessEnvironment utf8Env()
+{
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    return env;
+}
+
 QString deno()
 {
     static QString p = findExecutable(QStringLiteral("deno"), {QStringLiteral("deno")});

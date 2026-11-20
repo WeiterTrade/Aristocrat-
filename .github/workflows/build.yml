@@ -17,40 +17,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Qt 5.15.2 + MinGW 8.1 — последняя связка, которая работает на Windows 7.
-      - name: Установка Qt 5.15.2 (MinGW)
+      # Qt 5.15.2 + MSVC: Qt WebEngine (встроенный браузер) есть только в сборке под MSVC.
+      - name: Компилятор MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Установка Qt 5.15.2 (MSVC + WebEngine)
         uses: jurplel/install-qt-action@v4
         with:
           version: '5.15.2'
           host: windows
           target: desktop
-          arch: win64_mingw81
-          tools: 'tools_mingw,qt.tools.win64_mingw810'
+          arch: win64_msvc2019_64
+          modules: 'qtwebengine'
           cache: true
 
       - name: Сборка
         shell: pwsh
         run: |
-          $env:PATH = "$env:IQTA_TOOLS\mingw810_64\bin;$env:PATH"
-          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
+          cmake -S . -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
 
       - name: Сборка папки программы
         shell: pwsh
         run: |
-          $env:PATH = "$env:IQTA_TOOLS\mingw810_64\bin;$env:PATH"
           $out = "dist\Aristocrat Видеоконвертер"
           New-Item -ItemType Directory -Force -Path "$out\tools" | Out-Null
           Copy-Item build\AristocratVideoConverter.exe "$out\Aristocrat Видеоконвертер.exe"
-          # Библиотеки Qt и плагины копируем явно (windeployqt не видит SVG-плагины)
           $qt = $env:QT_ROOT_DIR
-          foreach ($dll in "Qt5Core","Qt5Gui","Qt5Widgets","Qt5Svg","Qt5Network") { Copy-Item "$qt\bin\$dll.dll" $out\ }
-          foreach ($dll in "libgcc_s_seh-1","libstdc++-6","libwinpthread-1") { Copy-Item "$qt\bin\$dll.dll" $out\ }
-          foreach ($p in "platforms\qwindows","styles\qwindowsvistastyle","imageformats\qsvg","imageformats\qjpeg","imageformats\qico","iconengines\qsvgicon") {
-            $dir = Split-Path $p -Parent
-            New-Item -ItemType Directory -Force -Path "$out\$dir" | Out-Null
-            Copy-Item "$qt\plugins\$p.dll" "$out\$dir\"
+          # Библиотеки Qt (включая WebEngine) и графика ANGLE
+          $dlls = "Qt5Core","Qt5Gui","Qt5Widgets","Qt5Svg","Qt5Network","Qt5WebEngineCore","Qt5WebEngineWidgets",
+                  "Qt5Quick","Qt5QuickWidgets","Qt5Qml","Qt5QmlModels","Qt5WebChannel","Qt5Positioning","Qt5PrintSupport",
+                  "d3dcompiler_47","libEGL","libGLESv2","opengl32sw"
+          foreach ($d in $dlls) { if (Test-Path "$qt\bin\$d.dll") { Copy-Item "$qt\bin\$d.dll" $out\ } }
+          Copy-Item "$qt\bin\QtWebEngineProcess.exe" $out\
+          foreach ($p in "platforms\qwindows","styles\qwindowsvistastyle","imageformats\qsvg","imageformats\qjpeg",
+                         "imageformats\qico","imageformats\qgif","iconengines\qsvgicon","printsupport\windowsprintersupport") {
+            if (Test-Path "$qt\plugins\$p.dll") {
+              $dir = Split-Path $p -Parent
+              New-Item -ItemType Directory -Force -Path "$out\$dir" | Out-Null
+              Copy-Item "$qt\plugins\$p.dll" "$out\$dir\"
+            }
           }
+          Copy-Item -Recurse "$qt\resources" "$out\resources"
+          New-Item -ItemType Directory -Force -Path "$out\translations" | Out-Null
+          Copy-Item -Recurse "$qt\translations\qtwebengine_locales" "$out\translations\qtwebengine_locales"
+          # Библиотеки времени выполнения Visual C++ (чтобы не ставить отдельный пакет)
+          $crt = Get-ChildItem -Path $env:VCToolsRedistDir -Recurse -Directory -Filter "Microsoft.VC14*.CRT" |
+                 Where-Object { $_.FullName -match "\\x64\\" -and $_.FullName -notmatch "onecore|debug" } | Select-Object -First 1
+          Copy-Item "$($crt.FullName)\*.dll" $out\
+          Write-Host "CRT: $($crt.FullName)"
 
           # FFmpeg: сборка "essentials" от gyan.dev совместима с Windows 7
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
@@ -74,6 +91,36 @@ jobs:
 
           Copy-Item README.md $out\
           Copy-Item THIRD_PARTY.md $out\
+
+      - name: Проверка запуска и встроенного браузера (Windows)
+        shell: pwsh
+        run: |
+          $out = "dist\Aristocrat Видеоконвертер"
+          New-Item -ItemType Directory -Force -Path web | Out-Null
+          & "$out\tools\ffmpeg.exe" -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=25" -f lavfi -i "sine=frequency=330" -t 12 -c:v libx264 -c:a aac -shortest -f hls -hls_time 4 -hls_playlist_type vod web\index.m3u8
+          & "$out\tools\ffmpeg.exe" -hide_banner -loglevel error -f lavfi -i "testsrc2=size=640x360:rate=25" -t 5 -c:v libx264 web\test.mp4
+          Copy-Item tests\page.html web\
+          $srv = Start-Process python -ArgumentList "-m","http.server","8765","--directory","web" -PassThru -WindowStyle Hidden
+          $env:ARISTOCRAT_LANG = "ru"
+          $app = Start-Process "$out\Aristocrat Видеоконвертер.exe" -ArgumentList "--demo-browser=http://127.0.0.1:8765/page.html" -PassThru
+          Start-Sleep -Seconds 25
+          if ($app.HasExited) { Write-Host "Программа завершилась, код $($app.ExitCode)"; exit 1 }
+          Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $small = New-Object System.Drawing.Bitmap $bmp, ([int]($b.Width * 0.6)), ([int]($b.Height * 0.6))
+          $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }
+          $ep = New-Object System.Drawing.Imaging.EncoderParameters 1
+          $ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 60L
+          $small.Save("$PWD\win.jpg", $codec, $ep)
+          Stop-Process -Id $app.Id -Force
+          Stop-Process -Id $srv.Id -Force
+          $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\win.jpg"))
+          Write-Host "SCREENSHOT_BEGIN windows"
+          for ($i = 0; $i -lt $b64.Length; $i += 8000) { Write-Host $b64.Substring($i, [Math]::Min(8000, $b64.Length - $i)) }
+          Write-Host "SCREENSHOT_END"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -100,7 +147,7 @@ jobs:
       - name: Зависимости
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev libqt5svg5-dev qt5-image-formats-plugins cmake g++ libfuse2 xz-utils unzip
+          sudo apt-get install -y qtbase5-dev libqt5svg5-dev qtwebengine5-dev qt5-image-formats-plugins cmake g++ libfuse2 xz-utils unzip zip
 
       - name: Сборка
         run: |
@@ -193,6 +240,25 @@ jobs:
           ls -la "$HOME/Downloads/Aristocrat Видеоконвертер/" || true
           convert shot.png -resize 1100x -quality 60 extension.jpg
           echo "SCREENSHOT_BEGIN extension"; base64 -w 8000 extension.jpg; echo "SCREENSHOT_END"
+
+      - name: Проверка встроенного браузера (Linux)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          ARISTOCRAT_LANG: ru
+        run: |
+          T=AppDir/usr/bin/tools
+          $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=640x360:rate=25" -t 5 -c:v libx264 hls/test.mp4
+          cp tests/page.html hls/
+          (cd hls && python3 -m http.server 8765 >/dev/null 2>&1 &) ; sleep 1
+          xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
+            "./Aristocrat Видеоконвертер-x86_64.AppImage" --demo-browser=http://127.0.0.1:8765/page.html > app.log 2>&1 & APP=$!
+            sleep 25
+            import -window root shot.png
+            kill $APP
+          '
+          grep SNIFFED app.log || (echo "Видео не найдено"; tail -30 app.log)
+          convert shot.png -resize 1100x -quality 60 browser.jpg
+          echo "SCREENSHOT_BEGIN browser"; base64 -w 8000 browser.jpg; echo "SCREENSHOT_END"
 
       - name: Расширение для браузера (архивы)
         run: |

@@ -352,13 +352,7 @@ void ConvertPage::addConvertedEntry(const TaskPtr &t)
     m_converted->setItemWidget(it, row);
     const QString path = t->outputPath;
     connect(play, &QToolButton::clicked, this, [path] { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
-    connect(folder, &QToolButton::clicked, this, [path] {
-#ifdef Q_OS_WIN
-        QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,"), QDir::toNativeSeparators(path)});
-#else
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
-#endif
-    });
+    connect(folder, &QToolButton::clicked, this, [path] { Ui::showInFolder(path); });
     m_segConverted->setText(T("Готово (%1)").arg(m_converted->count()));
 }
 

@@ -1,6 +1,9 @@
 #include "DownloadPage.h"
 #include "core/I18n.h"
 #include "Widgets.h"
+#ifdef HAVE_WEBENGINE
+#include "BrowserWindow.h"
+#endif
 #include "core/Settings.h"
 #include "core/Task.h"
 #include "core/Tools.h"
@@ -37,6 +40,8 @@
 #include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
+
+static QString safeFileName(QString t);
 
 static QString speedText(double bps)
 {
@@ -76,8 +81,9 @@ static QImage grabImageUrl(const QString &url)
 
 // ======================= AnalyzeDialog =======================
 
-AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent)
-    : FramedDialog(parent), m_item(DownloadPtr::create()), m_base(baseArgs), m_cookies(cookieArgs)
+AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent,
+                             const QStringList &headers)
+    : FramedDialog(parent), m_item(DownloadPtr::create()), m_base(baseArgs), m_cookies(headers.isEmpty() ? cookieArgs : QStringList()), m_headers(headers)
 {
     setWindowTitle(T("Загрузка видео"));
     setMinimumWidth(640);
@@ -129,6 +135,12 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
     m_ok = Ui::primaryButton(T("Скачать"), this);
     m_ok->setEnabled(false);
     m_ok->setMinimumWidth(140);
+#ifdef HAVE_WEBENGINE
+    m_browserBtn = Ui::primaryButton(T("Открыть во встроенном браузере"), this);
+    m_browserBtn->hide();
+    btns->addWidget(m_browserBtn);
+    connect(m_browserBtn, &QPushButton::clicked, this, [this] { done(2); });
+#endif
     btns->addWidget(cancel);
     btns->addWidget(m_ok);
     root->addLayout(btns);
@@ -138,6 +150,10 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
         m_item->audioOnly = id == -100;
         m_item->height = id > 0 ? id : 0;
         m_item->noCookies = !m_usedCookies;
+        if (!m_headers.isEmpty()) {
+            m_item->external = true;
+            m_item->headers = m_headers;
+        }
         accept();
     });
 
@@ -156,7 +172,10 @@ void AnalyzeDialog::run(bool withCookies)
     QStringList args = m_base;
     if (withCookies)
         args << m_cookies;
+    for (const QString &h : m_headers)
+        args << "--add-header" << h;
     args << "-J" << "--no-warnings" << m_item->url;
+    m_proc->setProcessEnvironment(Tools::utf8Env());
     m_proc->start(Tools::ytdlp(), args);
 }
 
@@ -188,8 +207,8 @@ void AnalyzeDialog::onAnalyzed(int code)
         QString err = errs.isEmpty() ? T("Видео по этой ссылке не найдено.") : errs.last();
         QString hint;
         if (err.contains(QLatin1String("Unsupported URL"), Qt::CaseInsensitive))
-            hint = T("Сайт не поддерживается напрямую. Откройте видео в браузере, нажмите F12 → «Сеть», найдите ссылку "
-                                  "с .m3u8 или .mp4 и вставьте её сюда — такие ссылки скачиваются.");
+            hint = T("Сайт не поддерживается напрямую. Откройте страницу во встроенном браузере программы: "
+                     "запустите видео — и программа сама найдёт поток для загрузки.");
         else if (err.contains(QLatin1String("Sign in"), Qt::CaseInsensitive) || err.contains(QLatin1String("login"), Qt::CaseInsensitive)
                  || err.contains(QLatin1String("bot"), Qt::CaseInsensitive))
             hint = T("Сайт требует входа. Внизу раздела выберите «Вход на сайты» — браузер, в котором вы вошли на сайт (лучше Firefox), "
@@ -199,6 +218,8 @@ void AnalyzeDialog::onAnalyzed(int code)
         else
             hint = T("Если ошибка повторяется, обновите модуль загрузки: ☰ → Настройки → Загрузка → «Обновить».");
         m_state->setText(T("Не получилось. ") + hint);
+        if (m_headers.isEmpty() && m_browserBtn)
+            m_browserBtn->show();
         m_details->setPlainText(full.isEmpty() ? err : full);
         m_details->show();
         adjustSize();
@@ -311,13 +332,7 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
 
     connect(m_pause, &QToolButton::clicked, this, [this] { emit pauseResume(m_item); });
     connect(close, &QToolButton::clicked, this, [this] { emit removeRequested(m_item); });
-    connect(m_open, &QPushButton::clicked, this, [this] {
-#ifdef Q_OS_WIN
-        QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,"), QDir::toNativeSeparators(m_item->filePath)});
-#else
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_item->filePath).absolutePath()));
-#endif
-    });
+    connect(m_open, &QPushButton::clicked, this, [this] { Ui::showInFolder(m_item->filePath, downloadDir()); });
     connect(m_convert, &QPushButton::clicked, this, [this] { emit convertRequested(m_item->filePath); });
     refresh();
 }
@@ -473,11 +488,12 @@ QWidget *DownloadPage::buildSubBar()
 
     auto *ext = new QToolButton(bar);
     ext->setObjectName(QStringLiteral("FlatTool"));
-    ext->setText(T("Расширение для браузера"));
+    ext->setText(T("Браузер"));
+    ext->setToolTip(T("Встроенный браузер: откройте сайт, запустите видео — и скачайте его кнопкой «Скачать»"));
     ext->setIcon(Ui::icon("globe", true));
     ext->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     ext->setCursor(Qt::PointingHandCursor);
-    connect(ext, &QToolButton::clicked, this, &DownloadPage::showExtensionHelp);
+    connect(ext, &QToolButton::clicked, this, [this] { openBrowser(); });
 
     lay->addWidget(paste);
     lay->addSpacing(20);
@@ -703,9 +719,44 @@ void DownloadPage::addUrl(const QString &url)
         return;
     }
     AnalyzeDialog dlg(url, baseArgs(false), cookieArgs(m_browser->currentData().toString()), window());
-    if (dlg.exec() != QDialog::Accepted)
+    const int r = dlg.exec();
+    if (r == 2) {             // сайт не поддерживается — открываем во встроенном браузере
+        openBrowser(url);
+        return;
+    }
+    if (r != QDialog::Accepted)
         return;
     addItem(dlg.result());
+}
+
+void DownloadPage::openBrowser(const QString &url)
+{
+#ifdef HAVE_WEBENGINE
+    auto *b = new BrowserWindow(window());
+    connect(b, &BrowserWindow::downloadRequested, this,
+            [this, b](const QUrl &media, const QStringList &headers, const QString &title, const QString &site,
+                      const QString &thumb, const QString &kind) {
+        Q_UNUSED(kind)
+        AnalyzeDialog dlg(media.toString(), baseArgs(false), QStringList(), b, headers);
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+        DownloadPtr item = dlg.result();
+        item->external = true;
+        item->headers = headers;
+        if (!title.trimmed().isEmpty())
+            item->title = safeFileName(title);
+        item->site = site;
+        if (!thumb.isEmpty())
+            item->thumbUrl = thumb;
+        addItem(item);
+        m_status->setText(T("Видео со страницы добавлено в загрузки: %1").arg(item->title));
+    });
+    b->show();
+    b->open(QUrl::fromUserInput(url.isEmpty() ? QStringLiteral("https://www.google.com") : url));
+#else
+    Q_UNUSED(url)
+    Ui::message(this, T("Браузер"), T("Эта сборка программы собрана без встроенного браузера."));
+#endif
 }
 
 void DownloadPage::addItem(const DownloadPtr &item)
@@ -798,6 +849,7 @@ void DownloadPage::startItem(const DownloadPtr &item)
         if (e == QProcess::FailedToStart)
             onFinished(item, -1, QProcess::CrashExit);
     });
+    proc->setProcessEnvironment(Tools::utf8Env());
     proc->start(Tools::ytdlp(), a);
     refreshCard(item);
 }

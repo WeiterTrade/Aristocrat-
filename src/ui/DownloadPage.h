@@ -55,7 +55,8 @@ class AnalyzeDialog : public FramedDialog
 {
     Q_OBJECT
 public:
-    AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent = nullptr);
+    AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent = nullptr,
+                  const QStringList &headers = QStringList());   // headers — заголовки из встроенного браузера
     ~AnalyzeDialog() override;
     DownloadPtr result() const { return m_item; }
 
@@ -67,6 +68,8 @@ private:
     QProcess *m_proc;
     QStringList m_base;
     QStringList m_cookies;
+    QStringList m_headers;
+    QPushButton *m_browserBtn = nullptr;
     bool m_usedCookies = false;
     QPlainTextEdit *m_details;
     QLabel *m_thumb;
@@ -113,6 +116,7 @@ public:
     void reloadSettings();
     void addExternal(const QJsonObject &media);   // видео из расширения браузера
     void showExtensionHelp();
+    void openBrowser(const QString &url = QString());
 
 signals:
     void convertRequested(const QString &file, bool autoStart);
