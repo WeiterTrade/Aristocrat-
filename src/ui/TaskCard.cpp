@@ -45,8 +45,8 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     setMinimumHeight(180);
 
     auto *row = new QHBoxLayout(this);
-    row->setContentsMargins(36, 22, 14, 22);
-    row->setSpacing(26);
+    row->setContentsMargins(24, 20, 10, 20);
+    row->setSpacing(18);
 
     // ---- Миниатюра и инструменты правки ----
     auto *thumbCol = new QVBoxLayout;
@@ -84,10 +84,11 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     srcCol->setSpacing(10);
     m_srcName = new QLabel(this);
     m_srcName->setObjectName(QStringLiteral("FileName"));
-    m_srcName->setMinimumWidth(200);
+    m_srcName->setMinimumWidth(120);
     auto *srcBox = new QFrame(this);
     srcBox->setObjectName(QStringLiteral("InfoBox"));
     srcBox->setAttribute(Qt::WA_StyledBackground);
+    srcBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *srcBoxLay = new QVBoxLayout(srcBox);
     srcBoxLay->setContentsMargins(14, 8, 14, 10);
     auto *srcCap = new QLabel(QStringLiteral("Источник"), srcBox);
@@ -126,6 +127,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *dstBox = new QFrame(this);
     dstBox->setObjectName(QStringLiteral("InfoBox"));
     dstBox->setAttribute(Qt::WA_StyledBackground);
+    dstBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *dstBoxLay = new QVBoxLayout(dstBox);
     dstBoxLay->setContentsMargins(14, 8, 8, 10);
     auto *dstCap = new QLabel(QStringLiteral("Результат"), dstBox);
@@ -161,10 +163,10 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *opts = new QHBoxLayout;
     opts->setSpacing(10);
     m_subs = new QComboBox(this);
-    m_subs->setMinimumWidth(150);
+    m_subs->setMinimumWidth(120);
     m_subs->setToolTip(QStringLiteral("Субтитры"));
     m_audio = new QComboBox(this);
-    m_audio->setMinimumWidth(150);
+    m_audio->setMinimumWidth(120);
     m_audio->setToolTip(QStringLiteral("Звуковая дорожка"));
     m_upscale = new QComboBox(this);
     m_upscale->setToolTip(QStringLiteral("Апскейл — увеличение разрешения (для старых кассет)"));
@@ -175,6 +177,10 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI4K), int(UpscaleOptions::AI4K));
     m_upscale->insertSeparator(m_upscale->count());
     m_upscale->addItem(QStringLiteral("☐ Восстановление VHS"), 100);
+    for (QComboBox *c : {m_subs, m_audio, m_upscale}) {
+        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        c->setMinimumContentsLength(12);
+    }
     auto *info = Ui::iconButton("info", QString(), this);
     info->setIcon(Ui::icon("info", true));
     opts->addWidget(m_subs);
@@ -186,11 +192,12 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     dstCol->addLayout(dstHead);
     dstCol->addLayout(dstRow);
     dstCol->addLayout(opts);
+    dstCol->addStretch();
     row->addLayout(dstCol, 6);
 
     // ---- Кнопка действия / прогресс ----
     m_actionStack = new QStackedWidget(this);
-    m_actionStack->setFixedWidth(180);
+    m_actionStack->setFixedWidth(160);
     m_convert = new QPushButton(QStringLiteral("Конвертировать"), this);
     m_convert->setObjectName(QStringLiteral("DarkButton"));
     m_convert->setCursor(Qt::PointingHandCursor);

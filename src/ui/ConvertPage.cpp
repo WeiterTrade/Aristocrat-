@@ -71,6 +71,7 @@ ConvertPage::ConvertPage(QWidget *parent)
     scroll->setObjectName(QStringLiteral("TaskArea"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto *list = new QWidget(scroll);
     m_cardLayout = new QVBoxLayout(list);
     m_cardLayout->setContentsMargins(0, 0, 0, 0);

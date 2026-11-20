@@ -87,6 +87,7 @@ QWidget *MainWindow::buildHeader()
     brand->addWidget(logo);
     brand->addLayout(names);
     auto *brandW = new QWidget(header);
+    brandW->setObjectName(QStringLiteral("Brand"));
     brandW->setLayout(brand);
     brandW->setFixedWidth(260);
     lay->addWidget(brandW, 0, Qt::AlignTop | Qt::AlignLeft);
@@ -133,6 +134,7 @@ QWidget *MainWindow::buildHeader()
     menu->addAction(QStringLiteral("Выход"), this, &QWidget::close);
     menuBtn->setMenu(menu);
     auto *menuW = new QWidget(header);
+    menuW->setObjectName(QStringLiteral("MenuArea"));
     auto *ml = new QHBoxLayout(menuW);
     ml->setContentsMargins(0, 0, 0, 0);
     ml->addStretch();
