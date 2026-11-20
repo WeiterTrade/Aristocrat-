@@ -1,0 +1,135 @@
+/* Aristocrat Video Converter — тёмная тема "бордо и золото" */
+
+QWidget {
+    background: #1F191B;
+    color: #E9E1D2;
+    font-size: 10pt;
+    selection-background-color: #8C6420;
+    selection-color: #FFF6DE;
+}
+
+QToolTip { background: #2C2326; color: #E9E1D2; border: 1px solid #5A4630; padding: 4px; }
+
+/* ---------- Шапка ---------- */
+#Header { background: #150F11; border-bottom: 2px solid #3A2A22; }
+#Header QLabel { background: transparent; }
+#AppTitle { color: #E8C266; font-size: 11pt; font-weight: 600; letter-spacing: 1px; }
+#AppSubtitle { color: #A99F90; font-size: 8pt; letter-spacing: 2px; }
+
+QToolButton#NavButton {
+    background: transparent; border: none; color: #CFC3A8;
+    padding: 8px 18px 10px 18px; min-width: 96px;
+    border-bottom: 3px solid transparent;
+}
+QToolButton#NavButton:hover { color: #F0D99A; }
+QToolButton#NavButton:checked { color: #E8C266; border-bottom: 3px solid #E2BC5C; }
+
+/* ---------- Панель под шапкой ---------- */
+#SubBar { background: #261E21; border-bottom: 1px solid #33282C; }
+#SubBar QLabel { background: transparent; color: #CFC3A8; }
+
+QToolButton#FlatTool {
+    background: transparent; border: none; color: #E9E1D2; padding: 6px 10px;
+}
+QToolButton#FlatTool:hover { color: #F0D07A; }
+QToolButton#FlatTool::menu-indicator { image: url(:/icons/chevron-active.svg); width: 12px; subcontrol-position: right center; }
+
+QPushButton#SegLeft, QPushButton#SegRight {
+    background: #1A1416; color: #A99F90; border: 1px solid #33282C; padding: 7px 22px;
+}
+QPushButton#SegLeft { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+QPushButton#SegRight { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+QPushButton#SegLeft:checked, QPushButton#SegRight:checked { background: #3A2B30; color: #E8C266; }
+
+/* ---------- Кнопки ---------- */
+QPushButton {
+    background: #33292C; color: #E9E1D2; border: 1px solid #45373B; border-radius: 4px; padding: 7px 16px;
+}
+QPushButton:hover { background: #3E3236; border-color: #6A5440; }
+QPushButton:disabled { color: #6E6460; background: #2A2225; border-color: #33292C; }
+
+QPushButton#PrimaryButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EFCB72, stop:1 #C99A38);
+    color: #2A0912; font-weight: 600; border: none; border-radius: 4px; padding: 10px 28px;
+}
+QPushButton#PrimaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F7DA8E, stop:1 #D8AA48); }
+QPushButton#PrimaryButton:disabled { background: #3A3033; color: #7A6E68; }
+
+QPushButton#DarkButton { background: #171113; border: 1px solid #33282C; padding: 10px 30px; font-weight: 600; }
+QPushButton#DarkButton:hover { border-color: #E2BC5C; color: #F0D07A; }
+
+QToolButton#IconButton { background: transparent; border: none; padding: 4px; border-radius: 4px; }
+QToolButton#IconButton:hover { background: #3A2E32; }
+
+/* ---------- Зона перетаскивания ---------- */
+#DropZone { background: transparent; border: 2px dashed #4E3E35; border-radius: 10px; }
+#DropZone[hover="true"] { border-color: #E2BC5C; }
+#DropZone QLabel { background: transparent; color: #CFC3A8; font-size: 11pt; }
+
+/* ---------- Карточки задач ---------- */
+#TaskArea, #TaskArea > QWidget > QWidget { background: #1F191B; }
+#TaskCard { background: #272023; border-bottom: 1px solid #33282C; }
+#TaskCard QLabel { background: transparent; }
+#Thumb { background: #0E0A0B; border: 1px solid #33282C; }
+#ThumbTools { background: #171113; }
+#InfoBox { background: #322A2D; border-radius: 4px; }
+#InfoBox QLabel { color: #CFC3A8; }
+#InfoCaption { color: #A99F90; font-size: 9pt; }
+#FileName { color: #E9E1D2; font-size: 10.5pt; }
+#TargetName { color: #E9E1D2; }
+#StatusLabel { color: #E8C266; }
+
+QProgressBar { background: #171113; border: none; border-radius: 3px; height: 6px; text-align: center; color: transparent; }
+QProgressBar::chunk { background: #E2BC5C; border-radius: 3px; }
+
+/* ---------- Нижняя панель ---------- */
+#BottomBar { background: #171113; border-top: 1px solid #33282C; }
+#BottomBar QLabel { background: transparent; color: #CFC3A8; }
+
+/* ---------- Поля ввода ---------- */
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QTimeEdit {
+    background: #171113; color: #E9E1D2; border: 1px solid #3A2F33; border-radius: 3px; padding: 5px 8px; min-height: 20px;
+}
+QComboBox:hover, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus { border-color: #8C6A35; }
+QComboBox::drop-down { border: none; width: 22px; }
+QComboBox::down-arrow { image: url(:/icons/chevron-active.svg); width: 12px; height: 12px; }
+QComboBox QAbstractItemView { background: #221B1D; border: 1px solid #45373B; selection-background-color: #4A3828; }
+
+QCheckBox { background: transparent; spacing: 8px; }
+QCheckBox::indicator { width: 34px; height: 18px; border-radius: 9px; background: #3A3033; border: 1px solid #4A3E41; }
+QCheckBox::indicator:checked { background: #C99A38; border-color: #E2BC5C; }
+QCheckBox#PlainCheck::indicator { width: 16px; height: 16px; border-radius: 3px; }
+
+QSlider::groove:horizontal { height: 4px; background: #3A3033; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #E2BC5C; border-radius: 2px; }
+QSlider::handle:horizontal { width: 14px; height: 14px; margin: -6px 0; border-radius: 7px; background: #F3DFA8; }
+
+QTabWidget::pane { border: none; border-top: 1px solid #3A2A22; }
+QTabBar::tab { background: transparent; color: #CFC3A8; padding: 10px 26px; border-bottom: 2px solid transparent; }
+QTabBar::tab:selected { color: #E8C266; border-bottom: 2px solid #E2BC5C; }
+QTabBar::tab:hover { color: #F0D99A; }
+
+QListWidget { background: #1A1416; border: none; outline: none; }
+QListWidget::item { padding: 10px 8px; border-bottom: 1px solid #2A2225; }
+QListWidget::item:selected { background: #2E2427; color: #E8C266; }
+QListWidget::item:hover { background: #262022; }
+
+QScrollBar:vertical { background: transparent; width: 10px; }
+QScrollBar::handle:vertical { background: #4A3E41; border-radius: 4px; min-height: 30px; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
+QScrollBar:horizontal { background: transparent; height: 10px; }
+QScrollBar::handle:horizontal { background: #4A3E41; border-radius: 4px; min-width: 30px; }
+
+QMenu { background: #221B1D; border: 1px solid #45373B; padding: 4px; }
+QMenu::item { padding: 6px 24px; }
+QMenu::item:selected { background: #3A2B30; color: #E8C266; }
+
+QGroupBox { border: 1px solid #33282C; border-radius: 6px; margin-top: 14px; padding-top: 8px; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #A99F90; }
+
+#FormatPopup { background: #221B1D; border: 1px solid #45373B; }
+#PreviewFrame { background: #0E0A0B; border: 1px solid #33282C; }
+#SidePanel { background: #2A2225; border-radius: 4px; }
+#SidePanel QLabel { background: transparent; }
+#PlaceholderTitle { color: #E8C266; font-size: 16pt; }
+#Muted { color: #A99F90; }

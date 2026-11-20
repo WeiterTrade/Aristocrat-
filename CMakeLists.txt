@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.16)
+project(AristocratVideoConverter VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
+# Qt 5.15 — последняя ветка Qt, которая работает на Windows 7.
+find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets Svg)
+
+set(SOURCES
+    src/main.cpp
+    src/core/Tools.cpp
+    src/core/MediaInfo.cpp
+    src/core/Preset.cpp
+    src/core/Task.cpp
+    src/core/FfmpegCommand.cpp
+    src/core/ConversionEngine.cpp
+    src/core/Settings.cpp
+    src/ui/MainWindow.cpp
+    src/ui/ConvertPage.cpp
+    src/ui/TaskCard.cpp
+    src/ui/DropZone.cpp
+    src/ui/FormatPopup.cpp
+    src/ui/PresetEditDialog.cpp
+    src/ui/OutputSizeDialog.cpp
+    src/ui/EditDialog.cpp
+    src/ui/TrimDialog.cpp
+    src/ui/FramePreview.cpp
+    src/ui/PlaceholderPage.cpp
+    src/ui/ToolboxPage.cpp
+    src/ui/Widgets.cpp
+)
+
+set(RESOURCES resources/resources.qrc)
+
+if(WIN32)
+    set(APP_RC "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+    file(WRITE "${APP_RC}" "IDI_ICON1 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/resources/logo/app.ico\"\n")
+    list(APPEND RESOURCES "${APP_RC}")
+endif()
+
+add_executable(aristocrat WIN32 ${SOURCES} ${RESOURCES})
+target_include_directories(aristocrat PRIVATE src)
+target_link_libraries(aristocrat PRIVATE Qt5::Widgets Qt5::Svg)
+target_compile_definitions(aristocrat PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+    QT_DEPRECATED_WARNINGS)
+
+if(MINGW)
+    # Статическая линковка рантайма MinGW — не нужен отдельный установщик библиотек.
+    target_link_options(aristocrat PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
+set_target_properties(aristocrat PROPERTIES OUTPUT_NAME "AristocratVideoConverter")
+
+install(TARGETS aristocrat RUNTIME DESTINATION bin)
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/linux/aristocrat-video-converter.desktop DESTINATION share/applications)
+    install(FILES resources/logo/aristocrat.png DESTINATION share/icons/hicolor/256x256/apps RENAME aristocrat-video-converter.png)
+endif()

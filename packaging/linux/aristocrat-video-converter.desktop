@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Aristocrat Video Converter
+Name[ru]=Aristocrat Видеоконвертер
+Comment=Convert, restore and upscale video
+Comment[ru]=Конвертация, восстановление и апскейл видео
+Exec=AristocratVideoConverter %F
+Icon=aristocrat-video-converter
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+MimeType=video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/webm;video/mpeg;video/x-flv;video/3gpp;audio/mpeg;audio/x-wav;audio/flac;

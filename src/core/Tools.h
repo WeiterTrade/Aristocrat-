@@ -1,0 +1,26 @@
+#pragma once
+#include <QString>
+#include <QStringList>
+
+// Поиск внешних программ: FFmpeg, ffprobe, Real-ESRGAN.
+// Сначала ищем рядом с программой (папка tools), потом в системном PATH.
+namespace Tools {
+
+QString findExecutable(const QString &name, const QStringList &subdirs = {});
+QString ffmpeg();
+QString ffprobe();
+QString realesrgan();
+QString realesrganModelsDir();
+
+bool hasFfmpeg();
+bool hasRealesrgan();
+
+// Аппаратное ускорение: возвращает имя кодировщика H.264 (h264_nvenc, h264_qsv, h264_amf)
+// или пустую строку, если видеокарта не поддерживается. Проверяется один раз.
+QString hardwareH264Encoder();
+QString hardwareHevcEncoder();
+
+// Экранирование пути для фильтров FFmpeg (subtitles=, movie=)
+QString escapeFilterPath(const QString &path);
+
+} // namespace Tools

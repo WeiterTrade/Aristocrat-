@@ -1,0 +1,71 @@
+#pragma once
+#include "core/ConversionEngine.h"
+#include "core/Task.h"
+
+#include <QHash>
+#include <QWidget>
+
+class QStackedWidget;
+class QVBoxLayout;
+class QPushButton;
+class QComboBox;
+class QCheckBox;
+class QToolButton;
+class QLabel;
+class QListWidget;
+class TaskCard;
+
+// Вкладка «Конвертировать»: список задач, выбор формата для всех, нижняя панель с папкой и кнопкой запуска.
+class ConvertPage : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit ConvertPage(QWidget *parent = nullptr);
+    void addFiles(const QStringList &paths);
+    void addFilesWithUpscale(const QStringList &paths, UpscaleOptions::Mode mode, bool vhs);
+    bool isBusy() const { return m_engine->isRunning(); }
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *e) override;
+    void dropEvent(QDropEvent *e) override;
+
+private:
+    QWidget *buildSubBar();
+    QWidget *buildBottomBar();
+    QWidget *buildConvertedPage();
+
+    void chooseFiles();
+    void chooseFolder();
+    void loadDvdFolder();
+    void addTask(const QString &input, const QString &displayName = QString());
+    void removeTask(const TaskPtr &t);
+    void convertAll();
+    void convertOne(const TaskPtr &t);
+    void applyGlobalPreset(const Preset &p);
+    void updateView();
+    void updateGlobalButton();
+    void onTaskChanged(int id);
+    void onQueueFinished(const QStringList &outputs, int failed);
+    void addConvertedEntry(const TaskPtr &t);
+    void chooseOutputDir();
+    QString outputDir() const;
+
+    ConversionEngine *m_engine;
+    QList<TaskPtr> m_tasks;
+    QHash<int, TaskCard *> m_cards;
+    int m_nextId = 1;
+    QList<TaskPtr> m_pendingUpscale;
+
+    QStackedWidget *m_stack;
+    QVBoxLayout *m_cardLayout;
+    QPushButton *m_segConverting;
+    QPushButton *m_segConverted;
+    QPushButton *m_globalFormat;
+    QComboBox *m_outDir;
+    QCheckBox *m_merge;
+    QToolButton *m_hw;
+    QToolButton *m_alarm;
+    QPushButton *m_convertAll;
+    QLabel *m_statusLine;
+    QListWidget *m_converted;
+};

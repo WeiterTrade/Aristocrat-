@@ -1,0 +1,131 @@
+name: Сборка
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows 7/8/10/11 (64-бит)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      # Qt 5.15.2 + MinGW 8.1 — последняя связка, которая работает на Windows 7.
+      - name: Установка Qt 5.15.2 (MinGW)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: windows
+          target: desktop
+          arch: win64_mingw81
+          tools: 'tools_mingw,qt.tools.win64_mingw810'
+          cache: true
+
+      - name: Сборка
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:IQTA_TOOLS\mingw810_64\bin;$env:PATH"
+          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Сборка папки программы
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:IQTA_TOOLS\mingw810_64\bin;$env:PATH"
+          $out = "dist\AristocratVideoConverter"
+          New-Item -ItemType Directory -Force -Path "$out\tools" | Out-Null
+          Copy-Item build\AristocratVideoConverter.exe $out\
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime "$out\AristocratVideoConverter.exe"
+
+          # FFmpeg: сборка "essentials" от gyan.dev совместима с Windows 7
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          $bin = Get-ChildItem -Recurse -Path ffmpeg_tmp -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $bin.FullName "$out\tools\"
+          Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") "$out\tools\"
+          $lic = Get-ChildItem -Recurse -Path ffmpeg_tmp -Filter LICENSE* | Select-Object -First 1
+          if ($lic) { Copy-Item $lic.FullName "$out\tools\FFMPEG-LICENSE.txt" }
+
+          # Real-ESRGAN (нейросетевой апскейл, нужен Vulkan)
+          Invoke-WebRequest -Uri "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip" -OutFile esrgan.zip
+          Expand-Archive esrgan.zip -DestinationPath "$out\tools\realesrgan"
+          Remove-Item -Recurse -Force "$out\tools\realesrgan\*.jpg","$out\tools\realesrgan\*.png","$out\tools\realesrgan\*.mp4" -ErrorAction SilentlyContinue
+
+          Copy-Item README.md $out\
+          Copy-Item THIRD_PARTY.md $out\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AristocratVideoConverter-Windows-x64
+          path: dist/
+
+      - name: Архив для выпуска
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: Compress-Archive -Path dist\AristocratVideoConverter -DestinationPath AristocratVideoConverter-Windows-x64.zip
+
+      - name: Выпуск
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AristocratVideoConverter-Windows-x64.zip
+
+  linux:
+    name: Linux (AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Зависимости
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev libqt5svg5-dev qt5-image-formats-plugins cmake g++ libfuse2 xz-utils unzip
+
+      - name: Сборка
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build --parallel
+          DESTDIR=$PWD/AppDir cmake --install build
+
+      - name: Модули (FFmpeg, Real-ESRGAN)
+        run: |
+          mkdir -p AppDir/usr/bin/tools/realesrgan
+          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg.tar.xz
+          cp ffmpeg-*-static/ffmpeg ffmpeg-*-static/ffprobe AppDir/usr/bin/tools/
+          cp ffmpeg-*-static/GPLv3.txt AppDir/usr/bin/tools/FFMPEG-LICENSE.txt || true
+          curl -L -o esrgan.zip https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip
+          unzip -q esrgan.zip -d AppDir/usr/bin/tools/realesrgan
+          rm -f AppDir/usr/bin/tools/realesrgan/*.jpg AppDir/usr/bin/tools/realesrgan/*.png AppDir/usr/bin/tools/realesrgan/*.mp4
+          chmod +x AppDir/usr/bin/tools/ffmpeg AppDir/usr/bin/tools/ffprobe AppDir/usr/bin/tools/realesrgan/realesrgan-ncnn-vulkan
+
+      - name: AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          EXTRA_QT_PLUGINS: svg
+        run: |
+          curl -L -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -L -o linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
+            -d AppDir/usr/share/applications/aristocrat-video-converter.desktop \
+            -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
+          mv Aristocrat*.AppImage AristocratVideoConverter-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AristocratVideoConverter-Linux-x86_64
+          path: AristocratVideoConverter-x86_64.AppImage
+
+      - name: Выпуск
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AristocratVideoConverter-x86_64.AppImage

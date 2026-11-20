@@ -1,0 +1,9 @@
+build/
+build-*/
+*.user
+CMakeLists.txt.user*
+.vscode/
+.idea/
+/tools/
+*.AppImage
+*.zip
