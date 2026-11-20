@@ -194,8 +194,12 @@ jobs:
           ./"Aristocrat Видеоконвертер-x86_64.AppImage" --appimage-extract > /dev/null
           AppDir/usr/bin/tools/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=320x240:rate=25" -t 8 -c:v libx264 t.mp4
           cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
-          timeout 90 xvfb-run -a -s "-screen 0 1600x960x24" gdb -q -batch -ex "set follow-fork-mode child" -ex run -ex "thread apply all bt 30" \
-            --args bash squashfs-root/AppRun "--demo-chapters=$PWD/t.mp4|http://127.0.0.1:8790/scenes.html" 2>&1 | grep -vE "^\[(New|Thread|Detaching)|^warning" | tail -150 || true
+          ulimit -c unlimited; sudo sysctl -w kernel.core_pattern=/tmp/core.%p > /dev/null
+          xvfb-run -a -s "-screen 0 1600x960x24" bash -c 'ulimit -c unlimited; squashfs-root/AppRun "$1" > dbg.log 2>&1 & APP=$!; sleep 40; kill $APP 2>/dev/null; wait $APP; echo "код выхода $?"' _ "--demo-chapters=$PWD/t.mp4|http://127.0.0.1:8790/scenes.html"
+          tail -40 dbg.log
+          ls -la /tmp/core.* 2>/dev/null || echo "нет дампа"
+          C=$(ls /tmp/core.* 2>/dev/null | head -1)
+          if [ -n "$C" ]; then gdb -q -batch -ex "set solib-search-path squashfs-root/usr/lib" -ex "bt 40" squashfs-root/usr/bin/AristocratVideoConverter "$C" 2>&1 | grep -E "^#" | head -60; fi
 
       - name: Проверка запуска (скриншот в журнал)
         env:
