@@ -2,6 +2,9 @@
 #include "ConvertPage.h"
 #include "DownloadPage.h"
 #include "Frameless.h"
+#include "SettingsDialog.h"
+#include "core/I18n.h"
+#include <QProcess>
 #include "PlaceholderPage.h"
 #include "ToolboxPage.h"
 #include "Widgets.h"
@@ -23,7 +26,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setWindowTitle(QStringLiteral("Aristocrat Video Converter"));
+    setWindowTitle(QStringLiteral("Aristocrat Видеоконвертер"));
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint);
     setWindowIcon(QIcon(QStringLiteral(":/logo/logo.svg")));
     setMinimumSize(1100, 680);
@@ -92,6 +95,28 @@ void MainWindow::showPage(int index)
     }
 }
 
+void MainWindow::demoSettings(int tab)
+{
+    QTimer::singleShot(2500, this, [this, tab] { openSettings(tab); });
+}
+
+void MainWindow::openSettings(int tab)
+{
+    SettingsDialog dlg(this, tab);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    m_convert->reloadSettings();
+    m_download->reloadSettings();
+    if (dlg.languageChanged()
+        && Ui::ask(this, T("Язык"), T("Язык интерфейса сменится после перезапуска. Перезапустить программу сейчас?"),
+                   T("Перезапустить"), T("Позже"))) {
+        if (!m_convert->isBusy() && !m_download->isBusy()) {
+            QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
+            qApp->quit();
+        }
+    }
+}
+
 void MainWindow::demoTrim()
 {
     QTimer::singleShot(7000, m_convert, &ConvertPage::openFirstTrim);
@@ -115,7 +140,7 @@ QWidget *MainWindow::buildHeader()
     names->setSpacing(0);
     auto *t1 = new QLabel(QStringLiteral("ARISTOCRAT"), header);
     t1->setObjectName(QStringLiteral("AppTitle"));
-    auto *t2 = new QLabel(QStringLiteral("VIDEO CONVERTER"), header);
+    auto *t2 = new QLabel(QStringLiteral("ВИДЕОКОНВЕРТЕР"), header);
     t2->setObjectName(QStringLiteral("AppSubtitle"));
     names->addStretch();
     names->addWidget(t1);
@@ -159,9 +184,11 @@ QWidget *MainWindow::buildHeader()
     menuBtn->setPopupMode(QToolButton::InstantPopup);
     menuBtn->setStyleSheet(QStringLiteral("QToolButton::menu-indicator{image:none;}"));
     auto *menu = new QMenu(menuBtn);
+    menu->addAction(QStringLiteral("Настройки"), this, [this] { openSettings(); });
+    menu->addSeparator();
     menu->addAction(QStringLiteral("О программе"), this, [this] {
         Ui::message(this, QStringLiteral("О программе"),
-                    QStringLiteral("<h3 style='color:#E8C266'>Aristocrat Video Converter</h3>"
+                    QStringLiteral("<h3 style='color:#E8C266'>Aristocrat Видеоконвертер</h3>"
                                    "Версия %1<br><br>Конвертер видео и аудио с восстановлением и апскейлом старых записей.<br><br>"
                                    "Использует FFmpeg (LGPL/GPL), Real-ESRGAN (BSD-3) и yt-dlp (Unlicense).")
                         .arg(QStringLiteral(APP_VERSION)));

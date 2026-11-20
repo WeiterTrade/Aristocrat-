@@ -40,4 +40,8 @@ QStringList previewFrame(const ConversionTask &t, double at, bool withFilters, i
 
 QString progressArgsNote();
 
+// Поиск чёрных полей (рамок) по нескольким кадрам. Пустой прямоугольник — полей нет.
+// Вызывать не из потока интерфейса.
+QRect detectBlackBars(const ConversionTask &t);
+
 } // namespace FfmpegCommand

@@ -3,12 +3,13 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QSet>
 #include <QStringList>
-#include <QTimer>
 
-// Очередь конвертации. Задачи выполняются по одной, ход выполнения читается из FFmpeg (-progress).
-// Нейросетевой апскейл идёт кусками по 10 секунд; готовые куски сохраняются,
-// поэтому после остановки работа продолжается с того же места.
+class ConversionWorker;
+
+// Очередь конвертации. Несколько исполнителей (ConversionWorker) берут задачи из общей очереди —
+// число одновременных задач задаётся в настройках.
 class ConversionEngine : public QObject
 {
     Q_OBJECT
@@ -21,6 +22,10 @@ public:
     void stop();
     bool isRunning() const { return m_running; }
 
+    // Для исполнителей
+    TaskPtr takeNext();
+    QString reserveOutputPath(const QString &path);
+
 signals:
     void taskChanged(int id);
     void taskFinished(int id);
@@ -28,47 +33,20 @@ signals:
     void message(const QString &text);
 
 private:
-    enum class Phase { Idle, Single, AIExtract, AIUpscale, AIEncode, AIMux, Merge };
-
-    void next();
-    void startSingle();
-    void startAI();
-    void aiNextSegment();
-    void aiStartUpscale();
-    void aiStartEncode();
-    void aiStartMux();
+    void onWorkerFinishedTask(int id);
+    void onWorkerIdle();
     void startMerge();
+    void finishAll();
 
-    void run(const QString &program, const QStringList &args, Phase phase);
-    void onStdout();
-    void onFinished(int code, QProcess::ExitStatus status);
-    void onUpscaleTick();
-    void finishCurrent(ConversionTask::Status status, const QString &msg = QString());
-    void setProgress(double p);
-
-    QString uniquePath(const QString &path) const;
-    QString workDirFor(const ConversionTask &t) const;
-    double segmentLength() const { return 10.0; }
-
+    QList<ConversionWorker *> m_workers;
     QList<TaskPtr> m_queue;
-    TaskPtr m_current;
-    QProcess *m_proc = nullptr;
-    QTimer m_tick;
-    Phase m_phase = Phase::Idle;
+    QList<TaskPtr> m_all;
+    QSet<QString> m_reserved;
+    QProcess *m_merge = nullptr;
     bool m_running = false;
     bool m_stopping = false;
-    bool m_hw = false;
-    bool m_merge = false;
+    bool m_doMerge = false;
     QString m_outDir;
-    QString m_tempDir;
     QStringList m_outputs;
     int m_failed = 0;
-    QString m_stderr;
-    double m_phaseDuration = 0;
-
-    // Состояние нейросетевого апскейла
-    QString m_work;
-    int m_seg = 0;
-    int m_segCount = 0;
-    int m_segFrames = 0;
 };

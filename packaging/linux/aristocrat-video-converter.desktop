@@ -1,7 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Aristocrat Video Converter
-Name[ru]=Aristocrat Видеоконвертер
+Name=Aristocrat Видеоконвертер
 Comment=Convert, restore and upscale video
 Comment[ru]=Конвертация, восстановление и апскейл видео
 Exec=AristocratVideoConverter %F

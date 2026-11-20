@@ -4,6 +4,7 @@
 #include "Frameless.h"
 #include "TaskCard.h"
 #include "Widgets.h"
+#include "core/FfmpegCommand.h"
 #include "core/Settings.h"
 #include "core/Tools.h"
 
@@ -28,6 +29,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QUrl>
@@ -400,19 +402,34 @@ void ConvertPage::loadDvdFolder()
         Ui::message(this, QStringLiteral("DVD"), QStringLiteral("В папке нет файлов VTS_xx_x.VOB."));
         return;
     }
-    QString best;
-    for (auto it = sizes.begin(); it != sizes.end(); ++it)
-        if (best.isEmpty() || it.value() > sizes[best])
-            best = it.key();
-    QStringList files = parts[best];
-    files.sort();
     QString name = QDir(dir).dirName();
     if (name.compare("VIDEO_TS", Qt::CaseInsensitive) == 0) {
         QDir up(dir);
         up.cdUp();
         name = up.dirName();
     }
-    addTask(QStringLiteral("concat:") + files.join('|'), name.isEmpty() ? QStringLiteral("DVD") : name);
+    if (name.isEmpty())
+        name = QStringLiteral("DVD");
+    QStringList titles;
+    if (QSettings().value("convert/dvdMode", 0).toInt() == 1) {
+        // Все фильмы на диске (пропускаем совсем короткие — заставки)
+        for (auto it = sizes.begin(); it != sizes.end(); ++it)
+            if (it.value() > 30 * 1024 * 1024)
+                titles << it.key();
+        titles.sort();
+    }
+    if (titles.isEmpty()) {
+        QString best;
+        for (auto it = sizes.begin(); it != sizes.end(); ++it)
+            if (best.isEmpty() || it.value() > sizes[best])
+                best = it.key();
+        titles << best;
+    }
+    for (const QString &title : titles) {
+        QStringList files = parts[title];
+        files.sort();
+        addTask(QStringLiteral("concat:") + files.join('|'), titles.size() > 1 ? name + QStringLiteral(" — ") + title : name);
+    }
     updateView();
 }
 
@@ -480,6 +497,17 @@ TaskPtr ConvertPage::addTask(const QString &input, const QString &displayName)
             x->edit.trimStart = ts;   // обрезка по времени у каждого своя
             x->edit.trimEnd = te;
             x->edit.audioTrack = qMin(at, x->info.audioTracks.size() - 1);
+            if (e.autoBars && x->probed) {
+                // Чёрные поля у каждого файла свои — ищем заново
+                x->edit.crop = QRect();
+                auto rect = QSharedPointer<QRect>::create();
+                ConversionTask copy = *x;
+                Ui::runAsync(this, [copy, rect] { *rect = FfmpegCommand::detectBlackBars(copy); }, [this, x, rect] {
+                    x->edit.crop = *rect;
+                    if (TaskCard *c = m_cards.value(x->id))
+                        c->refresh();
+                });
+            }
             if (TaskCard *c = m_cards.value(x->id))
                 c->refresh();
         }
@@ -589,6 +617,8 @@ void ConvertPage::onQueueFinished(const QStringList &outputs, int failed)
     else if (!outputs.isEmpty())
         m_statusLine->setText(QStringLiteral("Готово файлов: %1").arg(outputs.size()));
     QApplication::alert(window());
+    if (QSettings().value("general/sound", true).toBool())
+        QApplication::beep();
 
     const int action = Settings::afterDone();
     if (outputs.isEmpty() || action == Settings::DoNothing)
@@ -667,4 +697,11 @@ void ConvertPage::openFirstTrim()
     if (!m_tasks.isEmpty())
         if (TaskCard *c = m_cards.value(m_tasks.first()->id))
             c->openTrim();
+}
+
+void ConvertPage::reloadSettings()
+{
+    m_outDir->setItemText(0, Settings::outputDir());
+    m_outDir->setCurrentIndex(0);
+    m_hw->setChecked(Settings::hardwareAccel());
 }

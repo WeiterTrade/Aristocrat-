@@ -27,6 +27,7 @@ public:
     void addFilesWithUpscale(const QStringList &paths, UpscaleOptions::Mode mode, bool vhs);
     bool isBusy() const { return m_engine->isRunning(); }
     void openFirstTrim();
+    void reloadSettings();
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;

@@ -1,6 +1,7 @@
 #include "EditDialog.h"
 #include "FramePreview.h"
 #include "Widgets.h"
+#include "core/FfmpegCommand.h"
 #include "core/Settings.h"
 
 #include <QButtonGroup>
@@ -238,12 +239,20 @@ QWidget *EditDialog::buildCropTab()
     lay->addWidget(new QLabel(QStringLiteral("Соотношение сторон:")));
     m_aspect = new QComboBox(w);
     m_aspect->addItem(QStringLiteral("Как в оригинале"), 0.0);
+    m_aspect->addItem(QStringLiteral("Во весь экран (без чёрных полей)"), -1.0);
+    m_aspect->addItem(QStringLiteral("Растянуть на весь кадр"), -2.0);
     m_aspect->addItem(QStringLiteral("16:9"), 16.0 / 9.0);
     m_aspect->addItem(QStringLiteral("4:3"), 4.0 / 3.0);
     m_aspect->addItem(QStringLiteral("1:1"), 1.0);
     m_aspect->addItem(QStringLiteral("9:16"), 9.0 / 16.0);
     m_aspect->addItem(QStringLiteral("21:9"), 21.0 / 9.0);
     lay->addWidget(m_aspect);
+    m_barsLabel = new QLabel(w);
+    m_barsLabel->setObjectName(QStringLiteral("StatusLabel"));
+    m_barsLabel->setWordWrap(true);
+    lay->addWidget(m_barsLabel);
+    if (m_opt.fit == 1) m_aspect->setCurrentIndex(1);
+    else if (m_opt.fit == 2) m_aspect->setCurrentIndex(2);
     lay->addStretch();
     auto *reset = new QPushButton(QStringLiteral("Сбросить"), w);
     lay->addWidget(reset);
@@ -273,6 +282,8 @@ QWidget *EditDialog::buildCropTab()
         m_opt.flipH = m_opt.flipV = false;
         m_rotLabel->setText(QStringLiteral("Поворот: 0°"));
         m_aspect->setCurrentIndex(0);
+        m_opt.fit = 0;
+        m_opt.autoBars = false;
         syncCropFields();
         m_orig->setCropRect(m_opt.crop);
         changed();
@@ -299,6 +310,34 @@ void EditDialog::applyAspect()
 {
     const double ar = m_aspect->currentData().toDouble();
     const QSize s = sourceSize();
+    m_barsLabel->clear();
+    m_opt.autoBars = false;
+    if (ar == -1.0) {
+        // Во весь экран: ищем чёрные поля и заполняем кадр целиком
+        m_opt.fit = 1;
+        m_barsLabel->setText(QStringLiteral("Поиск чёрных полей…"));
+        ConversionTask copy = *m_task;
+        auto rect = QSharedPointer<QRect>::create();
+        Ui::runAsync(this, [copy, rect] { *rect = FfmpegCommand::detectBlackBars(copy); }, [this, rect] {
+            if (m_aspect->currentData().toDouble() != -1.0)
+                return;
+            const QSize src = sourceSize();
+            m_opt.crop = *rect;
+            m_opt.autoBars = true;
+            if (rect->isNull()) {
+                m_barsLabel->setText(QStringLiteral("Чёрных полей не найдено. Кадр будет заполнен целиком под выбранное разрешение."));
+            } else {
+                m_barsLabel->setText(QStringLiteral("Чёрные поля убраны: слева %1, справа %2, сверху %3, снизу %4 пикс.")
+                                         .arg(rect->x()).arg(src.width() - rect->right() - 1)
+                                         .arg(rect->y()).arg(src.height() - rect->bottom() - 1));
+            }
+            syncCropFields();
+            m_orig->setCropRect(m_opt.crop);
+            changed();
+        });
+        return;
+    }
+    m_opt.fit = ar == -2.0 ? 2 : 0;
     if (ar <= 0 || s.isEmpty()) {
         m_opt.crop = QRect();
     } else {

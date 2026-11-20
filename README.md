@@ -1,4 +1,4 @@
-# Aristocrat Video Converter
+# Aristocrat Видеоконвертер
 
 Конвертер видео и аудио для **Windows 7 / 8 / 10 / 11** и **Linux** с восстановлением и апскейлом старых записей (VHS, Video8, DVD) до 1080p и 4K.
 

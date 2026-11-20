@@ -4,6 +4,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QSettings>
+#include <QRegularExpression>
 #include <QTextStream>
 #include <QtMath>
 
@@ -87,9 +90,17 @@ static QStringList scaleFilters(const ConversionTask &t)
             || (t.preset.width > 0 && t.preset.height > 0));
     if (needScale) {
         const int W = even(o.width()), H = even(o.height());
-        f << QStringLiteral("scale=%1:%2:force_original_aspect_ratio=decrease:flags=lanczos").arg(W).arg(H)
-          << QStringLiteral("pad=%1:%2:(ow-iw)/2:(oh-ih)/2:black").arg(W).arg(H)
-          << QStringLiteral("setsar=1");
+        if (t.edit.fit == 1) {
+            // Во весь экран: увеличиваем до заполнения кадра и срезаем лишнее — без чёрных полос
+            f << QStringLiteral("scale=%1:%2:force_original_aspect_ratio=increase:flags=lanczos").arg(W).arg(H)
+              << QStringLiteral("crop=%1:%2").arg(W).arg(H);
+        } else if (t.edit.fit == 2) {
+            f << QStringLiteral("scale=%1:%2:flags=lanczos").arg(W).arg(H);
+        } else {
+            f << QStringLiteral("scale=%1:%2:force_original_aspect_ratio=decrease:flags=lanczos").arg(W).arg(H)
+              << QStringLiteral("pad=%1:%2:(ow-iw)/2:(oh-ih)/2:black").arg(W).arg(H);
+        }
+        f << QStringLiteral("setsar=1");
     }
     if (!t.preset.isAudioOnly() && t.preset.fps > 0)
         f << QStringLiteral("fps=%1").arg(t.preset.fps);
@@ -304,6 +315,8 @@ QStringList singlePass(const ConversionTask &t, const QString &outPath, bool hwA
     }
     if (t.edit.audioTrack >= 0 && !t.info.audioTracks.isEmpty())
         a << "-map" << QStringLiteral("0:a:%1?").arg(t.edit.audioTrack);
+    if (!QSettings().value("convert/keepChapters", true).toBool())
+        a << "-map_chapters" << "-1";
     a << audioCodecArgs(t) << "-sn" << containerArgs(t) << outPath;
     return a;
 }
@@ -406,9 +419,15 @@ QStringList previewFrame(const ConversionTask &t, double at, bool withFilters, i
     QStringList scale = {QStringLiteral("scale='min(%1,iw)':-2").arg(maxWidth)};
     if (withFilters) {
         ConversionTask p = t;
+        const QSize target = t.outputSize();
         p.upscale.mode = UpscaleOptions::None;  // для предпросмотра без увеличения
         p.customResolution = QSize();
         p.preset.width = p.preset.height = 0;
+        // Для «во весь экран» / «растянуть» показываем итоговые пропорции кадра (в уменьшенном виде)
+        if (t.edit.fit != 0 && target.isValid() && target.width() > 0) {
+            const int w = qMin(maxWidth, target.width()) & ~1;
+            p.customResolution = QSize(w, int(double(w) * target.height() / target.width()) & ~1);
+        }
         FilterGraph g = buildGraph(p, Stage::Full, tempDir);
         if (!g.empty) {
             a << g.extraInputs << "-filter_complex" << (g.complex.replace("[vout]", "[pv]") + ";[pv]" + scale.first() + "[vout]")
@@ -424,5 +443,42 @@ QStringList previewFrame(const ConversionTask &t, double at, bool withFilters, i
 }
 
 QString progressArgsNote() { return QStringLiteral("-progress pipe:1"); }
+
+QRect detectBlackBars(const ConversionTask &t)
+{
+    if (Tools::ffmpeg().isEmpty() || !t.info.hasVideo || t.info.width <= 0)
+        return {};
+    const double dur = t.info.duration > 1 ? t.info.duration : 1;
+    int x1 = t.info.width, y1 = t.info.height, x2 = 0, y2 = 0;
+    bool any = false;
+    static const QRegularExpression re(QStringLiteral("crop=(\\d+):(\\d+):(\\d+):(\\d+)"));
+    for (double frac : {0.12, 0.3, 0.5, 0.7, 0.88}) {
+        QProcess p;
+        p.start(Tools::ffmpeg(), {"-hide_banner", "-nostdin", "-nostats", "-ss", QString::number(dur * frac, 'f', 2),
+                                  "-i", t.input, "-vf", "cropdetect=limit=0.09:round=2:reset=0", "-frames:v", "25",
+                                  "-an", "-sn", "-f", "null", "-"});
+        if (!p.waitForFinished(30000)) { p.kill(); continue; }
+        const QString err = QString::fromUtf8(p.readAllStandardError());
+        QRegularExpressionMatch last;
+        auto it = re.globalMatch(err);
+        while (it.hasNext()) last = it.next();
+        if (!last.hasMatch())
+            continue;
+        const int w = last.captured(1).toInt(), h = last.captured(2).toInt();
+        const int x = last.captured(3).toInt(), y = last.captured(4).toInt();
+        if (w < 32 || h < 32)
+            continue;   // почти чёрный кадр (титры, затемнение) — не учитываем
+        any = true;
+        x1 = qMin(x1, x); y1 = qMin(y1, y);
+        x2 = qMax(x2, x + w); y2 = qMax(y2, y + h);
+    }
+    if (!any)
+        return {};
+    QRect r(x1, y1, (x2 - x1) & ~1, (y2 - y1) & ~1);
+    // Полей нет (или они меньше 8 пикселей) — не обрезаем
+    if (r.width() >= t.info.width - 8 && r.height() >= t.info.height - 8)
+        return {};
+    return r;
+}
 
 } // namespace FfmpegCommand

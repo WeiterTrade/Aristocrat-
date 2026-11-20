@@ -22,6 +22,8 @@ bool hasRealesrgan();
 // или пустую строку, если видеокарта не поддерживается. Проверяется один раз.
 QString hardwareH264Encoder();
 QString hardwareHevcEncoder();
+// Список доступных ускорителей для показа в настройках (NVIDIA NVENC, Intel Quick Sync, AMD AMF)
+QStringList hardwareAccelerators();
 
 // Экранирование пути для фильтров FFmpeg (subtitles=, movie=)
 QString escapeFilterPath(const QString &path);

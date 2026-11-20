@@ -15,6 +15,8 @@ public:
     void openFiles(const QStringList &files);
     void showPage(int index);
     void demoTrim();
+    void demoSettings(int tab);
+    void openSettings(int tab = 0);
 
 protected:
     void closeEvent(QCloseEvent *e) override;

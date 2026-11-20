@@ -161,6 +161,7 @@ jobs:
           shot trim --demo-trim "$PWD/Кассета 1994.mp4"
           shot convert "$PWD/Кассета 1994.mp4"
           shot download --page=1
+          shot settings --demo-settings=1
 
       - uses: actions/upload-artifact@v4
         with:

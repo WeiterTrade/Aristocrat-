@@ -115,6 +115,19 @@ QString hardwareHevcEncoder()
     return found;
 }
 
+QStringList hardwareAccelerators()
+{
+    static bool checked = false;
+    static QStringList found;
+    if (!checked) {
+        checked = true;
+        if (testEncoder(QStringLiteral("h264_nvenc"))) found << QStringLiteral("NVIDIA NVENC");
+        if (testEncoder(QStringLiteral("h264_qsv"))) found << QStringLiteral("Intel Quick Sync");
+        if (testEncoder(QStringLiteral("h264_amf"))) found << QStringLiteral("AMD AMF");
+    }
+    return found;
+}
+
 QString escapeFilterPath(const QString &path)
 {
     QString p = QDir::fromNativeSeparators(path);

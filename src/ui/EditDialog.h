@@ -54,6 +54,7 @@ private:
     QSpinBox *m_cropY = nullptr;
     QComboBox *m_aspect = nullptr;
     QLabel *m_rotLabel = nullptr;
+    QLabel *m_barsLabel = nullptr;
 
     QSlider *m_bright = nullptr;
     QSlider *m_contrast = nullptr;

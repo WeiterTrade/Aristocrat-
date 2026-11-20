@@ -17,7 +17,7 @@ QString outputDir()
     QString def = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
     if (def.isEmpty())
         def = QDir::homePath();
-    def += QStringLiteral("/Aristocrat Video Converter");
+    def += QStringLiteral("/Aristocrat Видеоконвертер");
     return s().value("outputDir", def).toString();
 }
 

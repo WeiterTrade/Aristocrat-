@@ -9,7 +9,7 @@ bool EditOptions::isEmpty() const
 
 bool EditOptions::hasVideoFilters() const
 {
-    return !crop.isNull() || rotate != 0 || flipH || flipV || brightness != 0 || contrast != 0
+    return !crop.isNull() || fit != 0 || rotate != 0 || flipH || flipV || brightness != 0 || contrast != 0
         || saturation != 0 || deinterlace || denoise || !watermarkText.isEmpty()
         || !watermarkImage.isEmpty() || !subtitleFile.isEmpty() || subtitleTrack >= 0;
 }

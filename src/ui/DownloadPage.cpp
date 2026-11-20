@@ -52,7 +52,7 @@ static QString downloadDir()
     QString def = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (def.isEmpty())
         def = QDir::homePath();
-    return s.value("download/dir", def + QStringLiteral("/Aristocrat Downloads")).toString();
+    return s.value("download/dir", def + QStringLiteral("/Aristocrat Видеоконвертер")).toString();
 }
 
 static QImage grabImageUrl(const QString &url)
@@ -75,11 +75,11 @@ static QImage grabImageUrl(const QString &url)
 
 // ======================= AnalyzeDialog =======================
 
-AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, QWidget *parent)
-    : FramedDialog(parent), m_item(DownloadPtr::create())
+AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent)
+    : FramedDialog(parent), m_item(DownloadPtr::create()), m_base(baseArgs), m_cookies(cookieArgs)
 {
     setWindowTitle(QStringLiteral("Загрузка видео"));
-    setMinimumWidth(620);
+    setMinimumWidth(640);
     m_item->url = url;
 
     auto *root = contentLayout();
@@ -93,9 +93,11 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, QW
     m_thumb->setAlignment(Qt::AlignCenter);
     m_thumb->setPixmap(Ui::icon("globe", true).pixmap(40, 40));
     auto *txt = new QVBoxLayout;
-    m_title = new QLabel(url, this);
+    m_title = new QLabel(this);
     m_title->setWordWrap(true);
     m_title->setStyleSheet(QStringLiteral("font-size:11pt;"));
+    m_title->setText(fontMetrics().elidedText(url, Qt::ElideMiddle, 380));
+    m_title->setToolTip(url);
     m_state = new QLabel(QStringLiteral("Анализ ссылки…"), this);
     m_state->setObjectName(QStringLiteral("StatusLabel"));
     m_state->setWordWrap(true);
@@ -106,6 +108,12 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, QW
     top->addSpacing(12);
     top->addLayout(txt, 1);
     root->addLayout(top);
+
+    m_details = new QPlainTextEdit(this);
+    m_details->setReadOnly(true);
+    m_details->setMaximumHeight(130);
+    m_details->hide();
+    root->addWidget(m_details);
 
     auto *qLbl = new QLabel(QStringLiteral("Качество:"), this);
     qLbl->setObjectName(QStringLiteral("Muted"));
@@ -128,18 +136,26 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, QW
         const int id = m_group->checkedId();
         m_item->audioOnly = id == -100;
         m_item->height = id > 0 ? id : 0;
+        m_item->noCookies = !m_usedCookies;
         accept();
     });
 
     m_proc = new QProcess(this);
     connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code) { onAnalyzed(code); });
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
-        if (e == QProcess::FailedToStart) {
-            m_state->setText(QStringLiteral("Не удалось запустить yt-dlp."));
-        }
+        if (e == QProcess::FailedToStart)
+            m_state->setText(QStringLiteral("Не удалось запустить модуль загрузки (yt-dlp)."));
     });
-    QStringList args = baseArgs;
-    args << "-J" << "--no-warnings" << url;
+    run(!m_cookies.isEmpty());
+}
+
+void AnalyzeDialog::run(bool withCookies)
+{
+    m_usedCookies = withCookies;
+    QStringList args = m_base;
+    if (withCookies)
+        args << m_cookies;
+    args << "-J" << "--no-warnings" << m_item->url;
     m_proc->start(Tools::ytdlp(), args);
 }
 
@@ -157,13 +173,34 @@ void AnalyzeDialog::onAnalyzed(int code)
     const QByteArray out = m_proc->readAllStandardOutput();
     const QJsonDocument doc = QJsonDocument::fromJson(out);
     if (code != 0 || !doc.isObject()) {
-        QString err = QString::fromUtf8(m_proc->readAllStandardError()).trimmed();
-        const QStringList lines = err.split('\n', Qt::SkipEmptyParts);
-        err = lines.isEmpty() ? QStringLiteral("Видео по этой ссылке не найдено.") : lines.last();
-        err.remove(QStringLiteral("ERROR: "));
-        m_state->setText(QStringLiteral("Не получилось: %1<br><br><span style='color:#A99F90'>Если видео доступно только после входа на сайт, "
-                                        "выберите внизу раздела «Вход на сайты» браузер, в котором вы вошли.</span>").arg(err.toHtmlEscaped()));
-        m_state->setTextFormat(Qt::RichText);
+        const QString full = QString::fromUtf8(m_proc->readAllStandardError()).trimmed();
+        // Не получилось прочитать вход из браузера — пробуем без него
+        if (m_usedCookies && full.contains(QLatin1String("cookie"), Qt::CaseInsensitive)) {
+            m_state->setText(QStringLiteral("Не удалось взять вход из браузера (закройте браузер или выберите другой). Пробую без входа…"));
+            run(false);
+            return;
+        }
+        QStringList errs;
+        for (const QString &l : full.split('\n', Qt::SkipEmptyParts))
+            if (l.startsWith(QLatin1String("ERROR")))
+                errs << l.mid(l.indexOf(':') + 1).trimmed();
+        QString err = errs.isEmpty() ? QStringLiteral("Видео по этой ссылке не найдено.") : errs.last();
+        QString hint;
+        if (err.contains(QLatin1String("Unsupported URL"), Qt::CaseInsensitive))
+            hint = QStringLiteral("Сайт не поддерживается напрямую. Откройте видео в браузере, нажмите F12 → «Сеть», найдите ссылку "
+                                  "с .m3u8 или .mp4 и вставьте её сюда — такие ссылки скачиваются.");
+        else if (err.contains(QLatin1String("Sign in"), Qt::CaseInsensitive) || err.contains(QLatin1String("login"), Qt::CaseInsensitive)
+                 || err.contains(QLatin1String("bot"), Qt::CaseInsensitive))
+            hint = QStringLiteral("Сайт требует входа. Внизу раздела выберите «Вход на сайты» — браузер, в котором вы вошли на сайт (лучше Firefox), "
+                                  "и закройте этот браузер перед загрузкой.");
+        else if (err.contains(QLatin1String("DRM"), Qt::CaseInsensitive))
+            hint = QStringLiteral("Видео защищено DRM — такие видео программа не скачивает.");
+        else
+            hint = QStringLiteral("Если ошибка повторяется, обновите модуль загрузки: ☰ → Настройки → Загрузка → «Обновить».");
+        m_state->setText(QStringLiteral("Не получилось. ") + hint);
+        m_details->setPlainText(full.isEmpty() ? err : full);
+        m_details->show();
+        adjustSize();
         return;
     }
     const QJsonObject o = doc.object();
@@ -175,7 +212,6 @@ void AnalyzeDialog::onAnalyzed(int code)
     m_state->setText(QStringLiteral("%1%2").arg(m_item->site,
                                                m_item->duration > 0 ? QStringLiteral(" · ") + formatDuration(m_item->duration) : QString()));
 
-    // Доступные высоты кадра
     QSet<int> heights;
     for (const QJsonValue &v : o.value("formats").toArray()) {
         const QJsonObject f = v.toObject();
@@ -197,7 +233,6 @@ void AnalyzeDialog::onAnalyzed(int code)
     QRadioButton *first = add(QStringLiteral("Лучшее качество"), 0);
     QSet<int> shown;
     for (int h : hs) {
-        // Округляем к привычным значениям: 2160, 1440, 1080, 720, 480, 360, 240, 144
         int label = h;
         for (int ref : {4320, 2160, 1440, 1080, 720, 480, 360, 240, 144})
             if (qAbs(h - ref) <= ref / 12) { label = ref; break; }
@@ -213,7 +248,6 @@ void AnalyzeDialog::onAnalyzed(int code)
     m_ok->setEnabled(true);
     adjustSize();
 
-    // Миниатюра в фоне
     const QString url = m_item->thumbUrl;
     auto img = QSharedPointer<QImage>::create();
     Ui::runAsync(this, [url, img] { *img = grabImageUrl(url); }, [this, img] {
@@ -379,6 +413,7 @@ DownloadPage::DownloadPage(QWidget *parent)
     root->addWidget(m_stack, 1);
     root->addWidget(buildBottomBar());
 
+    loadQueue();
     if (Tools::ytdlp().isEmpty())
         m_status->setText(QStringLiteral("⚠ Модуль yt-dlp не найден — положите yt-dlp в папку tools рядом с программой"));
     updateView();
@@ -484,6 +519,7 @@ QWidget *DownloadPage::buildBottomBar()
     m_browser->setToolTip(QStringLiteral("Для видео, доступных только после входа: программа возьмёт вход из выбранного браузера.\n"
                                          "Надёжнее всего работает Firefox. Браузер лучше закрыть перед загрузкой."));
     m_browser->addItem(QStringLiteral("Не использовать"), QString());
+    m_browser->addItem(QStringLiteral("Яндекс Браузер"), QStringLiteral("yandex"));
     for (const QString &b : {"firefox", "chrome", "edge", "opera", "brave", "vivaldi", "chromium"})
         m_browser->addItem(b.left(1).toUpper() + b.mid(1), b);
     m_browser->setCurrentIndex(qMax(0, m_browser->findData(s.value("download/browser").toString())));
@@ -530,8 +566,9 @@ QWidget *DownloadPage::buildBottomBar()
         for (const DownloadPtr &d : m_items)
             if (d->status == DownloadItem::Queued)
                 d->status = DownloadItem::Paused;
-        if (m_current)
-            pauseResume(m_current);
+        for (const DownloadPtr &d : m_items)
+            if (m_procs.contains(d->id))
+                pauseResume(d);
         for (DownloadCard *c : m_cards) c->refresh();
     });
 
@@ -556,7 +593,24 @@ QString DownloadPage::outputDir() const
     return m_outDir->itemText(0);
 }
 
-QStringList DownloadPage::baseArgs() const
+QStringList DownloadPage::cookieArgs(const QString &browser)
+{
+    if (browser.isEmpty())
+        return {};
+    if (browser == QLatin1String("yandex")) {
+        // Яндекс Браузер построен на Chromium: указываем yt-dlp путь к его профилю
+#ifdef Q_OS_WIN
+        const QString local = QDir::fromNativeSeparators(qEnvironmentVariable("LOCALAPPDATA"));
+        const QString profile = local + QStringLiteral("/Yandex/YandexBrowser/User Data/Default");
+#else
+        const QString profile = QDir::homePath() + QStringLiteral("/.config/yandex-browser/Default");
+#endif
+        return {"--cookies-from-browser", QStringLiteral("chromium:") + profile};
+    }
+    return {"--cookies-from-browser", browser};
+}
+
+QStringList DownloadPage::baseArgs(bool withCookies) const
 {
     QStringList a = {"--no-playlist", "--no-colors", "--newline"};
     const QString ff = Tools::ffmpeg();
@@ -565,10 +619,15 @@ QStringList DownloadPage::baseArgs() const
     const QString deno = Tools::deno();
     if (!deno.isEmpty())
         a << "--js-runtimes" << QStringLiteral("deno:") + deno;
-    const QString browser = m_browser->currentData().toString();
-    if (!browser.isEmpty())
-        a << "--cookies-from-browser" << browser;
+    if (withCookies)
+        a << cookieArgs(m_browser->currentData().toString());
     return a;
+}
+
+void DownloadPage::reloadSettings()
+{
+    m_outDir->setItemText(0, downloadDir());
+    startNext();
 }
 
 void DownloadPage::pasteFromClipboard()
@@ -619,10 +678,20 @@ void DownloadPage::enterLinks()
 void DownloadPage::addUrl(const QString &url)
 {
     if (Tools::ytdlp().isEmpty()) {
-        Ui::message(this, QStringLiteral("Загрузка видео"), QStringLiteral("Модуль yt-dlp не найден. Положите yt-dlp в папку tools рядом с программой."));
+        Ui::message(this, QStringLiteral("Загрузка видео"), QStringLiteral("Модуль загрузки (yt-dlp) не найден в папке tools рядом с программой."));
         return;
     }
-    AnalyzeDialog dlg(url, baseArgs(), window());
+    QSettings s;
+    if (s.value("download/oneClick", false).toBool()) {
+        // Быстрый режим: без окна выбора, качество из настроек
+        auto item = DownloadPtr::create();
+        item->url = url;
+        item->audioOnly = s.value("download/oneClickType", "video").toString() == QLatin1String("audio");
+        item->height = s.value("download/oneClickQuality", 0).toInt();
+        addItem(item);
+        return;
+    }
+    AnalyzeDialog dlg(url, baseArgs(false), cookieArgs(m_browser->currentData().toString()), window());
     if (dlg.exec() != QDialog::Accepted)
         return;
     addItem(dlg.result());
@@ -631,7 +700,8 @@ void DownloadPage::addUrl(const QString &url)
 void DownloadPage::addItem(const DownloadPtr &item)
 {
     item->id = m_nextId++;
-    item->status = DownloadItem::Queued;
+    if (item->status != DownloadItem::Paused)
+        item->status = DownloadItem::Queued;
     m_items << item;
     auto *card = new DownloadCard(item, this);
     m_cards.insert(item->id, card);
@@ -640,35 +710,44 @@ void DownloadPage::addItem(const DownloadPtr &item)
     connect(card, &DownloadCard::removeRequested, this, &DownloadPage::removeItem);
     connect(card, &DownloadCard::convertRequested, this, [this](const QString &f) { emit convertRequested(f, false); });
     m_segActive->setChecked(true);
+    if (item->thumb.isNull())
+        loadThumb(item);
+    saveQueue();
     updateView();
     startNext();
 }
 
+void DownloadPage::refreshCard(const DownloadPtr &item)
+{
+    if (DownloadCard *c = m_cards.value(item->id))
+        c->refresh();
+}
+
 void DownloadPage::startNext()
 {
-    if (m_proc)
-        return;
+    const int maxTasks = qBound(1, QSettings().value("download/maxTasks", 3).toInt(), 10);
     for (const DownloadPtr &d : m_items) {
-        if (d->status == DownloadItem::Queued) {
+        if (m_procs.size() >= maxTasks)
+            break;
+        if (d->status == DownloadItem::Queued && !m_procs.contains(d->id))
             startItem(d);
-            return;
-        }
     }
     updateView();
 }
 
 void DownloadPage::startItem(const DownloadPtr &item)
 {
-    m_current = item;
     item->status = DownloadItem::Downloading;
     item->error.clear();
-    m_stderr.clear();
-    m_pausing = false;
+    item->log.clear();
+    item->pausing = false;
     QDir().mkpath(outputDir());
+    QSettings s;
 
-    QStringList a = baseArgs();
+    QStringList a = baseArgs(!item->noCookies);
     a << "--no-simulate" << "--progress"
       << "--progress-template" << "download:ARISTO|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
+      << "--print" << "before_dl:ARISTOINFO|%(extractor_key)s|%(duration)s|%(thumbnail)s|%(title)s"
       << "--print" << "after_move:ARISTOFILE|%(filepath)s"
       << "-P" << outputDir()
       << "-o" << "%(title).120B [%(id)s].%(ext)s";
@@ -679,46 +758,49 @@ void DownloadPage::startItem(const DownloadPtr &item)
     } else {
         a << "-f" << "bv*+ba/b" << "--merge-output-format" << "mp4/mkv";
         a << "-S" << (item->height > 0 ? QStringLiteral("res:%1,ext:mp4:m4a").arg(item->height) : QStringLiteral("ext:mp4:m4a"));
+        if (s.value("download/subs", true).toBool()) {
+            const QString lang = s.value("download/subLang", "ru").toString();
+            a << "--write-subs" << "--sub-langs" << (lang == QLatin1String("all") ? QStringLiteral("all,-live_chat") : lang + QStringLiteral(".*"));
+            if (s.value("download/embedSubs", true).toBool())
+                a << "--embed-subs";
+        }
     }
     a << item->url;
 
-    m_proc = new QProcess(this);
-    connect(m_proc, &QProcess::readyReadStandardOutput, this, &DownloadPage::onOutput);
-    connect(m_proc, &QProcess::readyReadStandardError, this, [this] {
-        m_stderr += QString::fromUtf8(m_proc->readAllStandardError());
-        if (m_stderr.size() > 6000) m_stderr = m_stderr.right(6000);
+    auto *proc = new QProcess(this);
+    m_procs.insert(item->id, proc);
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, item] { onOutput(item); });
+    connect(proc, &QProcess::readyReadStandardError, this, [proc, item] {
+        item->log += QString::fromUtf8(proc->readAllStandardError());
+        if (item->log.size() > 8000) item->log = item->log.right(8000);
     });
-    connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &DownloadPage::onFinished);
-    connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, item](int code, QProcess::ExitStatus st) { onFinished(item, code, st); });
+    connect(proc, &QProcess::errorOccurred, this, [this, item](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart)
-            onFinished(-1, QProcess::CrashExit);
+            onFinished(item, -1, QProcess::CrashExit);
     });
-    m_proc->start(Tools::ytdlp(), a);
-    if (DownloadCard *c = m_cards.value(item->id))
-        c->refresh();
-    if (item->thumb.isNull())
-        loadThumb(item);
+    proc->start(Tools::ytdlp(), a);
+    refreshCard(item);
 }
 
 void DownloadPage::loadThumb(const DownloadPtr &item)
 {
     const QString url = item->thumbUrl;
-    if (url.isEmpty())
+    if (url.isEmpty() || url == QLatin1String("NA"))
         return;
     auto img = QSharedPointer<QImage>::create();
     Ui::runAsync(this, [url, img] { *img = grabImageUrl(url); }, [this, item, img] {
         item->thumb = *img;
-        if (DownloadCard *c = m_cards.value(item->id))
-            c->refresh();
+        refreshCard(item);
     });
 }
 
-void DownloadPage::onOutput()
+void DownloadPage::onOutput(const DownloadPtr &item)
 {
-    while (m_proc && m_proc->canReadLine()) {
-        const QString line = QString::fromUtf8(m_proc->readLine()).trimmed();
-        if (!m_current)
-            continue;
+    QProcess *proc = m_procs.value(item->id);
+    while (proc && proc->canReadLine()) {
+        const QString line = QString::fromUtf8(proc->readLine()).trimmed();
         if (line.startsWith(QLatin1String("ARISTO|"))) {
             const QStringList p = line.split('|');
             if (p.size() < 6)
@@ -727,43 +809,47 @@ void DownloadPage::onOutput()
             qint64 total = p[2].toLongLong();
             if (total <= 0)
                 total = qint64(p[3].toDouble());
-            m_current->done = done;
+            item->done = done;
             if (total > 0) {
-                m_current->total = total;
-                m_current->progress = qBound(0.0, double(done) / total, 1.0);
+                item->total = total;
+                item->progress = qBound(0.0, double(done) / total, 1.0);
             }
-            m_current->speed = p[4].toDouble();
-            m_current->eta = p[5] == QLatin1String("NA") ? -1 : p[5].toInt();
-            if (DownloadCard *c = m_cards.value(m_current->id))
-                c->refresh();
+            item->speed = p[4].toDouble();
+            item->eta = p[5] == QLatin1String("NA") ? -1 : p[5].toInt();
+            refreshCard(item);
+        } else if (line.startsWith(QLatin1String("ARISTOINFO|"))) {
+            const QStringList p = line.mid(11).split('|');
+            if (p.size() >= 4) {
+                if (item->site.isEmpty() && p[0] != QLatin1String("NA")) item->site = p[0];
+                if (item->duration <= 0) item->duration = p[1].toDouble();
+                if (item->thumbUrl.isEmpty() && p[2] != QLatin1String("NA")) { item->thumbUrl = p[2]; loadThumb(item); }
+                if (item->title.isEmpty()) item->title = QStringList(p.mid(3)).join('|');
+                refreshCard(item);
+                saveQueue();
+            }
         } else if (line.startsWith(QLatin1String("ARISTOFILE|"))) {
-            m_current->filePath = line.mid(11);
+            item->filePath = line.mid(11);
         }
     }
 }
 
-void DownloadPage::onFinished(int code, QProcess::ExitStatus st)
+void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st)
 {
-    if (!m_proc)
+    if (!m_procs.contains(item->id))
         return;
-    onOutput();
-    m_proc->deleteLater();
-    m_proc = nullptr;
-    DownloadPtr item = m_current;
-    m_current.reset();
-    if (!item)
-        return;
+    onOutput(item);   // дочитываем остаток вывода
+    QProcess *proc = m_procs.take(item->id);
+    proc->deleteLater();
 
-    if (m_pausing) {
+    if (item->pausing) {
         item->status = DownloadItem::Paused;
     } else if (st == QProcess::NormalExit && code == 0 && !item->filePath.isEmpty()) {
         item->status = DownloadItem::Done;
         item->progress = 1;
         item->total = QFileInfo(item->filePath).size();
-        if (DownloadCard *c = m_cards.take(item->id)) {
+        if (DownloadCard *c = m_cards.value(item->id)) {
             m_cardLayout->removeWidget(c);
             m_doneLayout->insertWidget(0, c);
-            m_cards.insert(item->id, c);
         }
         m_segDone->setText(QStringLiteral("Готово (%1)").arg(m_doneLayout->count() - 1));
         if (m_convertMode->isChecked()) {
@@ -772,51 +858,102 @@ void DownloadPage::onFinished(int code, QProcess::ExitStatus st)
         } else {
             m_status->setText(QStringLiteral("Скачано: %1").arg(item->title));
         }
+        if (QSettings().value("general/sound", true).toBool())
+            QApplication::beep();
+    } else if (!item->noCookies && item->log.contains(QLatin1String("cookie"), Qt::CaseInsensitive)) {
+        // Вход из браузера не прочитался — повторяем без него
+        item->noCookies = true;
+        item->status = DownloadItem::Queued;
+        m_status->setText(QStringLiteral("Не удалось взять вход из браузера — качаю без входа"));
     } else {
         item->status = DownloadItem::Failed;
         QStringList lines;
-        for (const QString &l : m_stderr.split('\n', Qt::SkipEmptyParts))
-            if (l.contains(QLatin1String("ERROR")))
-                lines << l;
-        QString err = lines.isEmpty() ? (code == -1 ? QStringLiteral("yt-dlp не запустился") : QStringLiteral("загрузка прервана")) : lines.last();
-        err.remove(QStringLiteral("ERROR: "));
+        for (const QString &l : item->log.split('\n', Qt::SkipEmptyParts))
+            if (l.startsWith(QLatin1String("ERROR")))
+                lines << l.mid(l.indexOf(':') + 1).trimmed();
+        QString err = lines.isEmpty() ? (code == -1 ? QStringLiteral("модуль загрузки не запустился") : QStringLiteral("загрузка прервана")) : lines.last();
         if (err.contains(QLatin1String("DRM"), Qt::CaseInsensitive))
             err = QStringLiteral("видео защищено DRM — такие видео программа не скачивает");
         item->error = err;
     }
-    if (DownloadCard *c = m_cards.value(item->id))
-        c->refresh();
+    refreshCard(item);
+    saveQueue();
     updateView();
     startNext();
 }
 
 void DownloadPage::pauseResume(const DownloadPtr &item)
 {
-    if (item == m_current && m_proc) {
-        m_pausing = true;
-        m_proc->kill();     // недокачанная часть (.part) сохраняется, yt-dlp продолжит с того же места
+    if (QProcess *proc = m_procs.value(item->id)) {
+        item->pausing = true;
+        proc->kill();     // недокачанная часть (.part) сохраняется, yt-dlp продолжит с того же места
         return;
     }
     if (item->status == DownloadItem::Paused || item->status == DownloadItem::Failed)
         item->status = DownloadItem::Queued;
     else if (item->status == DownloadItem::Queued)
         item->status = DownloadItem::Paused;
-    if (DownloadCard *c = m_cards.value(item->id))
-        c->refresh();
+    refreshCard(item);
+    saveQueue();
     startNext();
 }
 
 void DownloadPage::removeItem(const DownloadPtr &item)
 {
-    if (item == m_current && m_proc) {
-        m_pausing = true;
-        m_proc->kill();
-        m_proc->waitForFinished(3000);
+    if (QProcess *proc = m_procs.value(item->id)) {
+        item->pausing = true;
+        proc->kill();
+        proc->waitForFinished(3000);
     }
     m_items.removeAll(item);
     if (DownloadCard *c = m_cards.take(item->id))
         c->deleteLater();
+    saveQueue();
     updateView();
+}
+
+static QString queueFile()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir + QStringLiteral("/downloads.json");
+}
+
+void DownloadPage::saveQueue() const
+{
+    QJsonArray arr;
+    for (const DownloadPtr &d : m_items) {
+        if (d->status == DownloadItem::Done)
+            continue;
+        QJsonObject o;
+        o["url"] = d->url; o["title"] = d->title; o["site"] = d->site; o["duration"] = d->duration;
+        o["thumb"] = d->thumbUrl; o["height"] = d->height; o["audio"] = d->audioOnly; o["noCookies"] = d->noCookies;
+        o["progress"] = d->progress;
+        arr << o;
+    }
+    QFile f(queueFile());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write(QJsonDocument(arr).toJson());
+}
+
+void DownloadPage::loadQueue()
+{
+    QFile f(queueFile());
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const QJsonArray arr = QJsonDocument::fromJson(f.readAll()).array();
+    f.close();
+    const bool resume = QSettings().value("download/resume", true).toBool();
+    for (const QJsonValue &v : arr) {
+        const QJsonObject o = v.toObject();
+        auto d = DownloadPtr::create();
+        d->url = o["url"].toString(); d->title = o["title"].toString(); d->site = o["site"].toString();
+        d->duration = o["duration"].toDouble(); d->thumbUrl = o["thumb"].toString(); d->height = o["height"].toInt();
+        d->audioOnly = o["audio"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
+        d->status = resume ? DownloadItem::Queued : DownloadItem::Paused;
+        if (!d->url.isEmpty())
+            addItem(d);
+    }
 }
 
 void DownloadPage::updateView()
@@ -830,5 +967,5 @@ void DownloadPage::updateView()
     else
         m_stack->setCurrentIndex(anyActive ? 1 : 0);
     m_startAll->setEnabled(anyActive);
-    m_pauseAll->setEnabled(m_proc != nullptr);
+    m_pauseAll->setEnabled(!m_procs.isEmpty());
 }

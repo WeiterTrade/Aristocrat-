@@ -17,7 +17,9 @@ set(SOURCES
     src/core/Task.cpp
     src/core/FfmpegCommand.cpp
     src/core/ConversionEngine.cpp
+    src/core/ConversionWorker.cpp
     src/core/Settings.cpp
+    src/core/I18n.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp
@@ -33,6 +35,7 @@ set(SOURCES
     src/ui/Widgets.cpp
     src/ui/Frameless.cpp
     src/ui/DownloadPage.cpp
+    src/ui/SettingsDialog.cpp
 )
 
 set(RESOURCES resources/resources.qrc)

@@ -19,6 +19,7 @@ class QStackedWidget;
 class QListWidget;
 class QRadioButton;
 class QButtonGroup;
+class QPlainTextEdit;
 
 // Одна загрузка
 struct DownloadItem {
@@ -40,6 +41,9 @@ struct DownloadItem {
     int eta = -1;
     QString filePath;
     QString error;
+    QString log;               // вывод yt-dlp (для подробностей ошибки)
+    bool pausing = false;
+    bool noCookies = false;    // вход из браузера не удался — качаем без него
 };
 using DownloadPtr = QSharedPointer<DownloadItem>;
 
@@ -48,15 +52,20 @@ class AnalyzeDialog : public FramedDialog
 {
     Q_OBJECT
 public:
-    AnalyzeDialog(const QString &url, const QStringList &baseArgs, QWidget *parent = nullptr);
+    AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent = nullptr);
     ~AnalyzeDialog() override;
     DownloadPtr result() const { return m_item; }
 
 private:
+    void run(bool withCookies);
     void onAnalyzed(int code);
 
     DownloadPtr m_item;
     QProcess *m_proc;
+    QStringList m_base;
+    QStringList m_cookies;
+    bool m_usedCookies = false;
+    QPlainTextEdit *m_details;
     QLabel *m_thumb;
     QLabel *m_title;
     QLabel *m_state;
@@ -96,7 +105,9 @@ class DownloadPage : public QWidget
     Q_OBJECT
 public:
     explicit DownloadPage(QWidget *parent = nullptr);
-    bool isBusy() const { return m_proc != nullptr; }
+    bool isBusy() const { return !m_procs.isEmpty(); }
+    static QStringList cookieArgs(const QString &browser);
+    void reloadSettings();
 
 signals:
     void convertRequested(const QString &file, bool autoStart);
@@ -112,21 +123,20 @@ private:
     void startItem(const DownloadPtr &item);
     void pauseResume(const DownloadPtr &item);
     void removeItem(const DownloadPtr &item);
-    void onOutput();
-    void onFinished(int code, QProcess::ExitStatus st);
+    void onOutput(const DownloadPtr &item);
+    void onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st);
+    void saveQueue() const;
+    void loadQueue();
+    void refreshCard(const DownloadPtr &item);
     void updateView();
     void loadThumb(const DownloadPtr &item);
-    QStringList baseArgs() const;
+    QStringList baseArgs(bool withCookies = true) const;
     QString outputDir() const;
 
     QList<DownloadPtr> m_items;
     QHash<int, DownloadCard *> m_cards;
     int m_nextId = 1;
-    DownloadPtr m_current;
-    QProcess *m_proc = nullptr;
-    QString m_stderr;
-    bool m_pausing = false;
-    QStringList m_pendingUrls;
+    QHash<int, QProcess *> m_procs;
 
     QStackedWidget *m_stack;
     QVBoxLayout *m_cardLayout;

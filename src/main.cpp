@@ -1,3 +1,4 @@
+#include "core/I18n.h"
 #include "core/Tools.h"
 #include "ui/MainWindow.h"
 
@@ -12,10 +13,11 @@ int main(int argc, char *argv[])
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("Aristocrat"));
-    QApplication::setApplicationName(QStringLiteral("Aristocrat Video Converter"));
+    QApplication::setApplicationName(QStringLiteral("Aristocrat Видеоконвертер"));
     QApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo/logo.svg")));
-    QApplication::setStyle(QStringLiteral("Fusion"));  // одинаковый вид на Windows и Linux
+    QApplication::setStyle(QStringLiteral("Fusion"));
+    I18n::init();   // язык: из настроек, иначе как в системе, иначе английский  // одинаковый вид на Windows и Linux
 
     QFile qss(QStringLiteral(":/style.qss"));
     if (qss.open(QIODevice::ReadOnly))
@@ -38,6 +40,8 @@ int main(int argc, char *argv[])
             w.showPage(a.mid(7).toInt());
         else if (a == QLatin1String("--demo-trim"))
             w.demoTrim();
+        else if (a.startsWith(QLatin1String("--demo-settings")))
+            w.demoSettings(a.section('=', 1).toInt());
         else
             files << a;
     }

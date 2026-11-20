@@ -14,6 +14,8 @@ struct EditOptions {
     double trimEnd = 0.0;      // 0 = до конца
 
     QRect crop;                // пустой = без кадрирования
+    int fit = 0;               // 0 — как есть (с полями), 1 — во весь экран (заполнить кадр), 2 — растянуть
+    bool autoBars = false;     // чёрные поля найдены автоматически (для «Применить ко всем» ищутся заново)
     int rotate = 0;            // 0, 90, 180, 270
     bool flipH = false;
     bool flipV = false;
