@@ -351,5 +351,16 @@
  "Повернуть влево на 90°": "Girar 90° a la izquierda",
  "Повернуть вправо на 90°": "Girar 90° a la derecha",
  "Отразить по горизонтали": "Voltear horizontalmente",
- "Отразить по вертикали": "Voltear verticalmente"
+ "Отразить по вертикали": "Voltear verticalmente",
+ "Светлая": "Clara",
+ "Бирюзовая": "Turquesa",
+ "Рубин": "Rubí",
+ "Тёмная (бордо и золото)": "Oscura (burdeos y oro)",
+ "Расширение для браузера": "Extensión del navegador",
+ "Из браузера получено: %1": "Recibido del navegador: %1",
+ "<b>Aristocrat — захват видео</b> находит видео на открытой странице (как Download Helper) и одним нажатием передаёт его в программу. Так скачиваются сайты, которые не поддерживаются напрямую.<br><br><b>Яндекс Браузер, Chrome, Edge, Opera:</b><br>1. Откройте адрес <code>browser://extensions</code> (в Chrome — <code>chrome://extensions</code>).<br>2. Включите «Режим разработчика».<br>3. Нажмите «Загрузить распакованное расширение» и выберите папку <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> откройте <code>about:debugging#/runtime/this-firefox</code> → «Загрузить временное дополнение» → файл manifest.json в папке <b>Firefox</b>. В обычном Firefox такое дополнение работает до перезапуска браузера.<br><br>Как пользоваться: откройте страницу с видео, запустите воспроизведение, нажмите на значок Aristocrat в панели браузера и выберите «Скачать». Программа при этом должна быть запущена.": "<b>Aristocrat — captura de vídeo</b> encuentra el vídeo en la página abierta (como Download Helper) y lo envía al programa con un clic. Así se descargan los sitios no compatibles directamente.<br><br><b>Yandex Browser, Chrome, Edge, Opera:</b><br>1. Abra <code>browser://extensions</code> (en Chrome — <code>chrome://extensions</code>).<br>2. Active el «Modo de desarrollador».<br>3. Pulse «Cargar descomprimida» y elija la carpeta <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> abra <code>about:debugging#/runtime/this-firefox</code> → «Cargar complemento temporal» → el archivo manifest.json de la carpeta <b>Firefox</b>. En Firefox normal funciona hasta reiniciar el navegador.<br><br>Uso: abra la página con el vídeo, inicie la reproducción, pulse el icono de Aristocrat en la barra del navegador y elija «Descargar». El programa debe estar abierto.",
+ "Открыть папку с расширением": "Abrir la carpeta de la extensión",
+ "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "El idioma y el tema cambiarán tras reiniciar. ¿Reiniciar el programa ahora?",
+ "Тема оформления:": "Tema:",
+ "Язык и тема сменятся после перезапуска программы.": "El idioma y el tema cambiarán tras reiniciar el programa."
 }

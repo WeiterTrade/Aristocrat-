@@ -1,0 +1,14 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/ext">
+  <file>manifest.json</file>
+  <file>manifest.firefox.json</file>
+  <file>background.js</file>
+  <file>popup.html</file>
+  <file>popup.css</file>
+  <file>popup.js</file>
+  <file>icons/icon16.png</file>
+  <file>icons/icon32.png</file>
+  <file>icons/icon48.png</file>
+  <file>icons/icon128.png</file>
+</qresource>
+</RCC>

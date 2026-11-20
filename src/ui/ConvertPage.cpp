@@ -1,4 +1,5 @@
 #include "ConvertPage.h"
+#include "core/Theme.h"
 #include "core/I18n.h"
 #include "DropZone.h"
 #include "FormatPopup.h"
@@ -162,7 +163,7 @@ QWidget *ConvertPage::buildSubBar()
     m_globalFormat->setMinimumWidth(200);
     m_globalFormat->setIcon(Ui::icon("chevron", true));
     m_globalFormat->setLayoutDirection(Qt::RightToLeft);
-    m_globalFormat->setStyleSheet(QStringLiteral("QPushButton{background:#171113;text-align:left;padding:6px 10px;}"));
+    m_globalFormat->setStyleSheet(Theme::map(QStringLiteral("QPushButton{background:#171113;text-align:left;padding:6px 10px;}")));
     m_globalFormat->setCursor(Qt::PointingHandCursor);
     connect(m_globalFormat, &QPushButton::clicked, this, [this] {
         auto *popup = new FormatPopup(window());
@@ -197,7 +198,7 @@ QWidget *ConvertPage::buildBottomBar()
     m_statusLine = new QLabel(outer);
     m_statusLine->setObjectName(QStringLiteral("StatusLabel"));
     m_statusLine->setContentsMargins(30, 4, 30, 4);
-    m_statusLine->setStyleSheet(QStringLiteral("background:#1F191B;"));
+    m_statusLine->setStyleSheet(Theme::map(QStringLiteral("background:#1F191B;")));
     ol->addWidget(m_statusLine);
 
     auto *bar = new QWidget(outer);
@@ -241,10 +242,10 @@ QWidget *ConvertPage::buildBottomBar()
 
     auto *sep1 = new QFrame(bar);
     sep1->setFrameShape(QFrame::VLine);
-    sep1->setStyleSheet(QStringLiteral("color:#33282C;"));
+    sep1->setStyleSheet(Theme::map(QStringLiteral("color:#33282C;")));
     auto *sep2 = new QFrame(bar);
     sep2->setFrameShape(QFrame::VLine);
-    sep2->setStyleSheet(QStringLiteral("color:#33282C;"));
+    sep2->setStyleSheet(Theme::map(QStringLiteral("color:#33282C;")));
 
     auto *outLbl = new QLabel(T("Папка:"), bar);
     m_outDir = new QComboBox(bar);
@@ -337,10 +338,10 @@ void ConvertPage::addConvertedEntry(const TaskPtr &t)
         thumb->setPixmap(Ui::formatBadge(t->preset.ext.toUpper(), 56));
     thumb->setAlignment(Qt::AlignCenter);
     const QFileInfo fi(t->outputPath);
-    auto *text = new QLabel(QStringLiteral("<span style='color:#E9E1D2;font-size:11pt'>%1</span><br>"
+    auto *text = new QLabel(Theme::map(QStringLiteral("<span style='color:#E9E1D2;font-size:11pt'>%1</span><br>"
                                            "<span style='color:#A99F90'>%2 · %3 · %4</span>")
                                 .arg(fi.fileName().toHtmlEscaped(), t->preset.ext.toUpper(), formatSize(fi.size()),
-                                     formatDuration(t->effectiveDuration())),
+                                     formatDuration(t->effectiveDuration()))),
                             row);
     auto *play = Ui::iconButton("play", T("Воспроизвести"), row, 24);
     auto *folder = Ui::iconButton("folder", T("Показать в папке"), row, 22);

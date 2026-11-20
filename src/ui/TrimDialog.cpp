@@ -1,4 +1,5 @@
 #include "TrimDialog.h"
+#include "core/Theme.h"
 #include "core/I18n.h"
 #include "FramePreview.h"
 #include "Widgets.h"
@@ -137,7 +138,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(rect(), QColor("#171113"));
+    p.fillRect(rect(), Theme::color("#171113"));
     const QRectF strip = stripRect();
 
     // Линейка с отметками времени
@@ -149,7 +150,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const double t = m_duration * i / (ticks * 5.0);
         const double x = timeToX(t);
         const bool major = i % 5 == 0;
-        p.setPen(QColor(major ? "#8C7E6E" : "#4A3E41"));
+        p.setPen(Theme::color(major ? "#8C7E6E" : "#4A3E41"));
         p.drawLine(QPointF(x, strip.top() - (major ? 10 : 5)), QPointF(x, strip.top() - 2));
         if (major && i < ticks * 5)
             p.drawText(QPointF(x + 3, strip.top() - 12), fmtTime(t, false));
@@ -158,7 +159,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     // Лента кадров
     p.save();
     p.setClipRect(strip);
-    p.fillRect(strip, QColor("#0E0A0B"));
+    p.fillRect(strip, Theme::color("#0E0A0B"));
     const int n = m_thumbs.size();
     if (n > 0) {
         const double w = strip.width() / n;
@@ -169,7 +170,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                 const QRectF src((img.width() - cell.width() * 2) / 2, (img.height() - cell.height() * 2) / 2, cell.width() * 2, cell.height() * 2);
                 p.drawImage(cell, img, src);
             }
-            p.setPen(QColor("#2A2225"));
+            p.setPen(Theme::color("#2A2225"));
             p.drawLine(cell.topRight(), cell.bottomRight());
         }
     }
@@ -180,7 +181,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     p.restore();
 
     // Рамка выбранного фрагмента
-    p.setPen(QPen(QColor("#E2BC5C"), 2));
+    p.setPen(QPen(Theme::color("#E2BC5C"), 2));
     p.setBrush(Qt::NoBrush);
     p.drawRect(QRectF(xs, strip.top() + 1, xe - xs, strip.height() - 2));
 
@@ -188,13 +189,13 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const QRectF h(left ? x - 9 : x, strip.top() - 2, 9, strip.height() + 4);
         QPainterPath path;
         path.addRoundedRect(h, 3, 3);
-        p.fillPath(path, QColor(active ? "#F7DA8E" : "#C99A38"));
-        p.setPen(QPen(QColor("#2A0912"), 1.4));
+        p.fillPath(path, Theme::color(active ? "#F7DA8E" : "#C99A38"));
+        p.setPen(QPen(Theme::color("#2A0912"), 1.4));
         const double cx = h.center().x();
         for (int k = -1; k <= 1; ++k)
             p.drawLine(QPointF(cx - 2, h.center().y() + k * 5), QPointF(cx + 2, h.center().y() + k * 5));
         if (active) {
-            p.setPen(QPen(QColor("#FFF6DE"), 1.5));
+            p.setPen(QPen(Theme::color("#FFF6DE"), 1.5));
             p.drawPath(path);
         }
     };
@@ -214,7 +215,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     p.fillPath(tri, pc);
 
     if (hasFocus()) {
-        p.setPen(QPen(QColor("#5A4630"), 1, Qt::DashLine));
+        p.setPen(QPen(Theme::color("#5A4630"), 1, Qt::DashLine));
         p.drawRect(rect().adjusted(0, 0, -1, -1));
     }
 }

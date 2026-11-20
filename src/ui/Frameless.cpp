@@ -1,4 +1,5 @@
 #include "Frameless.h"
+#include "core/Theme.h"
 #include "core/I18n.h"
 #include "Widgets.h"
 
@@ -111,8 +112,8 @@ static QToolButton *winButton(const QString &icon, const QString &tip, QWidget *
     b->setFixedSize(46, 32);
     b->setToolTip(tip);
     b->setFocusPolicy(Qt::NoFocus);
-    b->setStyleSheet(close ? QStringLiteral("QToolButton{background:transparent;border:none;} QToolButton:hover{background:#B3263A;}")
-                           : QStringLiteral("QToolButton{background:transparent;border:none;} QToolButton:hover{background:#3A2B30;}"));
+    b->setStyleSheet(Theme::map(close ? QStringLiteral("QToolButton{background:transparent;border:none;} QToolButton:hover{background:#B3263A;}")
+                                      : QStringLiteral("QToolButton{background:transparent;border:none;} QToolButton:hover{background:#3A2B30;}")));
     return b;
 }
 

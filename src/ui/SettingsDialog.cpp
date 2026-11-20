@@ -2,6 +2,7 @@
 #include "Widgets.h"
 #include "core/I18n.h"
 #include "core/Settings.h"
+#include "core/Theme.h"
 #include "core/Tools.h"
 
 #include <QCheckBox>
@@ -108,8 +109,12 @@ QWidget *SettingsDialog::buildGeneral()
         m_language->addItem(I18n::languageName(c), c);
     m_language->setMinimumWidth(220);
     form->addRow(T("Язык:"), m_language);
+    m_theme = new QComboBox(w);
+    for (const QString &id : Theme::ids())
+        m_theme->addItem(Theme::name(id), id);
+    form->addRow(T("Тема оформления:"), m_theme);
     lay->addLayout(form);
-    auto *note = new QLabel(T("Язык интерфейса сменится после перезапуска программы."), w);
+    auto *note = new QLabel(T("Язык и тема сменятся после перезапуска программы."), w);
     note->setObjectName(QStringLiteral("Muted"));
     lay->addWidget(note);
     lay->addStretch();
@@ -292,6 +297,7 @@ void SettingsDialog::load()
     QSettings s;
     m_sound->setChecked(s.value("general/sound", true).toBool());
     m_language->setCurrentIndex(qMax(0, m_language->findData(s.value("general/language").toString())));
+    m_theme->setCurrentIndex(qMax(0, m_theme->findData(s.value("general/theme", "dark").toString())));
 
     m_deleteSource->setChecked(s.value("convert/deleteSource", false).toBool());
     m_chapters->setChecked(s.value("convert/keepChapters", true).toBool());
@@ -324,6 +330,10 @@ void SettingsDialog::save()
     const QString lang = m_language->currentData().toString();
     m_langChanged = lang != s.value("general/language").toString();
     s.setValue("general/language", lang);
+    const QString theme = m_theme->currentData().toString();
+    if (theme != s.value("general/theme", "dark").toString())
+        m_langChanged = true;
+    s.setValue("general/theme", theme);
 
     s.setValue("convert/deleteSource", m_deleteSource->isChecked());
     s.setValue("convert/keepChapters", m_chapters->isChecked());
@@ -351,6 +361,7 @@ void SettingsDialog::resetPage()
     case 0:
         m_sound->setChecked(true);
         m_language->setCurrentIndex(0);
+        m_theme->setCurrentIndex(0);
         break;
     case 1:
         m_deleteSource->setChecked(false);

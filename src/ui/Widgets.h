@@ -12,7 +12,8 @@ class QHBoxLayout;
 namespace Ui {
 
 QIcon icon(const QString &name, bool active = false);
-QIcon navIcon(const QString &name);  // обычная + золотая (для выбранной вкладки)
+QIcon navIcon(const QString &name);
+QPixmap svgPixmap(const QString &path, const QSize &size);   // картинка в цветах темы  // обычная + золотая (для выбранной вкладки)
 QToolButton *iconButton(const QString &name, const QString &tooltip, QWidget *parent = nullptr, int size = 18);
 QLabel *iconLabel(const QString &name, int size = 14, QWidget *parent = nullptr);
 QPushButton *primaryButton(const QString &text, QWidget *parent = nullptr);

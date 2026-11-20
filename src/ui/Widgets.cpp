@@ -1,6 +1,10 @@
 #include "Widgets.h"
+#include "core/Theme.h"
 
+#include <QFile>
 #include <QFont>
+#include <QHash>
+#include <QSvgRenderer>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
@@ -9,21 +13,59 @@
 
 namespace Ui {
 
+// SVG-значок, перекрашенный под текущую тему
+static QIcon themedSvg(const QString &path)
+{
+    static QHash<QString, QIcon> cache;
+    auto it = cache.constFind(path);
+    if (it != cache.constEnd())
+        return it.value();
+    QFile f(path);
+    QIcon icon;
+    if (f.open(QIODevice::ReadOnly)) {
+        QSvgRenderer r(Theme::map(QString::fromUtf8(f.readAll())).toUtf8());
+        for (int sz : {16, 20, 24, 32, 40, 48, 64, 96, 128, 192}) {
+            QPixmap pm(sz, sz);
+            pm.fill(Qt::transparent);
+            QPainter p(&pm);
+            r.render(&p, QRectF(0, 0, sz, sz));
+            icon.addPixmap(pm);
+        }
+    }
+    cache.insert(path, icon);
+    return icon;
+}
+
+QPixmap svgPixmap(const QString &path, const QSize &size)
+{
+    QFile f(path);
+    const qreal dpr = 2.0;
+    QPixmap pm(size * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    if (f.open(QIODevice::ReadOnly)) {
+        QSvgRenderer r(Theme::map(QString::fromUtf8(f.readAll())).toUtf8());
+        QPainter p(&pm);
+        r.render(&p, QRectF(QPointF(0, 0), QSizeF(size)));
+    }
+    return pm;
+}
+
 QIcon icon(const QString &name, bool active)
 {
-    return QIcon(QStringLiteral(":/icons/%1%2.svg").arg(name, active ? QStringLiteral("-active") : QString()));
+    return themedSvg(QStringLiteral(":/icons/%1%2.svg").arg(name, active ? QStringLiteral("-active") : QString()));
 }
 
 QIcon navIcon(const QString &name)
 {
     QIcon i;
-    const QString n = QStringLiteral(":/icons/%1.svg").arg(name);
-    const QString a = QStringLiteral(":/icons/%1-active.svg").arg(name);
-    for (int s : {24, 32, 48}) {
-        i.addFile(n, QSize(s, s), QIcon::Normal, QIcon::Off);
-        i.addFile(a, QSize(s, s), QIcon::Normal, QIcon::On);
-        i.addFile(a, QSize(s, s), QIcon::Active, QIcon::Off);
-        i.addFile(a, QSize(s, s), QIcon::Active, QIcon::On);
+    const QIcon n = themedSvg(QStringLiteral(":/icons/%1.svg").arg(name));
+    const QIcon a = themedSvg(QStringLiteral(":/icons/%1-active.svg").arg(name));
+    for (int s : {24, 32, 48, 64}) {
+        i.addPixmap(n.pixmap(s, s), QIcon::Normal, QIcon::Off);
+        i.addPixmap(a.pixmap(s, s), QIcon::Normal, QIcon::On);
+        i.addPixmap(a.pixmap(s, s), QIcon::Active, QIcon::Off);
+        i.addPixmap(a.pixmap(s, s), QIcon::Active, QIcon::On);
     }
     return i;
 }
@@ -64,7 +106,7 @@ QPixmap formatBadge(const QString &text, int size, bool highlighted)
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
-    const QColor gold(highlighted ? "#E8C266" : "#CFC3A8");
+    const QColor gold = Theme::color(highlighted ? "#E8C266" : "#CFC3A8");
 
     // «Лист» с загнутым уголком и полоской плёнки сверху
     const qreal w = size * 0.74, h = size * 0.92;
@@ -77,7 +119,7 @@ QPixmap formatBadge(const QString &text, int size, bool highlighted)
     path.lineTo(x, y + h);
     path.closeSubpath();
     p.setPen(QPen(gold, 1.4));
-    p.setBrush(QColor("#2A2225"));
+    p.setBrush(Theme::color("#2A2225"));
     p.drawPath(path);
     p.setBrush(gold);
     p.setPen(Qt::NoPen);

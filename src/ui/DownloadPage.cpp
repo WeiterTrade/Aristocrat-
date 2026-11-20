@@ -377,7 +377,7 @@ DownloadPage::DownloadPage(QWidget *parent)
     auto *empty = new QWidget(this);
     auto *el = new QVBoxLayout(empty);
     auto *pic = new QToolButton(empty);
-    pic->setIcon(QIcon(QStringLiteral(":/icons/download-empty.svg")));
+    pic->setIcon(QIcon(Ui::svgPixmap(QStringLiteral(":/icons/download-empty.svg"), QSize(360, 220))));
     pic->setIconSize(QSize(360, 220));
     pic->setAutoRaise(true);
     pic->setCursor(Qt::PointingHandCursor);
@@ -471,9 +471,19 @@ QWidget *DownloadPage::buildSubBar()
     m_convertMode->setChecked(s.value("download/convertMode", false).toBool());
     connect(m_convertMode, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue("download/convertMode", on); });
 
+    auto *ext = new QToolButton(bar);
+    ext->setObjectName(QStringLiteral("FlatTool"));
+    ext->setText(T("Расширение для браузера"));
+    ext->setIcon(Ui::icon("globe", true));
+    ext->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    ext->setCursor(Qt::PointingHandCursor);
+    connect(ext, &QToolButton::clicked, this, &DownloadPage::showExtensionHelp);
+
     lay->addWidget(paste);
     lay->addSpacing(20);
     lay->addWidget(rec);
+    lay->addSpacing(20);
+    lay->addWidget(ext);
     lay->addStretch();
     lay->addWidget(m_segActive);
     lay->addWidget(m_segDone);
@@ -745,13 +755,20 @@ void DownloadPage::startItem(const DownloadPtr &item)
     QDir().mkpath(outputDir());
     QSettings s;
 
-    QStringList a = baseArgs(!item->noCookies);
+    QStringList a = baseArgs(!item->noCookies && !item->external);
+    if (item->external) {
+        // Заголовки, с которыми видео открывал браузер (иначе сайт может не отдать поток)
+        for (const QString &h : item->headers)
+            a << "--add-header" << h;
+    }
     a << "--no-simulate" << "--progress"
       << "--progress-template" << "download:ARISTO|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
       << "--print" << "before_dl:ARISTOINFO|%(extractor_key)s|%(duration)s|%(thumbnail)s|%(title)s"
       << "--print" << "after_move:ARISTOFILE|%(filepath)s"
       << "-P" << outputDir()
-      << "-o" << "%(title).120B [%(id)s].%(ext)s";
+      << "-o" << (item->external && !item->title.isEmpty()
+                     ? QString(item->title).replace('%', QStringLiteral("%%")) + QStringLiteral(".%(ext)s")
+                     : QStringLiteral("%(title).120B [%(id)s].%(ext)s"));
     if (m_fast->isChecked())
         a << "--concurrent-fragments" << "8";
     if (item->audioOnly) {
@@ -824,7 +841,7 @@ void DownloadPage::onOutput(const DownloadPtr &item)
                 if (item->site.isEmpty() && p[0] != QLatin1String("NA")) item->site = p[0];
                 if (item->duration <= 0) item->duration = p[1].toDouble();
                 if (item->thumbUrl.isEmpty() && p[2] != QLatin1String("NA")) { item->thumbUrl = p[2]; loadThumb(item); }
-                if (item->title.isEmpty()) item->title = QStringList(p.mid(3)).join('|');
+                if (item->title.isEmpty() && !item->external) item->title = QStringList(p.mid(3)).join('|');
                 refreshCard(item);
                 saveQueue();
             }
@@ -930,6 +947,8 @@ void DownloadPage::saveQueue() const
         o["url"] = d->url; o["title"] = d->title; o["site"] = d->site; o["duration"] = d->duration;
         o["thumb"] = d->thumbUrl; o["height"] = d->height; o["audio"] = d->audioOnly; o["noCookies"] = d->noCookies;
         o["progress"] = d->progress;
+        o["external"] = d->external;
+        o["headers"] = QJsonArray::fromStringList(d->headers);
         arr << o;
     }
     QFile f(queueFile());
@@ -951,6 +970,8 @@ void DownloadPage::loadQueue()
         d->url = o["url"].toString(); d->title = o["title"].toString(); d->site = o["site"].toString();
         d->duration = o["duration"].toDouble(); d->thumbUrl = o["thumb"].toString(); d->height = o["height"].toInt();
         d->audioOnly = o["audio"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
+        d->external = o["external"].toBool();
+        for (const QJsonValue &h : o["headers"].toArray()) d->headers << h.toString();
         d->status = resume ? DownloadItem::Queued : DownloadItem::Paused;
         if (!d->url.isEmpty())
             addItem(d);
@@ -969,4 +990,95 @@ void DownloadPage::updateView()
         m_stack->setCurrentIndex(anyActive ? 1 : 0);
     m_startAll->setEnabled(anyActive);
     m_pauseAll->setEnabled(!m_procs.isEmpty());
+}
+
+static QString safeFileName(QString t)
+{
+    static const QRegularExpression bad(QStringLiteral("[\\\\/:*?\"<>|\\r\\n\\t]+"));
+    t.replace(bad, QStringLiteral(" "));
+    t = t.simplified().left(150);
+    while (t.endsWith('.')) t.chop(1);
+    return t.isEmpty() ? QStringLiteral("video") : t;
+}
+
+void DownloadPage::addExternal(const QJsonObject &o)
+{
+    auto item = DownloadPtr::create();
+    item->external = true;
+    item->url = o.value("url").toString();
+    item->title = safeFileName(o.value("title").toString());
+    item->height = o.value("height").toInt();
+    item->duration = o.value("duration").toDouble();
+    item->thumbUrl = o.value("thumbnail").toString();
+    const QString page = o.value("pageUrl").toString();
+    item->site = QUrl(page).host();
+    if (item->site.isEmpty())
+        item->site = QUrl(item->url).host();
+    const QJsonObject h = o.value("headers").toObject();
+    bool hasReferer = false;
+    for (auto it = h.begin(); it != h.end(); ++it) {
+        const QString v = it.value().toString();
+        if (v.isEmpty() || it.key().contains(':') || v.contains('\n'))
+            continue;
+        item->headers << it.key() + QStringLiteral(":") + v;
+        if (it.key().compare(QLatin1String("referer"), Qt::CaseInsensitive) == 0)
+            hasReferer = true;
+    }
+    if (!hasReferer && !page.isEmpty())
+        item->headers << QStringLiteral("Referer:") + page;
+    m_status->setText(T("Из браузера получено: %1").arg(item->title));
+    addItem(item);
+}
+
+void DownloadPage::showExtensionHelp()
+{
+    // Распаковываем расширение из программы в постоянную папку (её и указываем браузеру)
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + QStringLiteral("/browser-extension");
+    const QStringList files = {"background.js", "popup.html", "popup.css", "popup.js",
+                               "icons/icon16.png", "icons/icon32.png", "icons/icon48.png", "icons/icon128.png"};
+    const QString chromeDir = base + QStringLiteral("/Chrome-Yandex-Edge-Opera");
+    const QString ffDir = base + QStringLiteral("/Firefox");
+    for (const QString &dir : {chromeDir, ffDir}) {
+        QDir().mkpath(dir + QStringLiteral("/icons"));
+        for (const QString &f : files) {
+            QFile::remove(dir + '/' + f);
+            QFile::copy(QStringLiteral(":/ext/") + f, dir + '/' + f);
+            QFile(dir + '/' + f).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadOther);
+        }
+        QFile::remove(dir + QStringLiteral("/manifest.json"));
+        QFile::copy(dir == ffDir ? QStringLiteral(":/ext/manifest.firefox.json") : QStringLiteral(":/ext/manifest.json"),
+                    dir + QStringLiteral("/manifest.json"));
+        QFile(dir + QStringLiteral("/manifest.json")).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadOther);
+    }
+
+    FramedDialog d(this);
+    d.setWindowTitle(T("Расширение для браузера"));
+    d.setMinimumWidth(680);
+    auto *lay = d.contentLayout();
+    lay->setContentsMargins(26, 20, 26, 20);
+    lay->setSpacing(12);
+    auto *text = new QLabel(T(
+        "<b>Aristocrat — захват видео</b> находит видео на открытой странице (как Download Helper) и одним нажатием "
+        "передаёт его в программу. Так скачиваются сайты, которые не поддерживаются напрямую.<br><br>"
+        "<b>Яндекс Браузер, Chrome, Edge, Opera:</b><br>"
+        "1. Откройте адрес <code>browser://extensions</code> (в Chrome — <code>chrome://extensions</code>).<br>"
+        "2. Включите «Режим разработчика».<br>"
+        "3. Нажмите «Загрузить распакованное расширение» и выберите папку <b>Chrome-Yandex-Edge-Opera</b>.<br><br>"
+        "<b>Firefox:</b> откройте <code>about:debugging#/runtime/this-firefox</code> → «Загрузить временное дополнение» → "
+        "файл manifest.json в папке <b>Firefox</b>. В обычном Firefox такое дополнение работает до перезапуска браузера.<br><br>"
+        "Как пользоваться: откройте страницу с видео, запустите воспроизведение, нажмите на значок Aristocrat "
+        "в панели браузера и выберите «Скачать». Программа при этом должна быть запущена."), &d);
+    text->setWordWrap(true);
+    text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lay->addWidget(text);
+    auto *btns = new QHBoxLayout;
+    auto *open = Ui::primaryButton(T("Открыть папку с расширением"), &d);
+    auto *ok = new QPushButton(T("Закрыть"), &d);
+    btns->addWidget(open);
+    btns->addStretch();
+    btns->addWidget(ok);
+    lay->addLayout(btns);
+    connect(open, &QPushButton::clicked, &d, [base] { QDesktopServices::openUrl(QUrl::fromLocalFile(base)); });
+    connect(ok, &QPushButton::clicked, &d, &QDialog::accept);
+    d.exec();
 }

@@ -1,4 +1,5 @@
 #include "core/I18n.h"
+#include "core/Theme.h"
 #include "core/Tools.h"
 #include "ui/MainWindow.h"
 
@@ -17,11 +18,12 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo/logo.svg")));
     QApplication::setStyle(QStringLiteral("Fusion"));
-    I18n::init();   // язык: из настроек, иначе как в системе, иначе английский  // одинаковый вид на Windows и Linux
+    I18n::init();   // язык: из настроек, иначе как в системе, иначе английский
+    Theme::init();  // тема оформления  // одинаковый вид на Windows и Linux
 
     QFile qss(QStringLiteral(":/style.qss"));
     if (qss.open(QIODevice::ReadOnly))
-        app.setStyleSheet(QString::fromUtf8(qss.readAll()));
+        app.setStyleSheet(Theme::map(QString::fromUtf8(qss.readAll())));
 
     // Проверка аппаратных кодировщиков заранее, в фоне — чтобы не задерживать первую конвертацию.
     QThreadPool::globalInstance()->start([] {

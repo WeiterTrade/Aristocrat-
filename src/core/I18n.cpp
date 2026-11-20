@@ -14,7 +14,7 @@ static QHash<QString, QString> g_map;
 
 QStringList languages()
 {
-    return {"ru", "en", "es", "fr", "it", "kk"};
+    return {"ru", "kk", "en", "es", "fr", "it"};
 }
 
 QString languageName(const QString &code)

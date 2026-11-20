@@ -351,5 +351,16 @@
  "Повернуть влево на 90°": "Rotate left 90°",
  "Повернуть вправо на 90°": "Rotate right 90°",
  "Отразить по горизонтали": "Flip horizontally",
- "Отразить по вертикали": "Flip vertically"
+ "Отразить по вертикали": "Flip vertically",
+ "Светлая": "Light",
+ "Бирюзовая": "Turquoise",
+ "Рубин": "Ruby",
+ "Тёмная (бордо и золото)": "Dark (burgundy and gold)",
+ "Расширение для браузера": "Browser extension",
+ "Из браузера получено: %1": "Received from the browser: %1",
+ "<b>Aristocrat — захват видео</b> находит видео на открытой странице (как Download Helper) и одним нажатием передаёт его в программу. Так скачиваются сайты, которые не поддерживаются напрямую.<br><br><b>Яндекс Браузер, Chrome, Edge, Opera:</b><br>1. Откройте адрес <code>browser://extensions</code> (в Chrome — <code>chrome://extensions</code>).<br>2. Включите «Режим разработчика».<br>3. Нажмите «Загрузить распакованное расширение» и выберите папку <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> откройте <code>about:debugging#/runtime/this-firefox</code> → «Загрузить временное дополнение» → файл manifest.json в папке <b>Firefox</b>. В обычном Firefox такое дополнение работает до перезапуска браузера.<br><br>Как пользоваться: откройте страницу с видео, запустите воспроизведение, нажмите на значок Aristocrat в панели браузера и выберите «Скачать». Программа при этом должна быть запущена.": "<b>Aristocrat — video capture</b> finds the video on the open page (like Download Helper) and sends it to the program in one click. This is how sites that are not supported directly can be downloaded.<br><br><b>Yandex Browser, Chrome, Edge, Opera:</b><br>1. Open <code>browser://extensions</code> (in Chrome — <code>chrome://extensions</code>).<br>2. Turn on \"Developer mode\".<br>3. Click \"Load unpacked\" and choose the <b>Chrome-Yandex-Edge-Opera</b> folder.<br><br><b>Firefox:</b> open <code>about:debugging#/runtime/this-firefox</code> → \"Load Temporary Add-on\" → the manifest.json file in the <b>Firefox</b> folder. In regular Firefox such an add-on works until the browser restarts.<br><br>How to use: open the page with the video, start playback, click the Aristocrat icon on the browser toolbar and choose \"Download\". The program must be running.",
+ "Открыть папку с расширением": "Open the extension folder",
+ "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "The language and theme will change after a restart. Restart the program now?",
+ "Тема оформления:": "Theme:",
+ "Язык и тема сменятся после перезапуска программы.": "The language and theme will change after restarting the program."
 }

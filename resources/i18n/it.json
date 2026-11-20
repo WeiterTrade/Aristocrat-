@@ -351,5 +351,16 @@
  "Повернуть влево на 90°": "Ruota a sinistra di 90°",
  "Повернуть вправо на 90°": "Ruota a destra di 90°",
  "Отразить по горизонтали": "Capovolgi orizzontalmente",
- "Отразить по вертикали": "Capovolgi verticalmente"
+ "Отразить по вертикали": "Capovolgi verticalmente",
+ "Светлая": "Chiaro",
+ "Бирюзовая": "Turchese",
+ "Рубин": "Rubino",
+ "Тёмная (бордо и золото)": "Scuro (bordeaux e oro)",
+ "Расширение для браузера": "Estensione del browser",
+ "Из браузера получено: %1": "Ricevuto dal browser: %1",
+ "<b>Aristocrat — захват видео</b> находит видео на открытой странице (как Download Helper) и одним нажатием передаёт его в программу. Так скачиваются сайты, которые не поддерживаются напрямую.<br><br><b>Яндекс Браузер, Chrome, Edge, Opera:</b><br>1. Откройте адрес <code>browser://extensions</code> (в Chrome — <code>chrome://extensions</code>).<br>2. Включите «Режим разработчика».<br>3. Нажмите «Загрузить распакованное расширение» и выберите папку <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> откройте <code>about:debugging#/runtime/this-firefox</code> → «Загрузить временное дополнение» → файл manifest.json в папке <b>Firefox</b>. В обычном Firefox такое дополнение работает до перезапуска браузера.<br><br>Как пользоваться: откройте страницу с видео, запустите воспроизведение, нажмите на значок Aristocrat в панели браузера и выберите «Скачать». Программа при этом должна быть запущена.": "<b>Aristocrat — cattura video</b> trova il video nella pagina aperta (come Download Helper) e lo invia al programma con un clic. Così si scaricano i siti non supportati direttamente.<br><br><b>Yandex Browser, Chrome, Edge, Opera:</b><br>1. Apri <code>browser://extensions</code> (in Chrome — <code>chrome://extensions</code>).<br>2. Attiva la «Modalità sviluppatore».<br>3. Premi «Carica estensione non pacchettizzata» e scegli la cartella <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> apri <code>about:debugging#/runtime/this-firefox</code> → «Carica componente aggiuntivo temporaneo» → il file manifest.json nella cartella <b>Firefox</b>. In Firefox normale funziona fino al riavvio del browser.<br><br>Uso: apri la pagina con il video, avvia la riproduzione, premi l'icona di Aristocrat nella barra del browser e scegli «Scarica». Il programma deve essere aperto.",
+ "Открыть папку с расширением": "Apri la cartella dell'estensione",
+ "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "La lingua e il tema cambieranno dopo il riavvio. Riavviare il programma ora?",
+ "Тема оформления:": "Tema:",
+ "Язык и тема сменятся после перезапуска программы.": "La lingua e il tema cambieranno dopo il riavvio del programma."
 }

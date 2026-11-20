@@ -1,4 +1,5 @@
 #include "FramePreview.h"
+#include "core/Theme.h"
 #include "core/I18n.h"
 #include "core/FfmpegCommand.h"
 #include "core/Tools.h"
@@ -69,13 +70,13 @@ QPointF PreviewLabel::toSource(const QPointF &p) const
 void PreviewLabel::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
-    p.fillRect(rect(), QColor("#0E0A0B"));
+    p.fillRect(rect(), Theme::color("#0E0A0B"));
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     const QRectF r = imageRect();
     if (!m_img.isNull())
         p.drawImage(r, m_img);
     if (m_busy || m_img.isNull()) {
-        p.setPen(QColor("#A99F90"));
+        p.setPen(Theme::color("#A99F90"));
         p.drawText(rect(), Qt::AlignCenter, m_busy ? T("Загрузка кадра…") : T("Нет изображения"));
     }
     if (m_editable && !m_img.isNull() && m_source.isValid()) {
@@ -90,7 +91,7 @@ void PreviewLabel::paintEvent(QPaintEvent *)
             inside.addRect(c);
             p.fillPath(outside.subtracted(inside), QColor(0, 0, 0, 140));
         }
-        p.setPen(QPen(QColor("#E2BC5C"), 2));
+        p.setPen(QPen(Theme::color("#E2BC5C"), 2));
         p.setBrush(Qt::NoBrush);
         p.drawRect(c.adjusted(1, 1, -1, -1));
         const QPointF ctr = c.center();

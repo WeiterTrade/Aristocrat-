@@ -1,8 +1,10 @@
 #include "MainWindow.h"
+#include "core/Theme.h"
 #include "ConvertPage.h"
 #include "DownloadPage.h"
 #include "Frameless.h"
 #include "SettingsDialog.h"
+#include "core/LocalServer.h"
 #include "core/I18n.h"
 #include <QProcess>
 #include "PlaceholderPage.h"
@@ -79,6 +81,18 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // Связь с расширением браузера
+    auto *server = new LocalServer(this);
+    server->start();
+    connect(server, &LocalServer::mediaReceived, this, [this](const QJsonObject &media) {
+        m_download->addExternal(media);
+        showPage(1);
+        if (isMinimized())
+            showNormal();
+        raise();
+        activateWindow();
+    });
+
     QSettings s;
     restoreGeometry(s.value("window/geometry").toByteArray());
 }
@@ -109,7 +123,7 @@ void MainWindow::openSettings(int tab)
     m_convert->reloadSettings();
     m_download->reloadSettings();
     if (dlg.languageChanged()
-        && Ui::ask(this, T("Язык"), T("Язык интерфейса сменится после перезапуска. Перезапустить программу сейчас?"),
+        && Ui::ask(this, T("Настройки"), T("Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?"),
                    T("Перезапустить"), T("Позже"))) {
         if (!m_convert->isBusy() && !m_download->isBusy()) {
             QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
@@ -189,10 +203,10 @@ QWidget *MainWindow::buildHeader()
     menu->addSeparator();
     menu->addAction(T("О программе"), this, [this] {
         Ui::message(this, T("О программе"),
-                    T("<h3 style='color:#E8C266'>Aristocrat Видеоконвертер</h3>"
+                    Theme::map(T("<h3 style='color:#E8C266'>Aristocrat Видеоконвертер</h3>"
                                    "Версия %1<br><br>Конвертер видео и аудио с восстановлением и апскейлом старых записей.<br><br>"
                                    "Использует FFmpeg (LGPL/GPL), Real-ESRGAN (BSD-3) и yt-dlp (Unlicense).")
-                        .arg(QStringLiteral(APP_VERSION)));
+                        .arg(QStringLiteral(APP_VERSION))));
     });
     menu->addAction(T("Выход"), this, &QWidget::close);
     menuBtn->setMenu(menu);

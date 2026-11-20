@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Qt 5.15 — последняя ветка Qt, которая работает на Windows 7.
-find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets Svg)
+find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets Svg Network)
 
 set(SOURCES
     src/main.cpp
@@ -20,6 +20,8 @@ set(SOURCES
     src/core/ConversionWorker.cpp
     src/core/Settings.cpp
     src/core/I18n.cpp
+    src/core/Theme.cpp
+    src/core/LocalServer.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp
@@ -38,7 +40,7 @@ set(SOURCES
     src/ui/SettingsDialog.cpp
 )
 
-set(RESOURCES resources/resources.qrc)
+set(RESOURCES resources/resources.qrc browser-extension/extension.qrc)
 
 if(WIN32)
     set(APP_RC "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
@@ -48,7 +50,7 @@ endif()
 
 add_executable(aristocrat WIN32 ${SOURCES} ${RESOURCES})
 target_include_directories(aristocrat PRIVATE src)
-target_link_libraries(aristocrat PRIVATE Qt5::Widgets Qt5::Svg)
+target_link_libraries(aristocrat PRIVATE Qt5::Widgets Qt5::Svg Qt5::Network)
 target_compile_definitions(aristocrat PRIVATE
     APP_VERSION="${PROJECT_VERSION}"
     QT_DEPRECATED_WARNINGS)

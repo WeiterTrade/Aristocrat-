@@ -2,6 +2,7 @@
 #include "Frameless.h"
 
 #include <QFrame>
+#include <QJsonObject>
 #include <QHash>
 #include <QImage>
 #include <QProcess>
@@ -44,6 +45,8 @@ struct DownloadItem {
     QString log;               // вывод yt-dlp (для подробностей ошибки)
     bool pausing = false;
     bool noCookies = false;    // вход из браузера не удался — качаем без него
+    bool external = false;     // пришло из расширения браузера
+    QStringList headers;       // заголовки запроса из браузера (Referer, Cookie…)
 };
 using DownloadPtr = QSharedPointer<DownloadItem>;
 
@@ -108,6 +111,8 @@ public:
     bool isBusy() const { return !m_procs.isEmpty(); }
     static QStringList cookieArgs(const QString &browser);
     void reloadSettings();
+    void addExternal(const QJsonObject &media);   // видео из расширения браузера
+    void showExtensionHelp();
 
 signals:
     void convertRequested(const QString &file, bool autoStart);

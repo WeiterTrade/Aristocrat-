@@ -351,5 +351,16 @@
  "Повернуть влево на 90°": "Pivoter de 90° à gauche",
  "Повернуть вправо на 90°": "Pivoter de 90° à droite",
  "Отразить по горизонтали": "Retourner horizontalement",
- "Отразить по вертикали": "Retourner verticalement"
+ "Отразить по вертикали": "Retourner verticalement",
+ "Светлая": "Clair",
+ "Бирюзовая": "Turquoise",
+ "Рубин": "Rubis",
+ "Тёмная (бордо и золото)": "Sombre (bordeaux et or)",
+ "Расширение для браузера": "Extension du navigateur",
+ "Из браузера получено: %1": "Reçu du navigateur : %1",
+ "<b>Aristocrat — захват видео</b> находит видео на открытой странице (как Download Helper) и одним нажатием передаёт его в программу. Так скачиваются сайты, которые не поддерживаются напрямую.<br><br><b>Яндекс Браузер, Chrome, Edge, Opera:</b><br>1. Откройте адрес <code>browser://extensions</code> (в Chrome — <code>chrome://extensions</code>).<br>2. Включите «Режим разработчика».<br>3. Нажмите «Загрузить распакованное расширение» и выберите папку <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox:</b> откройте <code>about:debugging#/runtime/this-firefox</code> → «Загрузить временное дополнение» → файл manifest.json в папке <b>Firefox</b>. В обычном Firefox такое дополнение работает до перезапуска браузера.<br><br>Как пользоваться: откройте страницу с видео, запустите воспроизведение, нажмите на значок Aristocrat в панели браузера и выберите «Скачать». Программа при этом должна быть запущена.": "<b>Aristocrat — capture vidéo</b> trouve la vidéo sur la page ouverte (comme Download Helper) et l'envoie au programme en un clic. C'est ainsi que se téléchargent les sites non pris en charge directement.<br><br><b>Yandex Browser, Chrome, Edge, Opera :</b><br>1. Ouvrez <code>browser://extensions</code> (dans Chrome — <code>chrome://extensions</code>).<br>2. Activez le « Mode développeur ».<br>3. Cliquez sur « Charger l'extension non empaquetée » et choisissez le dossier <b>Chrome-Yandex-Edge-Opera</b>.<br><br><b>Firefox :</b> ouvrez <code>about:debugging#/runtime/this-firefox</code> → « Charger un module temporaire » → le fichier manifest.json du dossier <b>Firefox</b>. Dans Firefox standard, il fonctionne jusqu'au redémarrage du navigateur.<br><br>Utilisation : ouvrez la page de la vidéo, lancez la lecture, cliquez sur l'icône Aristocrat dans la barre du navigateur et choisissez « Télécharger ». Le programme doit être ouvert.",
+ "Открыть папку с расширением": "Ouvrir le dossier de l'extension",
+ "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "La langue et le thème changeront après redémarrage. Redémarrer le programme maintenant ?",
+ "Тема оформления:": "Thème :",
+ "Язык и тема сменятся после перезапуска программы.": "La langue et le thème changeront après le redémarrage du programme."
 }

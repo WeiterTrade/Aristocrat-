@@ -1,4 +1,5 @@
 #include "ToolboxPage.h"
+#include "core/Theme.h"
 #include "core/I18n.h"
 #include "Widgets.h"
 #include "core/Settings.h"
@@ -24,7 +25,7 @@ static QFrame *card(QWidget *parent, const QString &icon, const QString &title, 
     auto *head = new QHBoxLayout;
     head->addWidget(Ui::iconLabel(icon, 30, f));
     auto *t = new QLabel(title, f);
-    t->setStyleSheet(QStringLiteral("color:#E8C266;font-size:13pt;"));
+    t->setStyleSheet(Theme::map(QStringLiteral("color:#E8C266;font-size:13pt;")));
     head->addWidget(t, 1);
     body->addLayout(head);
     auto *d = new QLabel(text, f);
@@ -80,7 +81,7 @@ ToolboxPage::ToolboxPage(QWidget *parent)
                       T("Внешние программы, которые использует конвертер. Их можно положить в папку tools рядом с программой."),
                       b2);
     auto status = [](const QString &name, const QString &path) {
-        return QStringLiteral("<b>%1</b>: %2").arg(name, path.isEmpty() ? T("<span style='color:#E07A6A'>не найден</span>")
+        return Theme::map(QStringLiteral("<b>%1</b>: %2")).arg(name, path.isEmpty() ? T("<span style='color:#E07A6A'>не найден</span>")
                                                                         : T("<span style='color:#8FC48A'>найден</span><br>"
                                                                                          "<span style='color:#7E746A'>%1</span>").arg(path.toHtmlEscaped()));
     };

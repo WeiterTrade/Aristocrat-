@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Aristocrat — захват видео",
+  "short_name": "Aristocrat",
+  "version": "1.0.0",
+  "description": "Находит видео на странице (HLS, DASH, MP4) и отправляет его в Aristocrat Видеоконвертер для загрузки.",
+  "permissions": ["webRequest", "storage", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Aristocrat — захват видео",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}

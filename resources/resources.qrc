@@ -28,6 +28,8 @@
   <file>icons/burn-active.svg</file>
   <file>icons/burn-dark.svg</file>
   <file>icons/burn.svg</file>
+  <file>icons/check-off.svg</file>
+  <file>icons/check-on.svg</file>
   <file>icons/chevron-active.svg</file>
   <file>icons/chevron-dark.svg</file>
   <file>icons/chevron.svg</file>
@@ -101,6 +103,8 @@
   <file>icons/play-active.svg</file>
   <file>icons/play-dark.svg</file>
   <file>icons/play.svg</file>
+  <file>icons/radio-off.svg</file>
+  <file>icons/radio-on.svg</file>
   <file>icons/record-active.svg</file>
   <file>icons/record-dark.svg</file>
   <file>icons/record.svg</file>
@@ -122,6 +126,8 @@
   <file>icons/subtitle-active.svg</file>
   <file>icons/subtitle-dark.svg</file>
   <file>icons/subtitle.svg</file>
+  <file>icons/switch-off.svg</file>
+  <file>icons/switch-on.svg</file>
   <file>icons/toolbox-active.svg</file>
   <file>icons/toolbox-dark.svg</file>
   <file>icons/toolbox.svg</file>

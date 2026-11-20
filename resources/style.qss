@@ -97,10 +97,16 @@ QComboBox::drop-down { border: none; width: 22px; }
 QComboBox::down-arrow { image: url(:/icons/chevron-active.svg); width: 12px; height: 12px; }
 QComboBox QAbstractItemView { background: #221B1D; border: 1px solid #45373B; selection-background-color: #4A3828; }
 
-QCheckBox { background: transparent; spacing: 8px; }
-QCheckBox::indicator { width: 34px; height: 18px; border-radius: 9px; background: #3A3033; border: 1px solid #4A3E41; }
-QCheckBox::indicator:checked { background: #C99A38; border-color: #E2BC5C; }
-QCheckBox#PlainCheck::indicator { width: 16px; height: 16px; border-radius: 3px; }
+QCheckBox, QRadioButton { background: transparent; spacing: 9px; }
+/* Переключатель (по умолчанию для флажков) */
+QCheckBox::indicator { width: 40px; height: 22px; image: url(:/icons/switch-off.svg); }
+QCheckBox::indicator:checked { image: url(:/icons/switch-on.svg); }
+/* Обычные галочки */
+QCheckBox#PlainCheck::indicator { width: 20px; height: 20px; image: url(:/icons/check-off.svg); }
+QCheckBox#PlainCheck::indicator:checked { image: url(:/icons/check-on.svg); }
+QCheckBox:disabled, QRadioButton:disabled { color: #6E6460; }
+QRadioButton::indicator { width: 20px; height: 20px; image: url(:/icons/radio-off.svg); }
+QRadioButton::indicator:checked { image: url(:/icons/radio-on.svg); }
 
 QSlider::groove:horizontal { height: 4px; background: #3A3033; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: #E2BC5C; border-radius: 2px; }
