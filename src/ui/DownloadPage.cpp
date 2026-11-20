@@ -1,4 +1,5 @@
 #include "DownloadPage.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 #include "core/Settings.h"
 #include "core/Task.h"
@@ -42,8 +43,8 @@ static QString speedText(double bps)
     if (bps <= 0)
         return {};
     if (bps > 1024 * 1024)
-        return QString::number(bps / 1024 / 1024, 'f', 1).replace('.', ',') + QStringLiteral(" МБ/с");
-    return QString::number(bps / 1024, 'f', 0) + QStringLiteral(" КБ/с");
+        return QString::number(bps / 1024 / 1024, 'f', 1).replace('.', ',') + T(" МБ/с");
+    return QString::number(bps / 1024, 'f', 0) + T(" КБ/с");
 }
 
 static QString downloadDir()
@@ -78,7 +79,7 @@ static QImage grabImageUrl(const QString &url)
 AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, const QStringList &cookieArgs, QWidget *parent)
     : FramedDialog(parent), m_item(DownloadPtr::create()), m_base(baseArgs), m_cookies(cookieArgs)
 {
-    setWindowTitle(QStringLiteral("Загрузка видео"));
+    setWindowTitle(T("Загрузка видео"));
     setMinimumWidth(640);
     m_item->url = url;
 
@@ -98,7 +99,7 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
     m_title->setStyleSheet(QStringLiteral("font-size:11pt;"));
     m_title->setText(fontMetrics().elidedText(url, Qt::ElideMiddle, 380));
     m_title->setToolTip(url);
-    m_state = new QLabel(QStringLiteral("Анализ ссылки…"), this);
+    m_state = new QLabel(T("Анализ ссылки…"), this);
     m_state->setObjectName(QStringLiteral("StatusLabel"));
     m_state->setWordWrap(true);
     txt->addWidget(m_title);
@@ -115,7 +116,7 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
     m_details->hide();
     root->addWidget(m_details);
 
-    auto *qLbl = new QLabel(QStringLiteral("Качество:"), this);
+    auto *qLbl = new QLabel(T("Качество:"), this);
     qLbl->setObjectName(QStringLiteral("Muted"));
     root->addWidget(qLbl);
     m_options = new QVBoxLayout;
@@ -124,8 +125,8 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
 
     auto *btns = new QHBoxLayout;
     btns->addStretch();
-    auto *cancel = new QPushButton(QStringLiteral("Отмена"), this);
-    m_ok = Ui::primaryButton(QStringLiteral("Скачать"), this);
+    auto *cancel = new QPushButton(T("Отмена"), this);
+    m_ok = Ui::primaryButton(T("Скачать"), this);
     m_ok->setEnabled(false);
     m_ok->setMinimumWidth(140);
     btns->addWidget(cancel);
@@ -144,7 +145,7 @@ AnalyzeDialog::AnalyzeDialog(const QString &url, const QStringList &baseArgs, co
     connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code) { onAnalyzed(code); });
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart)
-            m_state->setText(QStringLiteral("Не удалось запустить модуль загрузки (yt-dlp)."));
+            m_state->setText(T("Не удалось запустить модуль загрузки (yt-dlp)."));
     });
     run(!m_cookies.isEmpty());
 }
@@ -176,7 +177,7 @@ void AnalyzeDialog::onAnalyzed(int code)
         const QString full = QString::fromUtf8(m_proc->readAllStandardError()).trimmed();
         // Не получилось прочитать вход из браузера — пробуем без него
         if (m_usedCookies && full.contains(QLatin1String("cookie"), Qt::CaseInsensitive)) {
-            m_state->setText(QStringLiteral("Не удалось взять вход из браузера (закройте браузер или выберите другой). Пробую без входа…"));
+            m_state->setText(T("Не удалось взять вход из браузера (закройте браузер или выберите другой). Пробую без входа…"));
             run(false);
             return;
         }
@@ -184,20 +185,20 @@ void AnalyzeDialog::onAnalyzed(int code)
         for (const QString &l : full.split('\n', Qt::SkipEmptyParts))
             if (l.startsWith(QLatin1String("ERROR")))
                 errs << l.mid(l.indexOf(':') + 1).trimmed();
-        QString err = errs.isEmpty() ? QStringLiteral("Видео по этой ссылке не найдено.") : errs.last();
+        QString err = errs.isEmpty() ? T("Видео по этой ссылке не найдено.") : errs.last();
         QString hint;
         if (err.contains(QLatin1String("Unsupported URL"), Qt::CaseInsensitive))
-            hint = QStringLiteral("Сайт не поддерживается напрямую. Откройте видео в браузере, нажмите F12 → «Сеть», найдите ссылку "
+            hint = T("Сайт не поддерживается напрямую. Откройте видео в браузере, нажмите F12 → «Сеть», найдите ссылку "
                                   "с .m3u8 или .mp4 и вставьте её сюда — такие ссылки скачиваются.");
         else if (err.contains(QLatin1String("Sign in"), Qt::CaseInsensitive) || err.contains(QLatin1String("login"), Qt::CaseInsensitive)
                  || err.contains(QLatin1String("bot"), Qt::CaseInsensitive))
-            hint = QStringLiteral("Сайт требует входа. Внизу раздела выберите «Вход на сайты» — браузер, в котором вы вошли на сайт (лучше Firefox), "
+            hint = T("Сайт требует входа. Внизу раздела выберите «Вход на сайты» — браузер, в котором вы вошли на сайт (лучше Firefox), "
                                   "и закройте этот браузер перед загрузкой.");
         else if (err.contains(QLatin1String("DRM"), Qt::CaseInsensitive))
-            hint = QStringLiteral("Видео защищено DRM — такие видео программа не скачивает.");
+            hint = T("Видео защищено DRM — такие видео программа не скачивает.");
         else
-            hint = QStringLiteral("Если ошибка повторяется, обновите модуль загрузки: ☰ → Настройки → Загрузка → «Обновить».");
-        m_state->setText(QStringLiteral("Не получилось. ") + hint);
+            hint = T("Если ошибка повторяется, обновите модуль загрузки: ☰ → Настройки → Загрузка → «Обновить».");
+        m_state->setText(T("Не получилось. ") + hint);
         m_details->setPlainText(full.isEmpty() ? err : full);
         m_details->show();
         adjustSize();
@@ -230,7 +231,7 @@ void AnalyzeDialog::onAnalyzed(int code)
         m_options->addWidget(r);
         return r;
     };
-    QRadioButton *first = add(QStringLiteral("Лучшее качество"), 0);
+    QRadioButton *first = add(T("Лучшее качество"), 0);
     QSet<int> shown;
     for (int h : hs) {
         int label = h;
@@ -243,7 +244,7 @@ void AnalyzeDialog::onAnalyzed(int code)
                                                                                                    : QStringLiteral("%1p").arg(label);
         add(name, h);
     }
-    add(QStringLiteral("Только звук (MP3)"), -100);
+    add(T("Только звук (MP3)"), -100);
     first->setChecked(true);
     m_ok->setEnabled(true);
     adjustSize();
@@ -296,16 +297,16 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
     row->addLayout(col, 1);
 
     auto *actions = new QVBoxLayout;
-    m_pause = Ui::iconButton("pause", QStringLiteral("Пауза"), this, 22);
-    m_open = new QPushButton(QStringLiteral("Открыть папку"), this);
-    m_convert = new QPushButton(QStringLiteral("Конвертировать"), this);
+    m_pause = Ui::iconButton("pause", T("Пауза"), this, 22);
+    m_open = new QPushButton(T("Открыть папку"), this);
+    m_convert = new QPushButton(T("Конвертировать"), this);
     actions->addStretch();
     actions->addWidget(m_pause, 0, Qt::AlignHCenter);
     actions->addWidget(m_open);
     actions->addWidget(m_convert);
     actions->addStretch();
     row->addLayout(actions);
-    auto *close = Ui::iconButton("close", QStringLiteral("Убрать из списка"), this, 14);
+    auto *close = Ui::iconButton("close", T("Убрать из списка"), this, 14);
     row->addWidget(close, 0, Qt::AlignTop);
 
     connect(m_pause, &QToolButton::clicked, this, [this] { emit pauseResume(m_item); });
@@ -328,7 +329,7 @@ void DownloadCard::refresh()
     m_title->setToolTip(d.url);
     QStringList meta;
     if (!d.site.isEmpty()) meta << d.site;
-    meta << (d.audioOnly ? QStringLiteral("MP3") : d.height > 0 ? QStringLiteral("%1p").arg(d.height) : QStringLiteral("лучшее качество"));
+    meta << (d.audioOnly ? QStringLiteral("MP3") : d.height > 0 ? QStringLiteral("%1p").arg(d.height) : T("лучшее качество"));
     if (d.duration > 0) meta << formatDuration(d.duration);
     if (d.total > 0) meta << formatSize(d.total);
     m_meta->setText(meta.join(QStringLiteral(" · ")));
@@ -344,17 +345,17 @@ void DownloadCard::refresh()
     m_pause->setVisible(d.status != DownloadItem::Done);
     const bool canResume = d.status == DownloadItem::Paused || d.status == DownloadItem::Failed;
     m_pause->setIcon(Ui::icon(canResume ? "resume" : "pause", true));
-    m_pause->setToolTip(canResume ? QStringLiteral("Продолжить") : QStringLiteral("Пауза"));
+    m_pause->setToolTip(canResume ? T("Продолжить") : T("Пауза"));
 
     switch (d.status) {
-    case DownloadItem::Queued: m_state->setText(QStringLiteral("В очереди")); break;
-    case DownloadItem::Paused: m_state->setText(QStringLiteral("Пауза · %1%").arg(int(d.progress * 100))); break;
-    case DownloadItem::Failed: m_state->setText(QStringLiteral("Ошибка: ") + d.error); break;
-    case DownloadItem::Done: m_state->setText(QStringLiteral("✔ Готово · ") + QFileInfo(d.filePath).fileName()); break;
+    case DownloadItem::Queued: m_state->setText(T("В очереди")); break;
+    case DownloadItem::Paused: m_state->setText(T("Пауза · %1%").arg(int(d.progress * 100))); break;
+    case DownloadItem::Failed: m_state->setText(T("Ошибка: ") + d.error); break;
+    case DownloadItem::Done: m_state->setText(T("✔ Готово · ") + QFileInfo(d.filePath).fileName()); break;
     case DownloadItem::Downloading: {
-        QString t = QStringLiteral("Загрузка %1%").arg(int(d.progress * 100));
+        QString t = T("Загрузка %1%").arg(int(d.progress * 100));
         if (d.speed > 0) t += QStringLiteral(" · ") + speedText(d.speed);
-        if (d.eta >= 0) t += QStringLiteral(" · осталось ") + formatDuration(d.eta);
+        if (d.eta >= 0) t += T(" · осталось ") + formatDuration(d.eta);
         m_state->setText(t);
         break;
     }
@@ -381,7 +382,7 @@ DownloadPage::DownloadPage(QWidget *parent)
     pic->setAutoRaise(true);
     pic->setCursor(Qt::PointingHandCursor);
     pic->setStyleSheet(QStringLiteral("QToolButton{border:none;background:transparent;}"));
-    auto *hint = new QLabel(QStringLiteral("Скопируйте ссылку на видео (YouTube, Rutube, VK, Одноклассники, Mail.ru, Дзен и др.\n"
+    auto *hint = new QLabel(T("Скопируйте ссылку на видео (YouTube, Rutube, VK, Одноклассники, Mail.ru, Дзен и др.\n"
                                            "или прямую ссылку на файл/поток) и нажмите «Вставить ссылку»"),
                             empty);
     hint->setAlignment(Qt::AlignCenter);
@@ -415,7 +416,7 @@ DownloadPage::DownloadPage(QWidget *parent)
 
     loadQueue();
     if (Tools::ytdlp().isEmpty())
-        m_status->setText(QStringLiteral("⚠ Модуль yt-dlp не найден — положите yt-dlp в папку tools рядом с программой"));
+        m_status->setText(T("⚠ Модуль yt-dlp не найден — положите yt-dlp в папку tools рядом с программой"));
     updateView();
 }
 
@@ -430,30 +431,30 @@ QWidget *DownloadPage::buildSubBar()
 
     auto *paste = new QToolButton(bar);
     paste->setObjectName(QStringLiteral("FlatTool"));
-    paste->setText(QStringLiteral("Вставить ссылку"));
+    paste->setText(T("Вставить ссылку"));
     paste->setIcon(Ui::icon("add", true));
     paste->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     paste->setPopupMode(QToolButton::MenuButtonPopup);
     paste->setCursor(Qt::PointingHandCursor);
     auto *menu = new QMenu(paste);
-    menu->addAction(QStringLiteral("Вставить из буфера обмена"), this, &DownloadPage::pasteFromClipboard);
-    menu->addAction(QStringLiteral("Ввести ссылки вручную…"), this, &DownloadPage::enterLinks);
+    menu->addAction(T("Вставить из буфера обмена"), this, &DownloadPage::pasteFromClipboard);
+    menu->addAction(T("Ввести ссылки вручную…"), this, &DownloadPage::enterLinks);
     paste->setMenu(menu);
     connect(paste, &QToolButton::clicked, this, &DownloadPage::pasteFromClipboard);
 
     auto *rec = new QToolButton(bar);
     rec->setObjectName(QStringLiteral("FlatTool"));
-    rec->setText(QStringLiteral("Записать видео"));
+    rec->setText(T("Записать видео"));
     rec->setIcon(Ui::icon("record", true));
     rec->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     rec->setCursor(Qt::PointingHandCursor);
     connect(rec, &QToolButton::clicked, this, [this] {
-        Ui::message(this, QStringLiteral("Запись видео"), QStringLiteral("Запись экрана появится в одной из следующих версий."));
+        Ui::message(this, T("Запись видео"), T("Запись экрана появится в одной из следующих версий."));
     });
 
-    m_segActive = new QPushButton(QStringLiteral("Загружается"), bar);
+    m_segActive = new QPushButton(T("Загружается"), bar);
     m_segActive->setObjectName(QStringLiteral("SegLeft"));
-    m_segDone = new QPushButton(QStringLiteral("Готово"), bar);
+    m_segDone = new QPushButton(T("Готово"), bar);
     m_segDone->setObjectName(QStringLiteral("SegRight"));
     for (QPushButton *b : {m_segActive, m_segDone}) {
         b->setCheckable(true);
@@ -463,9 +464,9 @@ QWidget *DownloadPage::buildSubBar()
     }
     m_segActive->setChecked(true);
 
-    auto *modeLbl = new QLabel(QStringLiteral("Скачать, затем конвертировать"), bar);
+    auto *modeLbl = new QLabel(T("Скачать, затем конвертировать"), bar);
     m_convertMode = new QCheckBox(bar);
-    m_convertMode->setToolTip(QStringLiteral("После загрузки файл сразу конвертируется в формат, выбранный в разделе «Конвертировать»"));
+    m_convertMode->setToolTip(T("После загрузки файл сразу конвертируется в формат, выбранный в разделе «Конвертировать»"));
     QSettings s;
     m_convertMode->setChecked(s.value("download/convertMode", false).toBool());
     connect(m_convertMode, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue("download/convertMode", on); });
@@ -506,50 +507,50 @@ QWidget *DownloadPage::buildBottomBar()
     m_fast = Ui::iconButton("bolt", QString(), bar, 22);
     m_fast->setCheckable(true);
     m_fast->setChecked(s.value("download/fast", true).toBool());
-    auto *fastLbl = new QLabel(QStringLiteral("Быстрая загрузка"), bar);
+    auto *fastLbl = new QLabel(T("Быстрая загрузка"), bar);
     auto updFast = [this] {
         m_fast->setIcon(Ui::icon("bolt", m_fast->isChecked()));
-        m_fast->setToolTip(m_fast->isChecked() ? QStringLiteral("Загрузка в несколько потоков: ВКЛ") : QStringLiteral("Загрузка в несколько потоков: ВЫКЛ"));
+        m_fast->setToolTip(m_fast->isChecked() ? T("Загрузка в несколько потоков: ВКЛ") : T("Загрузка в несколько потоков: ВЫКЛ"));
     };
     updFast();
     connect(m_fast, &QToolButton::toggled, this, [updFast](bool on) { QSettings().setValue("download/fast", on); updFast(); });
 
-    auto *loginLbl = new QLabel(QStringLiteral("Вход на сайты:"), bar);
+    auto *loginLbl = new QLabel(T("Вход на сайты:"), bar);
     m_browser = new QComboBox(bar);
-    m_browser->setToolTip(QStringLiteral("Для видео, доступных только после входа: программа возьмёт вход из выбранного браузера.\n"
+    m_browser->setToolTip(T("Для видео, доступных только после входа: программа возьмёт вход из выбранного браузера.\n"
                                          "Надёжнее всего работает Firefox. Браузер лучше закрыть перед загрузкой."));
-    m_browser->addItem(QStringLiteral("Не использовать"), QString());
-    m_browser->addItem(QStringLiteral("Яндекс Браузер"), QStringLiteral("yandex"));
+    m_browser->addItem(T("Не использовать"), QString());
+    m_browser->addItem(T("Яндекс Браузер"), QStringLiteral("yandex"));
     for (const QString &b : {"firefox", "chrome", "edge", "opera", "brave", "vivaldi", "chromium"})
         m_browser->addItem(b.left(1).toUpper() + b.mid(1), b);
     m_browser->setCurrentIndex(qMax(0, m_browser->findData(s.value("download/browser").toString())));
     connect(m_browser, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this] { QSettings().setValue("download/browser", m_browser->currentData()); });
 
-    auto *outLbl = new QLabel(QStringLiteral("Папка:"), bar);
+    auto *outLbl = new QLabel(T("Папка:"), bar);
     m_outDir = new QComboBox(bar);
     m_outDir->setMinimumWidth(300);
     m_outDir->addItem(downloadDir());
-    m_outDir->addItem(QStringLiteral("Выбрать папку…"));
+    m_outDir->addItem(T("Выбрать папку…"));
     connect(m_outDir, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
         if (i != m_outDir->count() - 1)
             return;
-        const QString d = QFileDialog::getExistingDirectory(this, QStringLiteral("Папка для загрузок"), downloadDir());
+        const QString d = QFileDialog::getExistingDirectory(this, T("Папка для загрузок"), downloadDir());
         if (!d.isEmpty()) {
             QSettings().setValue("download/dir", d);
             m_outDir->setItemText(0, d);
         }
         m_outDir->setCurrentIndex(0);
     });
-    auto *openDir = Ui::iconButton("folder", QStringLiteral("Открыть папку загрузок"), bar, 22);
+    auto *openDir = Ui::iconButton("folder", T("Открыть папку загрузок"), bar, 22);
     openDir->setIcon(Ui::icon("folder", true));
     connect(openDir, &QToolButton::clicked, this, [this] {
         QDir().mkpath(outputDir());
         QDesktopServices::openUrl(QUrl::fromLocalFile(outputDir()));
     });
 
-    m_startAll = Ui::primaryButton(QStringLiteral("Начать все"), bar);
-    m_pauseAll = new QPushButton(QStringLiteral("Пауза все"), bar);
+    m_startAll = Ui::primaryButton(T("Начать все"), bar);
+    m_pauseAll = new QPushButton(T("Пауза все"), bar);
     m_pauseAll->setObjectName(QStringLiteral("DarkButton"));
     for (QPushButton *b : {m_startAll, m_pauseAll}) {
         b->setMinimumWidth(150);
@@ -649,18 +650,18 @@ void DownloadPage::pasteFromClipboard()
 void DownloadPage::enterLinks()
 {
     FramedDialog d(this);
-    d.setWindowTitle(QStringLiteral("Ссылки на видео"));
+    d.setWindowTitle(T("Ссылки на видео"));
     d.setMinimumWidth(560);
     auto *lay = d.contentLayout();
     lay->setContentsMargins(24, 18, 24, 18);
-    lay->addWidget(new QLabel(QStringLiteral("Вставьте одну или несколько ссылок, каждую с новой строки:"), &d));
+    lay->addWidget(new QLabel(T("Вставьте одну или несколько ссылок, каждую с новой строки:"), &d));
     auto *edit = new QPlainTextEdit(&d);
     edit->setMinimumHeight(140);
     lay->addWidget(edit);
     auto *btns = new QHBoxLayout;
     btns->addStretch();
-    auto *n = new QPushButton(QStringLiteral("Отмена"), &d);
-    auto *y = Ui::primaryButton(QStringLiteral("Добавить"), &d);
+    auto *n = new QPushButton(T("Отмена"), &d);
+    auto *y = Ui::primaryButton(T("Добавить"), &d);
     btns->addWidget(n);
     btns->addWidget(y);
     lay->addLayout(btns);
@@ -678,7 +679,7 @@ void DownloadPage::enterLinks()
 void DownloadPage::addUrl(const QString &url)
 {
     if (Tools::ytdlp().isEmpty()) {
-        Ui::message(this, QStringLiteral("Загрузка видео"), QStringLiteral("Модуль загрузки (yt-dlp) не найден в папке tools рядом с программой."));
+        Ui::message(this, T("Загрузка видео"), T("Модуль загрузки (yt-dlp) не найден в папке tools рядом с программой."));
         return;
     }
     QSettings s;
@@ -851,12 +852,12 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
             m_cardLayout->removeWidget(c);
             m_doneLayout->insertWidget(0, c);
         }
-        m_segDone->setText(QStringLiteral("Готово (%1)").arg(m_doneLayout->count() - 1));
+        m_segDone->setText(T("Готово (%1)").arg(m_doneLayout->count() - 1));
         if (m_convertMode->isChecked()) {
             emit convertRequested(item->filePath, true);
-            m_status->setText(QStringLiteral("«%1» скачано и отправлено на конвертацию").arg(item->title));
+            m_status->setText(T("«%1» скачано и отправлено на конвертацию").arg(item->title));
         } else {
-            m_status->setText(QStringLiteral("Скачано: %1").arg(item->title));
+            m_status->setText(T("Скачано: %1").arg(item->title));
         }
         if (QSettings().value("general/sound", true).toBool())
             QApplication::beep();
@@ -864,16 +865,16 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
         // Вход из браузера не прочитался — повторяем без него
         item->noCookies = true;
         item->status = DownloadItem::Queued;
-        m_status->setText(QStringLiteral("Не удалось взять вход из браузера — качаю без входа"));
+        m_status->setText(T("Не удалось взять вход из браузера — качаю без входа"));
     } else {
         item->status = DownloadItem::Failed;
         QStringList lines;
         for (const QString &l : item->log.split('\n', Qt::SkipEmptyParts))
             if (l.startsWith(QLatin1String("ERROR")))
                 lines << l.mid(l.indexOf(':') + 1).trimmed();
-        QString err = lines.isEmpty() ? (code == -1 ? QStringLiteral("модуль загрузки не запустился") : QStringLiteral("загрузка прервана")) : lines.last();
+        QString err = lines.isEmpty() ? (code == -1 ? T("модуль загрузки не запустился") : T("загрузка прервана")) : lines.last();
         if (err.contains(QLatin1String("DRM"), Qt::CaseInsensitive))
-            err = QStringLiteral("видео защищено DRM — такие видео программа не скачивает");
+            err = T("видео защищено DRM — такие видео программа не скачивает");
         item->error = err;
     }
     refreshCard(item);

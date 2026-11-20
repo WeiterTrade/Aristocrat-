@@ -1,4 +1,5 @@
 #include "Preset.h"
+#include "I18n.h"
 #include "Settings.h"
 
 #include <QDir>
@@ -22,15 +23,15 @@ QString codecDisplayName(const QString &c)
 
 QString Preset::title() const
 {
-    return group + QStringLiteral(" · ") + name;
+    return group + QStringLiteral(" · ") + T(name);
 }
 
 QString Preset::resolutionText() const
 {
     if (isAudioOnly())
-        return abitrate > 0 ? QStringLiteral("%1 кбит/с").arg(abitrate) : QStringLiteral("Без потерь");
+        return abitrate > 0 ? T("%1 кбит/с").arg(abitrate) : T("Без потерь");
     if (width <= 0 || height <= 0)
-        return QStringLiteral("Исходное разрешение");
+        return T("Исходное разрешение");
     return QStringLiteral("%1*%2").arg(width).arg(height);
 }
 

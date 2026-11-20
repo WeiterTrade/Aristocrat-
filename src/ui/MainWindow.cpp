@@ -9,6 +9,7 @@
 #include "ToolboxPage.h"
 #include "Widgets.h"
 
+#include <QApplication>
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QHBoxLayout>
@@ -54,10 +55,10 @@ MainWindow::MainWindow(QWidget *parent)
     auto *download = new DownloadPage(m_pages);
     m_download = download;
     m_pages->addWidget(download);
-    m_pages->addWidget(new PlaceholderPage("burn", QStringLiteral("Запись DVD"),
-                                           QStringLiteral("Запись видео на DVD появится в одной из следующих версий."), m_pages));
-    m_pages->addWidget(new PlaceholderPage("transfer", QStringLiteral("Передача на устройство"),
-                                           QStringLiteral("Передача видео на телефон появится в одной из следующих версий. "
+    m_pages->addWidget(new PlaceholderPage("burn", T("Запись DVD"),
+                                           T("Запись видео на DVD появится в одной из следующих версий."), m_pages));
+    m_pages->addWidget(new PlaceholderPage("transfer", T("Передача на устройство"),
+                                           T("Передача видео на телефон появится в одной из следующих версий. "
                                                           "Пока выберите формат нужного устройства во вкладке «Устройства»."), m_pages));
     m_pages->addWidget(toolbox);
     root->addWidget(m_pages, 1);
@@ -160,9 +161,9 @@ QWidget *MainWindow::buildHeader()
     m_nav = new QButtonGroup(this);
     m_nav->setExclusive(true);
     struct Nav { const char *icon; QString text; };
-    const QList<Nav> items = {{"convert", QStringLiteral("Конвертировать")}, {"download", QStringLiteral("Загрузить")},
-                              {"burn", QStringLiteral("Запись")}, {"transfer", QStringLiteral("Передать")},
-                              {"toolbox", QStringLiteral("Инструменты")}};
+    const QList<Nav> items = {{"convert", T("Конвертировать")}, {"download", T("Загрузить")},
+                              {"burn", T("Запись")}, {"transfer", T("Передать")},
+                              {"toolbox", T("Инструменты")}};
     for (int i = 0; i < items.size(); ++i) {
         auto *b = new QToolButton(header);
         b->setObjectName(QStringLiteral("NavButton"));
@@ -180,20 +181,20 @@ QWidget *MainWindow::buildHeader()
     lay->addStretch();
 
     // Меню (☰)
-    auto *menuBtn = Ui::iconButton("menu", QStringLiteral("Меню"), header, 22);
+    auto *menuBtn = Ui::iconButton("menu", T("Меню"), header, 22);
     menuBtn->setPopupMode(QToolButton::InstantPopup);
     menuBtn->setStyleSheet(QStringLiteral("QToolButton::menu-indicator{image:none;}"));
     auto *menu = new QMenu(menuBtn);
-    menu->addAction(QStringLiteral("Настройки"), this, [this] { openSettings(); });
+    menu->addAction(T("Настройки"), this, [this] { openSettings(); });
     menu->addSeparator();
-    menu->addAction(QStringLiteral("О программе"), this, [this] {
-        Ui::message(this, QStringLiteral("О программе"),
-                    QStringLiteral("<h3 style='color:#E8C266'>Aristocrat Видеоконвертер</h3>"
+    menu->addAction(T("О программе"), this, [this] {
+        Ui::message(this, T("О программе"),
+                    T("<h3 style='color:#E8C266'>Aristocrat Видеоконвертер</h3>"
                                    "Версия %1<br><br>Конвертер видео и аудио с восстановлением и апскейлом старых записей.<br><br>"
                                    "Использует FFmpeg (LGPL/GPL), Real-ESRGAN (BSD-3) и yt-dlp (Unlicense).")
                         .arg(QStringLiteral(APP_VERSION)));
     });
-    menu->addAction(QStringLiteral("Выход"), this, &QWidget::close);
+    menu->addAction(T("Выход"), this, &QWidget::close);
     menuBtn->setMenu(menu);
     auto *menuW = new QWidget(header);
     menuW->setObjectName(QStringLiteral("MenuArea"));
@@ -212,9 +213,9 @@ QWidget *MainWindow::buildHeader()
 void MainWindow::closeEvent(QCloseEvent *e)
 {
     if (m_convert->isBusy() || m_download->isBusy()) {
-        if (!Ui::ask(this, QStringLiteral("Идёт работа"),
-                     QStringLiteral("Конвертация или загрузка ещё не закончена. Закрыть программу и прервать её?"),
-                     QStringLiteral("Закрыть"), QStringLiteral("Отмена"))) {
+        if (!Ui::ask(this, T("Идёт работа"),
+                     T("Конвертация или загрузка ещё не закончена. Закрыть программу и прервать её?"),
+                     T("Закрыть"), T("Отмена"))) {
             e->ignore();
             return;
         }

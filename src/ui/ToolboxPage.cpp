@@ -1,4 +1,5 @@
 #include "ToolboxPage.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 #include "core/Settings.h"
 #include "core/Tools.h"
@@ -43,8 +44,8 @@ ToolboxPage::ToolboxPage(QWidget *parent)
 
     // ---- Восстановление кассет ----
     QVBoxLayout *b1 = nullptr;
-    auto *vhs = card(this, "upscale", QStringLiteral("Восстановление старых видео"),
-                     QStringLiteral("Для оцифровок VHS, Video8, MiniDV и DVD: убирает «гребёнку», шум и дрожащую полосу внизу кадра, "
+    auto *vhs = card(this, "upscale", T("Восстановление старых видео"),
+                     T("Для оцифровок VHS, Video8, MiniDV и DVD: убирает «гребёнку», шум и дрожащую полосу внизу кадра, "
                                     "исправляет пропорции и увеличивает разрешение до 1080p или 4K."),
                      b1);
     auto *mode = new QComboBox(vhs);
@@ -53,11 +54,11 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI1080), int(UpscaleOptions::AI1080));
     mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI4K), int(UpscaleOptions::AI4K));
     mode->setCurrentIndex(Tools::hasRealesrgan() ? 3 : 1);
-    auto *pick = Ui::primaryButton(QStringLiteral("Выбрать записи…"), vhs);
+    auto *pick = Ui::primaryButton(T("Выбрать записи…"), vhs);
     b1->addSpacing(6);
     b1->addWidget(mode);
     b1->addWidget(pick);
-    auto *hint = new QLabel(QStringLiteral("Нейросетевой режим заметно лучше, но медленнее: на встроенной графике час записи "
+    auto *hint = new QLabel(T("Нейросетевой режим заметно лучше, но медленнее: на встроенной графике час записи "
                                            "может обрабатываться много часов. Работу можно прервать и продолжить позже."),
                             vhs);
     hint->setObjectName(QStringLiteral("Muted"));
@@ -65,8 +66,8 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     b1->addWidget(hint);
     b1->addStretch();
     connect(pick, &QPushButton::clicked, this, [this, mode] {
-        const QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Записи для восстановления"), Settings::lastOpenDir(),
-                                                                QStringLiteral("Видео (*.avi *.mpg *.mpeg *.vob *.mp4 *.mkv *.mov *.dv *.ts *.wmv);;Все файлы (*)"));
+        const QStringList files = QFileDialog::getOpenFileNames(this, T("Записи для восстановления"), Settings::lastOpenDir(),
+                                                                T("Видео (*.avi *.mpg *.mpeg *.vob *.mp4 *.mkv *.mov *.dv *.ts *.wmv);;Все файлы (*)"));
         if (files.isEmpty())
             return;
         Settings::setLastOpenDir(QFileInfo(files.first()).absolutePath());
@@ -75,16 +76,16 @@ ToolboxPage::ToolboxPage(QWidget *parent)
 
     // ---- Состояние модулей ----
     QVBoxLayout *b2 = nullptr;
-    auto *mods = card(this, "toolbox", QStringLiteral("Модули программы"),
-                      QStringLiteral("Внешние программы, которые использует конвертер. Их можно положить в папку tools рядом с программой."),
+    auto *mods = card(this, "toolbox", T("Модули программы"),
+                      T("Внешние программы, которые использует конвертер. Их можно положить в папку tools рядом с программой."),
                       b2);
     auto status = [](const QString &name, const QString &path) {
-        return QStringLiteral("<b>%1</b>: %2").arg(name, path.isEmpty() ? QStringLiteral("<span style='color:#E07A6A'>не найден</span>")
-                                                                        : QStringLiteral("<span style='color:#8FC48A'>найден</span><br>"
+        return QStringLiteral("<b>%1</b>: %2").arg(name, path.isEmpty() ? T("<span style='color:#E07A6A'>не найден</span>")
+                                                                        : T("<span style='color:#8FC48A'>найден</span><br>"
                                                                                          "<span style='color:#7E746A'>%1</span>").arg(path.toHtmlEscaped()));
     };
     auto *s = new QLabel(status("FFmpeg", Tools::ffmpeg()) + "<br><br>" + status("ffprobe", Tools::ffprobe()) + "<br><br>"
-                             + status(QStringLiteral("Real-ESRGAN (нейросетевой апскейл)"), Tools::realesrgan()),
+                             + status(T("Real-ESRGAN (нейросетевой апскейл)"), Tools::realesrgan()),
                          mods);
     s->setWordWrap(true);
     s->setTextInteractionFlags(Qt::TextSelectableByMouse);

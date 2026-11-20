@@ -1,4 +1,5 @@
 #include "ConvertPage.h"
+#include "core/I18n.h"
 #include "DropZone.h"
 #include "FormatPopup.h"
 #include "Frameless.h"
@@ -45,7 +46,7 @@ static QString mediaFilter()
     QStringList pats;
     for (const QString &e : kMediaExt)
         pats << QStringLiteral("*.") + e;
-    return QStringLiteral("Видео и аудио (%1);;Все файлы (*)").arg(pats.join(' '));
+    return T("Видео и аудио (%1);;Все файлы (*)").arg(pats.join(' '));
 }
 
 ConvertPage::ConvertPage(QWidget *parent)
@@ -98,7 +99,7 @@ ConvertPage::ConvertPage(QWidget *parent)
     });
 
     if (!Tools::hasFfmpeg())
-        m_statusLine->setText(QStringLiteral("⚠ FFmpeg не найден — положите ffmpeg и ffprobe в папку tools рядом с программой"));
+        m_statusLine->setText(T("⚠ FFmpeg не найден — положите ffmpeg и ffprobe в папку tools рядом с программой"));
     updateView();
 }
 
@@ -115,37 +116,37 @@ QWidget *ConvertPage::buildSubBar()
 
     auto *add = new QToolButton(bar);
     add->setObjectName(QStringLiteral("FlatTool"));
-    add->setText(QStringLiteral("Добавить файлы"));
+    add->setText(T("Добавить файлы"));
     add->setIcon(Ui::icon("add", true));
     add->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     add->setPopupMode(QToolButton::MenuButtonPopup);
     add->setCursor(Qt::PointingHandCursor);
     auto *addMenu = new QMenu(add);
-    addMenu->addAction(QStringLiteral("Добавить файлы…"), this, &ConvertPage::chooseFiles);
-    addMenu->addAction(QStringLiteral("Добавить папку…"), this, &ConvertPage::chooseFolder);
+    addMenu->addAction(T("Добавить файлы…"), this, &ConvertPage::chooseFiles);
+    addMenu->addAction(T("Добавить папку…"), this, &ConvertPage::chooseFolder);
     add->setMenu(addMenu);
     connect(add, &QToolButton::clicked, this, &ConvertPage::chooseFiles);
 
     auto *dvd = new QToolButton(bar);
     dvd->setObjectName(QStringLiteral("FlatTool"));
-    dvd->setText(QStringLiteral("Загрузить DVD"));
+    dvd->setText(T("Загрузить DVD"));
     dvd->setIcon(Ui::icon("dvd", true));
     dvd->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     dvd->setPopupMode(QToolButton::MenuButtonPopup);
     dvd->setCursor(Qt::PointingHandCursor);
     auto *dvdMenu = new QMenu(dvd);
-    dvdMenu->addAction(QStringLiteral("Папка DVD (VIDEO_TS)…"), this, &ConvertPage::loadDvdFolder);
-    dvdMenu->addAction(QStringLiteral("Образ ISO…"), this, [this] {
-        Ui::message(this, QStringLiteral("Образ ISO"),
-                    QStringLiteral("Откройте образ как диск (в Windows 8+ — двойной щелчок, в Linux — «Открыть с помощью» → "
+    dvdMenu->addAction(T("Папка DVD (VIDEO_TS)…"), this, &ConvertPage::loadDvdFolder);
+    dvdMenu->addAction(T("Образ ISO…"), this, [this] {
+        Ui::message(this, T("Образ ISO"),
+                    T("Откройте образ как диск (в Windows 8+ — двойной щелчок, в Linux — «Открыть с помощью» → "
                                                 "подключение образа), затем выберите «Папка DVD (VIDEO_TS)» и укажите папку VIDEO_TS на нём."));
     });
     dvd->setMenu(dvdMenu);
     connect(dvd, &QToolButton::clicked, this, &ConvertPage::loadDvdFolder);
 
-    m_segConverting = new QPushButton(QStringLiteral("Конвертируется"), bar);
+    m_segConverting = new QPushButton(T("Конвертируется"), bar);
     m_segConverting->setObjectName(QStringLiteral("SegLeft"));
-    m_segConverted = new QPushButton(QStringLiteral("Готово"), bar);
+    m_segConverted = new QPushButton(T("Готово"), bar);
     m_segConverted->setObjectName(QStringLiteral("SegRight"));
     for (QPushButton *b : {m_segConverting, m_segConverted}) {
         b->setCheckable(true);
@@ -156,7 +157,7 @@ QWidget *ConvertPage::buildSubBar()
     connect(m_segConverting, &QPushButton::clicked, this, &ConvertPage::updateView);
     connect(m_segConverted, &QPushButton::clicked, this, &ConvertPage::updateView);
 
-    auto *lbl = new QLabel(QStringLiteral("Конвертировать все в:"), bar);
+    auto *lbl = new QLabel(T("Конвертировать все в:"), bar);
     m_globalFormat = new QPushButton(bar);
     m_globalFormat->setMinimumWidth(200);
     m_globalFormat->setIcon(Ui::icon("chevron", true));
@@ -207,12 +208,12 @@ QWidget *ConvertPage::buildBottomBar()
     lay->setContentsMargins(30, 0, 40, 0);
     lay->setSpacing(12);
 
-    m_alarm = Ui::iconButton("alarm", QStringLiteral("Действие после завершения"), bar, 24);
+    m_alarm = Ui::iconButton("alarm", T("Действие после завершения"), bar, 24);
     m_alarm->setPopupMode(QToolButton::InstantPopup);
     auto *menu = new QMenu(m_alarm);
     auto *grp = new QActionGroup(menu);
-    const QStringList names = {QStringLiteral("Ничего не делать"), QStringLiteral("Закрыть программу"),
-                               QStringLiteral("Спящий режим"), QStringLiteral("Выключить компьютер")};
+    const QStringList names = {T("Ничего не делать"), T("Закрыть программу"),
+                               T("Спящий режим"), T("Выключить компьютер")};
     for (int i = 0; i < names.size(); ++i) {
         QAction *a = menu->addAction(names[i]);
         a->setCheckable(true);
@@ -232,8 +233,8 @@ QWidget *ConvertPage::buildBottomBar()
     m_hw->setChecked(Settings::hardwareAccel());
     auto updHw = [this] {
         m_hw->setIcon(Ui::icon("bolt", m_hw->isChecked()));
-        m_hw->setToolTip(m_hw->isChecked() ? QStringLiteral("Ускорение видеокартой: ВКЛ (NVIDIA / Intel / AMD, если доступно)")
-                                           : QStringLiteral("Ускорение видеокартой: ВЫКЛ"));
+        m_hw->setToolTip(m_hw->isChecked() ? T("Ускорение видеокартой: ВКЛ (NVIDIA / Intel / AMD, если доступно)")
+                                           : T("Ускорение видеокартой: ВЫКЛ"));
     };
     updHw();
     connect(m_hw, &QToolButton::toggled, this, [this, updHw](bool on) { Settings::setHardwareAccel(on); updHw(); });
@@ -245,7 +246,7 @@ QWidget *ConvertPage::buildBottomBar()
     sep2->setFrameShape(QFrame::VLine);
     sep2->setStyleSheet(QStringLiteral("color:#33282C;"));
 
-    auto *outLbl = new QLabel(QStringLiteral("Папка:"), bar);
+    auto *outLbl = new QLabel(T("Папка:"), bar);
     m_outDir = new QComboBox(bar);
     m_outDir->setEditable(true);
     m_outDir->setMinimumWidth(420);
@@ -253,7 +254,7 @@ QWidget *ConvertPage::buildBottomBar()
     for (const QString &d : Settings::recentOutputDirs())
         if (d != Settings::outputDir())
             m_outDir->addItem(d);
-    m_outDir->addItem(QStringLiteral("Выбрать папку…"));
+    m_outDir->addItem(T("Выбрать папку…"));
     m_outDir->setCurrentIndex(0);
     connect(m_outDir, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
         if (i == m_outDir->count() - 1)
@@ -263,23 +264,23 @@ QWidget *ConvertPage::buildBottomBar()
     });
     connect(m_outDir->lineEdit(), &QLineEdit::editingFinished, this, [this] {
         const QString d = m_outDir->currentText().trimmed();
-        if (!d.isEmpty() && d != QStringLiteral("Выбрать папку…"))
+        if (!d.isEmpty() && d != T("Выбрать папку…"))
             Settings::setOutputDir(d);
     });
-    auto *openDir = Ui::iconButton("folder", QStringLiteral("Открыть папку с результатами"), bar, 22);
+    auto *openDir = Ui::iconButton("folder", T("Открыть папку с результатами"), bar, 22);
     openDir->setIcon(Ui::icon("folder", true));
     connect(openDir, &QToolButton::clicked, this, [this] {
         QDir().mkpath(outputDir());
         QDesktopServices::openUrl(QUrl::fromLocalFile(outputDir()));
     });
 
-    auto *mergeLbl = new QLabel(QStringLiteral("Объединить все видео"), bar);
+    auto *mergeLbl = new QLabel(T("Объединить все видео"), bar);
     m_merge = new QCheckBox(bar);
     m_merge->setChecked(Settings::mergeAll());
-    m_merge->setToolTip(QStringLiteral("После конвертации склеить все файлы в один (формат у всех должен быть одинаковым)"));
+    m_merge->setToolTip(T("После конвертации склеить все файлы в один (формат у всех должен быть одинаковым)"));
     connect(m_merge, &QCheckBox::toggled, this, [](bool on) { Settings::setMergeAll(on); });
 
-    m_convertAll = Ui::primaryButton(QStringLiteral("Конвертировать все"), bar);
+    m_convertAll = Ui::primaryButton(T("Конвертировать все"), bar);
     m_convertAll->setMinimumWidth(180);
     m_convertAll->setMinimumHeight(48);
     connect(m_convertAll, &QPushButton::clicked, this, [this] {
@@ -341,8 +342,8 @@ void ConvertPage::addConvertedEntry(const TaskPtr &t)
                                 .arg(fi.fileName().toHtmlEscaped(), t->preset.ext.toUpper(), formatSize(fi.size()),
                                      formatDuration(t->effectiveDuration())),
                             row);
-    auto *play = Ui::iconButton("play", QStringLiteral("Воспроизвести"), row, 24);
-    auto *folder = Ui::iconButton("folder", QStringLiteral("Показать в папке"), row, 22);
+    auto *play = Ui::iconButton("play", T("Воспроизвести"), row, 24);
+    auto *folder = Ui::iconButton("folder", T("Показать в папке"), row, 22);
     h->addWidget(thumb);
     h->addWidget(text, 1);
     h->addWidget(play);
@@ -357,14 +358,14 @@ void ConvertPage::addConvertedEntry(const TaskPtr &t)
         QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 #endif
     });
-    m_segConverted->setText(QStringLiteral("Готово (%1)").arg(m_converted->count()));
+    m_segConverted->setText(T("Готово (%1)").arg(m_converted->count()));
 }
 
 // ---------------- Добавление файлов ----------------
 
 void ConvertPage::chooseFiles()
 {
-    const QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Добавить файлы"), Settings::lastOpenDir(), mediaFilter());
+    const QStringList files = QFileDialog::getOpenFileNames(this, T("Добавить файлы"), Settings::lastOpenDir(), mediaFilter());
     if (files.isEmpty())
         return;
     Settings::setLastOpenDir(QFileInfo(files.first()).absolutePath());
@@ -373,7 +374,7 @@ void ConvertPage::chooseFiles()
 
 void ConvertPage::chooseFolder()
 {
-    const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("Добавить папку"), Settings::lastOpenDir());
+    const QString dir = QFileDialog::getExistingDirectory(this, T("Добавить папку"), Settings::lastOpenDir());
     if (dir.isEmpty())
         return;
     Settings::setLastOpenDir(dir);
@@ -382,7 +383,7 @@ void ConvertPage::chooseFolder()
 
 void ConvertPage::loadDvdFolder()
 {
-    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("Папка DVD (VIDEO_TS)"), Settings::lastOpenDir());
+    QString dir = QFileDialog::getExistingDirectory(this, T("Папка DVD (VIDEO_TS)"), Settings::lastOpenDir());
     if (dir.isEmpty())
         return;
     if (QDir(dir + "/VIDEO_TS").exists())
@@ -399,7 +400,7 @@ void ConvertPage::loadDvdFolder()
         parts[p[1]] << fi.absoluteFilePath();
     }
     if (sizes.isEmpty()) {
-        Ui::message(this, QStringLiteral("DVD"), QStringLiteral("В папке нет файлов VTS_xx_x.VOB."));
+        Ui::message(this, QStringLiteral("DVD"), T("В папке нет файлов VTS_xx_x.VOB."));
         return;
     }
     QString name = QDir(dir).dirName();
@@ -539,7 +540,7 @@ void ConvertPage::addFileAndConvert(const QString &file, bool autoStart)
 void ConvertPage::removeTask(const TaskPtr &t)
 {
     if (t->status == ConversionTask::Running) {
-        Ui::message(this, QStringLiteral("Идёт конвертация"), QStringLiteral("Сначала остановите конвертацию этого файла."));
+        Ui::message(this, T("Идёт конвертация"), T("Сначала остановите конвертацию этого файла."));
         return;
     }
     if (t->status == ConversionTask::Waiting)
@@ -555,14 +556,14 @@ void ConvertPage::removeTask(const TaskPtr &t)
 QString ConvertPage::outputDir() const
 {
     QString d = m_outDir->currentText().trimmed();
-    if (d.isEmpty() || d == QStringLiteral("Выбрать папку…"))
+    if (d.isEmpty() || d == T("Выбрать папку…"))
         d = Settings::outputDir();
     return d;
 }
 
 void ConvertPage::chooseOutputDir()
 {
-    const QString d = QFileDialog::getExistingDirectory(this, QStringLiteral("Папка для результатов"), Settings::outputDir());
+    const QString d = QFileDialog::getExistingDirectory(this, T("Папка для результатов"), Settings::outputDir());
     if (!d.isEmpty()) {
         Settings::setOutputDir(d);
         m_outDir->insertItem(0, d);
@@ -579,14 +580,14 @@ void ConvertPage::convertAll()
         if (t->probed && t->info.ok && t->status != ConversionTask::Done)
             todo << t;
     if (todo.isEmpty()) {
-        m_statusLine->setText(m_tasks.isEmpty() ? QStringLiteral("Добавьте файлы для конвертации")
-                                                : QStringLiteral("Нет файлов, ожидающих конвертации"));
+        m_statusLine->setText(m_tasks.isEmpty() ? T("Добавьте файлы для конвертации")
+                                                : T("Нет файлов, ожидающих конвертации"));
         return;
     }
     Settings::setOutputDir(outputDir());
     m_statusLine->clear();
     m_engine->start(todo, outputDir(), m_hw->isChecked(), m_merge->isChecked());
-    m_convertAll->setText(QStringLiteral("Остановить"));
+    m_convertAll->setText(T("Остановить"));
 }
 
 void ConvertPage::convertOne(const TaskPtr &t)
@@ -599,7 +600,7 @@ void ConvertPage::convertOne(const TaskPtr &t)
     m_statusLine->clear();
     t->status = ConversionTask::Ready;
     m_engine->start({t}, outputDir(), m_hw->isChecked(), false);
-    m_convertAll->setText(QStringLiteral("Остановить"));
+    m_convertAll->setText(T("Остановить"));
 }
 
 void ConvertPage::onTaskChanged(int id)
@@ -610,12 +611,12 @@ void ConvertPage::onTaskChanged(int id)
 
 void ConvertPage::onQueueFinished(const QStringList &outputs, int failed)
 {
-    m_convertAll->setText(QStringLiteral("Конвертировать все"));
+    m_convertAll->setText(T("Конвертировать все"));
     if (failed > 0)
-        m_statusLine->setText(QStringLiteral("Готово: %1, с ошибками: %2 (наведите на кнопку «Повторить», чтобы увидеть причину)")
+        m_statusLine->setText(T("Готово: %1, с ошибками: %2 (наведите на кнопку «Повторить», чтобы увидеть причину)")
                                   .arg(outputs.size()).arg(failed));
     else if (!outputs.isEmpty())
-        m_statusLine->setText(QStringLiteral("Готово файлов: %1").arg(outputs.size()));
+        m_statusLine->setText(T("Готово файлов: %1").arg(outputs.size()));
     QApplication::alert(window());
     if (QSettings().value("general/sound", true).toBool())
         QApplication::beep();

@@ -1,4 +1,5 @@
 #include "ConversionWorker.h"
+#include "I18n.h"
 #include "ConversionEngine.h"
 #include "FfmpegCommand.h"
 #include "Tools.h"
@@ -12,8 +13,8 @@
 #include <QTextStream>
 #include <QtMath>
 
-ConversionWorker::ConversionEngine(QObject *parent)
-    : QObject(parent)
+ConversionWorker::ConversionWorker(ConversionEngine *pool, QObject *parent)
+    : QObject(parent), m_pool(pool)
 {
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &ConversionWorker::onUpscaleTick);
@@ -21,7 +22,7 @@ ConversionWorker::ConversionEngine(QObject *parent)
     QDir().mkpath(m_tempDir);
 }
 
-ConversionWorker::~ConversionEngine()
+ConversionWorker::~ConversionWorker()
 {
     m_stopping = true;
     if (m_proc) {
@@ -50,7 +51,7 @@ void ConversionWorker::stop()
     if (m_proc && m_proc->state() != QProcess::NotRunning)
         m_proc->kill();
     else if (m_current)
-        finishCurrent(ConversionTask::Cancelled, QStringLiteral("Остановлено"));
+        finishCurrent(ConversionTask::Cancelled, T("Остановлено"));
     else {
         m_running = false;
         emit idle();
@@ -70,15 +71,15 @@ void ConversionWorker::next()
     m_current = t;
     m_current->status = ConversionTask::Running;
     m_current->progress = 0;
-    m_current->message = QStringLiteral("Подготовка…");
+    m_current->message = T("Подготовка…");
     emit taskChanged(m_current->id);
 
     if (!Tools::hasFfmpeg()) {
-        finishCurrent(ConversionTask::Failed, QStringLiteral("Не найден FFmpeg (папка tools рядом с программой)"));
+        finishCurrent(ConversionTask::Failed, T("Не найден FFmpeg (папка tools рядом с программой)"));
         return;
     }
     if (!m_current->info.ok) {
-        finishCurrent(ConversionTask::Failed, m_current->info.error.isEmpty() ? QStringLiteral("Файл не прочитан") : m_current->info.error);
+        finishCurrent(ConversionTask::Failed, m_current->info.error.isEmpty() ? T("Файл не прочитан") : m_current->info.error);
         return;
     }
     m_current->outputPath = m_pool->reserveOutputPath(QDir(m_outDir).filePath(m_current->outputFileName()));
@@ -114,7 +115,7 @@ void ConversionWorker::run(const QString &program, const QStringList &args, Phas
 
 void ConversionWorker::startSingle()
 {
-    m_current->message = QStringLiteral("Конвертация…");
+    m_current->message = T("Конвертация…");
     m_phaseDuration = m_current->effectiveDuration();
     emit taskChanged(m_current->id);
     run(Tools::ffmpeg(), FfmpegCommand::singlePass(*m_current, m_current->outputPath, m_hw, m_tempDir), Phase::Single);
@@ -163,19 +164,19 @@ void ConversionWorker::onFinished(int code, QProcess::ExitStatus status)
         if (m_phase == Phase::Single)
             QFile::remove(m_current->outputPath);
         finishCurrent(ConversionTask::Cancelled, m_current->upscale.isAI()
-                                                     ? QStringLiteral("Остановлено. Готовые части сохранены — можно продолжить.")
-                                                     : QStringLiteral("Остановлено"));
+                                                     ? T("Остановлено. Готовые части сохранены — можно продолжить.")
+                                                     : T("Остановлено"));
         return;
     }
 
     if (!ok) {
         QString err = m_stderr.trimmed();
         if (code == -1)
-            err = QStringLiteral("Программа не запустилась");
+            err = T("Программа не запустилась");
         const QStringList lines = err.split('\n', Qt::SkipEmptyParts);
         if (m_phase == Phase::Single || m_phase == Phase::AIMux)
             QFile::remove(m_current->outputPath);
-        finishCurrent(ConversionTask::Failed, lines.isEmpty() ? QStringLiteral("Ошибка FFmpeg") : lines.last().trimmed());
+        finishCurrent(ConversionTask::Failed, lines.isEmpty() ? T("Ошибка FFmpeg") : lines.last().trimmed());
         return;
     }
 
@@ -217,7 +218,7 @@ void ConversionWorker::finishCurrent(ConversionTask::Status status, const QStrin
     t->status = status;
     if (status == ConversionTask::Done) {
         t->progress = 1.0;
-        t->message = QStringLiteral("Готово");
+        t->message = T("Готово");
     } else {
         t->message = msg;
     }
@@ -247,7 +248,7 @@ void ConversionWorker::startAI()
 {
     if (!Tools::hasRealesrgan()) {
         finishCurrent(ConversionTask::Failed,
-                      QStringLiteral("Не найден Real-ESRGAN (tools/realesrgan). Выберите быстрый апскейл или установите модуль."));
+                      T("Не найден Real-ESRGAN (tools/realesrgan). Выберите быстрый апскейл или установите модуль."));
         return;
     }
     m_work = workDirFor(*m_current);
@@ -282,7 +283,7 @@ void ConversionWorker::aiNextSegment()
     QDir().mkpath(in.absolutePath());
     QDir(QDir(m_work).filePath("out")).removeRecursively();
 
-    m_current->message = QStringLiteral("Апскейл: часть %1 из %2 — подготовка кадров").arg(m_seg + 1).arg(m_segCount);
+    m_current->message = T("Апскейл: часть %1 из %2 — подготовка кадров").arg(m_seg + 1).arg(m_segCount);
     emit taskChanged(m_current->id);
     run(Tools::ffmpeg(),
         FfmpegCommand::aiExtractFrames(*m_current, start, m_segFrames, in.filePath("%08d.jpg"), m_tempDir),
@@ -295,7 +296,7 @@ void ConversionWorker::aiStartUpscale()
     const QString out = QDir(m_work).filePath("out");
     QDir().mkpath(out);
     m_segFrames = qMax(1, int(QDir(in).entryList(QDir::Files).size()));
-    m_current->message = QStringLiteral("Апскейл: часть %1 из %2 — нейросеть").arg(m_seg + 1).arg(m_segCount);
+    m_current->message = T("Апскейл: часть %1 из %2 — нейросеть").arg(m_seg + 1).arg(m_segCount);
     emit taskChanged(m_current->id);
     m_tick.start();
     run(Tools::realesrgan(), FfmpegCommand::aiUpscale(*m_current, in, out), Phase::AIUpscale);
@@ -313,7 +314,7 @@ void ConversionWorker::onUpscaleTick()
 void ConversionWorker::aiStartEncode()
 {
     const QString seg = QDir(m_work).filePath(QStringLiteral("seg_%1.mkv").arg(m_seg, 5, 10, QLatin1Char('0')));
-    m_current->message = QStringLiteral("Апскейл: часть %1 из %2 — сжатие").arg(m_seg + 1).arg(m_segCount);
+    m_current->message = T("Апскейл: часть %1 из %2 — сжатие").arg(m_seg + 1).arg(m_segCount);
     emit taskChanged(m_current->id);
     run(Tools::ffmpeg(),
         FfmpegCommand::aiEncodeSegment(*m_current, QDir(QDir(m_work).filePath("out")).filePath("%08d.jpg"), seg, m_hw),
@@ -334,7 +335,7 @@ void ConversionWorker::aiStartMux()
         }
     }
     m_phaseDuration = m_current->effectiveDuration();
-    m_current->message = QStringLiteral("Сборка итогового файла…");
+    m_current->message = T("Сборка итогового файла…");
     emit taskChanged(m_current->id);
     run(Tools::ffmpeg(), FfmpegCommand::aiFinalMux(*m_current, list, m_current->outputPath, m_hw, m_tempDir), Phase::AIMux);
 }

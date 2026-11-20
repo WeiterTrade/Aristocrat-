@@ -1,4 +1,5 @@
 #include "OutputSizeDialog.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 
 #include <QComboBox>
@@ -13,7 +14,7 @@
 OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
     : FramedDialog(parent, false), m_task(task)
 {
-    setWindowTitle(QStringLiteral("Желаемый размер файла"));
+    setWindowTitle(T("Желаемый размер файла"));
     setMinimumWidth(620);
 
     // Размер «по умолчанию» — без пользовательского битрейта
@@ -28,7 +29,7 @@ OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
     grid->setVerticalSpacing(16);
 
     m_size = new QDoubleSpinBox(this);
-    m_size->setSuffix(QStringLiteral("  МБ"));
+    m_size->setSuffix(T("  МБ"));
     m_size->setDecimals(2);
     m_size->setRange(1.0, maxSizeMb());
     m_size->setValue(task->estimatedBytes() / (1024.0 * 1024.0));
@@ -39,7 +40,7 @@ OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
     m_slider->setValue(int(m_size->value() / maxSizeMb() * 1000));
 
     m_res = new QComboBox(this);
-    m_res->addItem(QStringLiteral("Авто"), QSize());
+    m_res->addItem(T("Авто"), QSize());
     for (const QSize &s : {QSize(3840, 2160), QSize(1920, 1080), QSize(1280, 720), QSize(854, 480), QSize(640, 360)})
         m_res->addItem(QStringLiteral("%1*%2").arg(s.width()).arg(s.height()), s);
     const int ri = m_res->findData(task->customResolution);
@@ -56,21 +57,21 @@ OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
     m_quality->setAlignment(Qt::AlignCenter);
     m_quality->setMinimumHeight(34);
 
-    grid->addWidget(new QLabel(QStringLiteral("Размер файла:")), 0, 0, Qt::AlignRight);
+    grid->addWidget(new QLabel(T("Размер файла:")), 0, 0, Qt::AlignRight);
     grid->addWidget(m_size, 0, 1);
     grid->addWidget(m_slider, 0, 2, 1, 2);
-    grid->addWidget(new QLabel(QStringLiteral("Разрешение:")), 1, 0, Qt::AlignRight);
+    grid->addWidget(new QLabel(T("Разрешение:")), 1, 0, Qt::AlignRight);
     grid->addWidget(m_res, 1, 1);
-    grid->addWidget(new QLabel(QStringLiteral("Битрейт:")), 1, 2, Qt::AlignRight);
+    grid->addWidget(new QLabel(T("Битрейт:")), 1, 2, Qt::AlignRight);
     grid->addWidget(m_bitrate, 1, 3);
-    grid->addWidget(new QLabel(QStringLiteral("Качество:")), 2, 0, Qt::AlignRight);
+    grid->addWidget(new QLabel(T("Качество:")), 2, 0, Qt::AlignRight);
     grid->addWidget(m_quality, 2, 1);
     grid->setColumnStretch(2, 1);
     root->addLayout(grid);
 
     auto *btns = new QHBoxLayout;
     btns->addStretch();
-    auto *reset = new QPushButton(QStringLiteral("Сбросить"), this);
+    auto *reset = new QPushButton(T("Сбросить"), this);
     reset->setObjectName(QStringLiteral("DarkButton"));
     auto *ok = Ui::primaryButton(QStringLiteral("OK"), this);
     ok->setMinimumWidth(170);
@@ -130,7 +131,7 @@ void OutputSizeDialog::updateLabels()
 {
     if (m_task->preset.isAudioOnly()) {
         m_bitrate->setText(QStringLiteral("—"));
-        m_quality->setText(QStringLiteral("Только звук"));
+        m_quality->setText(T("Только звук"));
         return;
     }
     int kbps = m_vbr;
@@ -139,11 +140,11 @@ void OutputSizeDialog::updateLabels()
         copy.customVBitrate = 0;
         kbps = int(copy.estimatedBytes() * 8.0 / 1000.0 / qMax(1.0, copy.effectiveDuration())) - 192;
     }
-    m_bitrate->setText(QStringLiteral("%1 кбит/с").arg(qMax(0, kbps)));
+    m_bitrate->setText(T("%1 кбит/с").arg(qMax(0, kbps)));
     QSize s = resolution();
     if (!s.isValid() || s.isEmpty())
         s = m_task->outputSize();
     const double fps = m_task->info.fps > 0 ? m_task->info.fps : 25.0;
     const double bpp = (s.width() > 0 && s.height() > 0) ? kbps * 1000.0 / (double(s.width()) * s.height() * fps) : 0.1;
-    m_quality->setText(bpp > 0.09 ? QStringLiteral("Высокое") : bpp > 0.045 ? QStringLiteral("Обычное") : QStringLiteral("Низкое"));
+    m_quality->setText(bpp > 0.09 ? T("Высокое") : bpp > 0.045 ? T("Обычное") : T("Низкое"));
 }

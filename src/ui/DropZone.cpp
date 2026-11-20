@@ -1,4 +1,5 @@
 #include "DropZone.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 
 #include <QLabel>
@@ -20,7 +21,7 @@ DropZone::DropZone(QWidget *parent)
     img->setPixmap(Ui::icon(QStringLiteral("drop")).pixmap(150, 150));
     img->setAlignment(Qt::AlignCenter);
 
-    auto *text = new QLabel(QStringLiteral("Добавьте или перетащите сюда файлы, чтобы начать конвертацию"), this);
+    auto *text = new QLabel(T("Добавьте или перетащите сюда файлы, чтобы начать конвертацию"), this);
     text->setAlignment(Qt::AlignCenter);
     text->setWordWrap(true);
 

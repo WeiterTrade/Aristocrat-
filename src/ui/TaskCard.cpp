@@ -1,4 +1,5 @@
 #include "TaskCard.h"
+#include "core/I18n.h"
 #include "EditDialog.h"
 #include "FormatPopup.h"
 #include "Frameless.h"
@@ -57,7 +58,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_thumb->setFixedSize(208, 116);
     m_thumb->setAlignment(Qt::AlignCenter);
     m_thumb->setCursor(Qt::PointingHandCursor);
-    m_thumb->setToolTip(QStringLiteral("Открыть в проигрывателе"));
+    m_thumb->setToolTip(T("Открыть в проигрывателе"));
     m_thumb->installEventFilter(this);
     m_editTools = new QWidget(this);
     m_editTools->setObjectName(QStringLiteral("ThumbTools"));
@@ -66,9 +67,9 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *tools = new QHBoxLayout(m_editTools);
     tools->setContentsMargins(0, 0, 0, 0);
     tools->addStretch();
-    auto *cut = Ui::iconButton("cut", QStringLiteral("Обрезать по времени"), m_editTools);
-    auto *crop = Ui::iconButton("crop", QStringLiteral("Кадрирование и поворот"), m_editTools);
-    auto *fx = Ui::iconButton("effects", QStringLiteral("Эффекты, водяной знак, субтитры"), m_editTools);
+    auto *cut = Ui::iconButton("cut", T("Обрезать по времени"), m_editTools);
+    auto *crop = Ui::iconButton("crop", T("Кадрирование и поворот"), m_editTools);
+    auto *fx = Ui::iconButton("effects", T("Эффекты, водяной знак, субтитры"), m_editTools);
     tools->addWidget(cut);
     tools->addSpacing(14);
     tools->addWidget(crop);
@@ -92,7 +93,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     srcBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *srcBoxLay = new QVBoxLayout(srcBox);
     srcBoxLay->setContentsMargins(14, 8, 14, 10);
-    auto *srcCap = new QLabel(QStringLiteral("Источник"), srcBox);
+    auto *srcCap = new QLabel(T("Источник"), srcBox);
     srcCap->setObjectName(QStringLiteral("InfoCaption"));
     auto *srcLine = new QHBoxLayout;
     srcLine->setSpacing(6);
@@ -121,7 +122,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *dstHead = new QHBoxLayout;
     m_dstName = new QLabel(this);
     m_dstName->setObjectName(QStringLiteral("TargetName"));
-    auto *rename = Ui::iconButton("edit", QStringLiteral("Переименовать"), this);
+    auto *rename = Ui::iconButton("edit", T("Переименовать"), this);
     rename->setIcon(Ui::icon("edit", true));
     dstHead->addWidget(m_dstName);
     dstHead->addWidget(rename);
@@ -135,7 +136,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     dstBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *dstBoxLay = new QVBoxLayout(dstBox);
     dstBoxLay->setContentsMargins(14, 8, 8, 10);
-    auto *dstCap = new QLabel(QStringLiteral("Результат"), dstBox);
+    auto *dstCap = new QLabel(T("Результат"), dstBox);
     dstCap->setObjectName(QStringLiteral("InfoCaption"));
     auto *dstLine = new QHBoxLayout;
     dstLine->setSpacing(6);
@@ -146,7 +147,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_dstSize = new QToolButton(dstBox);
     m_dstSize->setObjectName(QStringLiteral("IconButton"));
     m_dstSize->setCursor(Qt::PointingHandCursor);
-    m_dstSize->setToolTip(QStringLiteral("Задать желаемый размер файла"));
+    m_dstSize->setToolTip(T("Задать желаемый размер файла"));
     m_dstSize->setStyleSheet(QStringLiteral("QToolButton{color:#CFC3A8;text-decoration:underline;}"));
     dstLine->addWidget(m_dstSize);
     dstLine->addStretch();
@@ -156,7 +157,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_formatBtn->setIconSize(QSize(18, 18));
     m_formatBtn->setFixedSize(36, 36);
     m_formatBtn->setStyleSheet(QStringLiteral("QToolButton{background:#171113;border-radius:4px;} QToolButton:hover{background:#3A2B30;}"));
-    m_formatBtn->setToolTip(QStringLiteral("Выбрать формат"));
+    m_formatBtn->setToolTip(T("Выбрать формат"));
     m_formatBtn->setCursor(Qt::PointingHandCursor);
     dstBoxLay->addWidget(dstCap);
     dstBoxLay->addLayout(dstLine);
@@ -169,19 +170,19 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     opts->setSpacing(10);
     m_subs = new QComboBox(this);
     m_subs->setMinimumWidth(155);
-    m_subs->setToolTip(QStringLiteral("Субтитры"));
+    m_subs->setToolTip(T("Субтитры"));
     m_audio = new QComboBox(this);
     m_audio->setMinimumWidth(180);
-    m_audio->setToolTip(QStringLiteral("Звуковая дорожка"));
+    m_audio->setToolTip(T("Звуковая дорожка"));
     m_upscale = new QComboBox(this);
-    m_upscale->setToolTip(QStringLiteral("Апскейл — увеличение разрешения (для старых кассет)"));
+    m_upscale->setToolTip(T("Апскейл — увеличение разрешения (для старых кассет)"));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::None), int(UpscaleOptions::None));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast1080), int(UpscaleOptions::Fast1080));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast4K), int(UpscaleOptions::Fast4K));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI1080), int(UpscaleOptions::AI1080));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI4K), int(UpscaleOptions::AI4K));
     m_upscale->insertSeparator(m_upscale->count());
-    m_upscale->addItem(QStringLiteral("☐ Восстановление VHS"), 100);
+    m_upscale->addItem(T("☐ Восстановление VHS"), 100);
     for (QComboBox *c : {m_subs, m_audio, m_upscale}) {
         c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         c->setMinimumContentsLength(12);
@@ -205,7 +206,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     // ---- Кнопка действия / прогресс ----
     m_actionStack = new QStackedWidget(this);
     m_actionStack->setFixedWidth(160);
-    m_convert = new QPushButton(QStringLiteral("Конвертировать"), this);
+    m_convert = new QPushButton(T("Конвертировать"), this);
     m_convert->setObjectName(QStringLiteral("DarkButton"));
     m_convert->setCursor(Qt::PointingHandCursor);
     m_convert->setMinimumHeight(48);
@@ -220,7 +221,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_progress = new QProgressBar(progressPage);
     m_progress->setRange(0, 1000);
     m_progress->setFixedHeight(6);
-    m_stop = new QPushButton(QStringLiteral("Стоп"), progressPage);
+    m_stop = new QPushButton(T("Стоп"), progressPage);
     pl->addStretch();
     pl->addWidget(m_status);
     pl->addWidget(m_progress);
@@ -230,10 +231,10 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *donePage = new QWidget(this);
     auto *dl = new QVBoxLayout(donePage);
     dl->setContentsMargins(0, 0, 0, 0);
-    auto *doneLbl = new QLabel(QStringLiteral("✔ Готово"), donePage);
+    auto *doneLbl = new QLabel(T("✔ Готово"), donePage);
     doneLbl->setObjectName(QStringLiteral("StatusLabel"));
     doneLbl->setAlignment(Qt::AlignCenter);
-    m_openFolder = new QPushButton(QStringLiteral("Открыть папку"), donePage);
+    m_openFolder = new QPushButton(T("Открыть папку"), donePage);
     dl->addStretch();
     dl->addWidget(doneLbl);
     dl->addWidget(m_openFolder);
@@ -244,7 +245,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_actionStack->addWidget(donePage);
     row->addWidget(m_actionStack, 0, Qt::AlignTop);
 
-    auto *close = Ui::iconButton("close", QStringLiteral("Убрать из списка"), this, 14);
+    auto *close = Ui::iconButton("close", T("Убрать из списка"), this, 14);
     row->addWidget(close, 0, Qt::AlignTop);
 
     // ---- Сигналы ----
@@ -264,26 +265,26 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
         const MediaInfo &mi = m_task->info;
         QString t = QStringLiteral("<b>%1</b><br><br>").arg(QFileInfo(m_task->input).fileName().toHtmlEscaped());
         if (mi.hasVideo)
-            t += QStringLiteral("Видео: %1, %2×%3, %4 кадр/с%5<br>").arg(mi.videoCodec.toUpper()).arg(mi.width).arg(mi.height)
-                     .arg(mi.fps, 0, 'f', 2).arg(mi.interlaced ? QStringLiteral(", чересстрочное") : QString());
+            t += T("Видео: %1, %2×%3, %4 кадр/с%5<br>").arg(mi.videoCodec.toUpper()).arg(mi.width).arg(mi.height)
+                     .arg(mi.fps, 0, 'f', 2).arg(mi.interlaced ? T(", чересстрочное") : QString());
         for (const StreamTrack &a : mi.audioTracks)
-            t += QStringLiteral("Звук: %1%2<br>").arg(a.details().toHtmlEscaped(), a.isDefault ? QStringLiteral(" (по умолчанию)") : QString());
+            t += T("Звук: %1%2<br>").arg(a.details().toHtmlEscaped(), a.isDefault ? T(" (по умолчанию)") : QString());
         for (const StreamTrack &s : mi.subtitleTracks)
-            t += QStringLiteral("Субтитры: %1<br>").arg(s.details().toHtmlEscaped());
-        t += QStringLiteral("<br>Битрейт: %1 кбит/с<br>Формат на выходе: %2 (%3)")
+            t += T("Субтитры: %1<br>").arg(s.details().toHtmlEscaped());
+        t += T("<br>Битрейт: %1 кбит/с<br>Формат на выходе: %2 (%3)")
                  .arg(mi.bitrate / 1000).arg(m_task->preset.title().toHtmlEscaped(), m_task->preset.codecText());
         if (m_task->upscale.mode != UpscaleOptions::None)
-            t += QStringLiteral("<br>Апскейл: %1%2").arg(UpscaleOptions::modeName(m_task->upscale.mode),
-                                                        m_task->upscale.vhsRestore ? QStringLiteral(" + восстановление VHS") : QString());
-        Ui::message(this, QStringLiteral("Сведения о файле"), t);
+            t += T("<br>Апскейл: %1%2").arg(UpscaleOptions::modeName(m_task->upscale.mode),
+                                                        m_task->upscale.vhsRestore ? T(" + восстановление VHS") : QString());
+        Ui::message(this, T("Сведения о файле"), t);
     });
     connect(m_subs, QOverload<int>::of(&QComboBox::activated), this, [this](int) {
         if (m_updatingCombos)
             return;
         const int v = m_subs->currentData().toInt();
         if (v == -2) {
-            const QString f = QFileDialog::getOpenFileName(this, QStringLiteral("Файл субтитров"), QFileInfo(m_task->input).absolutePath(),
-                                                           QStringLiteral("Субтитры (*.srt *.ass *.ssa *.vtt)"));
+            const QString f = QFileDialog::getOpenFileName(this, T("Файл субтитров"), QFileInfo(m_task->input).absolutePath(),
+                                                           T("Субтитры (*.srt *.ass *.ssa *.vtt)"));
             if (!f.isEmpty()) {
                 m_task->edit.subtitleFile = f;
                 m_task->edit.subtitleTrack = -1;
@@ -307,8 +308,8 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
         } else {
             const auto mode = UpscaleOptions::Mode(v);
             if ((mode == UpscaleOptions::AI1080 || mode == UpscaleOptions::AI4K) && !Tools::hasRealesrgan()) {
-                Ui::message(this, QStringLiteral("Нейросетевой апскейл"),
-                            QStringLiteral("Модуль Real-ESRGAN не найден.<br><br>Положите папку realesrgan (с файлом realesrgan-ncnn-vulkan "
+                Ui::message(this, T("Нейросетевой апскейл"),
+                            T("Модуль Real-ESRGAN не найден.<br><br>Положите папку realesrgan (с файлом realesrgan-ncnn-vulkan "
                                            "и папкой models) в папку tools рядом с программой. Пока можно использовать быстрый апскейл."));
             }
             m_task->upscale.mode = mode;
@@ -364,12 +365,12 @@ void TaskCard::rebuildTrackCombos()
 {
     m_updatingCombos = true;
     m_subs->clear();
-    m_subs->addItem(QStringLiteral("Без субтитров"), -1);
+    m_subs->addItem(T("Без субтитров"), -1);
     for (const StreamTrack &t : m_task->info.subtitleTracks)
         m_subs->addItem(t.details(), t.index);
     if (!m_task->edit.subtitleFile.isEmpty())
         m_subs->addItem(QFileInfo(m_task->edit.subtitleFile).fileName(), -3);
-    m_subs->addItem(QStringLiteral("+ Добавить субтитры…"), -2);
+    m_subs->addItem(T("+ Добавить субтитры…"), -2);
     if (!m_task->edit.subtitleFile.isEmpty())
         m_subs->setCurrentIndex(m_subs->findData(-3));
     else
@@ -380,7 +381,7 @@ void TaskCard::rebuildTrackCombos()
         m_audio->addItem(Ui::icon("audio"), t.label(), t.index);
         m_audio->setItemData(m_audio->count() - 1, t.details(), Qt::ToolTipRole);
     }
-    m_audio->addItem(QStringLiteral("Без звука"), -1);
+    m_audio->addItem(T("Без звука"), -1);
     m_audio->setCurrentIndex(qMax(0, m_audio->findData(m_task->edit.audioTrack)));
     m_updatingCombos = false;
 }
@@ -398,7 +399,7 @@ void TaskCard::refresh()
         m_srcRes->setText(QStringLiteral("…"));
         m_srcDur->setText(QStringLiteral("…"));
         m_srcSize->setText(formatSize(QFileInfo(t.input).size()));
-        m_thumb->setText(QStringLiteral("Чтение файла…"));
+        m_thumb->setText(T("Чтение файла…"));
     } else {
         m_srcFmt->setText(mi.container);
         m_srcRes->setText(mi.hasVideo ? QStringLiteral("%1*%2").arg(mi.width).arg(mi.height) : QStringLiteral("—"));
@@ -421,7 +422,7 @@ void TaskCard::refresh()
     m_upscale->setCurrentIndex(qMax(0, idx));
     const int vhsIdx = m_upscale->findData(100);
     if (vhsIdx >= 0)
-        m_upscale->setItemText(vhsIdx, (t.upscale.vhsRestore ? QStringLiteral("☑ ") : QStringLiteral("☐ ")) + QStringLiteral("Восстановление VHS"));
+        m_upscale->setItemText(vhsIdx, (t.upscale.vhsRestore ? QStringLiteral("☑ ") : QStringLiteral("☐ ")) + T("Восстановление VHS"));
     if (t.upscale.vhsRestore && idx >= 0)
         m_upscale->setItemText(idx, UpscaleOptions::modeName(t.upscale.mode) + QStringLiteral(" + VHS"));
     for (int i = 0; i < m_upscale->count(); ++i) {
@@ -435,7 +436,7 @@ void TaskCard::refresh()
     if (busy) {
         m_actionStack->setCurrentIndex(1);
         m_progress->setValue(int(t.progress * 1000));
-        m_status->setText(t.status == ConversionTask::Waiting ? QStringLiteral("В очереди")
+        m_status->setText(t.status == ConversionTask::Waiting ? T("В очереди")
                                                               : QStringLiteral("%1  %2%").arg(t.message).arg(int(t.progress * 100)));
     } else if (t.status == ConversionTask::Done) {
         m_actionStack->setCurrentIndex(2);
@@ -443,10 +444,10 @@ void TaskCard::refresh()
         m_actionStack->setCurrentIndex(0);
         m_convert->setEnabled(t.probed && mi.ok);
         if (t.status == ConversionTask::Failed || t.status == ConversionTask::Cancelled) {
-            m_convert->setText(t.status == ConversionTask::Failed ? QStringLiteral("Повторить") : QStringLiteral("Продолжить"));
+            m_convert->setText(t.status == ConversionTask::Failed ? T("Повторить") : T("Продолжить"));
             m_convert->setToolTip(t.message);
         } else {
-            m_convert->setText(QStringLiteral("Конвертировать"));
+            m_convert->setText(T("Конвертировать"));
             m_convert->setToolTip(t.probed && !mi.ok ? mi.error : QString());
         }
     }
@@ -456,7 +457,7 @@ void TaskCard::refresh()
 
     if (t.probed && !mi.ok) {
         m_status->setText(mi.error);
-        m_thumb->setText(QStringLiteral("Ошибка"));
+        m_thumb->setText(T("Ошибка"));
         m_thumb->setToolTip(mi.error);
     }
 }
@@ -513,7 +514,7 @@ void TaskCard::openTrim()
 void TaskCard::renameTarget()
 {
     bool ok = false;
-    const QString n = Ui::askText(this, QStringLiteral("Имя файла"), QStringLiteral("Новое имя (без расширения):"),
+    const QString n = Ui::askText(this, T("Имя файла"), T("Новое имя (без расширения):"),
                                   m_task->outputName, &ok);
     QString clean = n.trimmed();
     for (const QChar c : QStringLiteral("\\/:*?\"<>|"))

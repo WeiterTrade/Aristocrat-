@@ -27,7 +27,9 @@ QString languageName(const QString &code)
 
 void init()
 {
-    QString lang = QSettings().value("general/language").toString();
+    QString lang = qEnvironmentVariable("ARISTOCRAT_LANG");   // для проверки сборки
+    if (lang.isEmpty())
+        lang = QSettings().value("general/language").toString();
     if (lang.isEmpty()) {
         // По умолчанию — язык системы; если он не поддерживается — английский
         lang = QLocale::system().name().left(2).toLower();

@@ -39,9 +39,9 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "$env:IQTA_TOOLS\mingw810_64\bin;$env:PATH"
-          $out = "dist\AristocratVideoConverter"
+          $out = "dist\Aristocrat Видеоконвертер"
           New-Item -ItemType Directory -Force -Path "$out\tools" | Out-Null
-          Copy-Item build\AristocratVideoConverter.exe $out\
+          Copy-Item build\AristocratVideoConverter.exe "$out\Aristocrat Видеоконвертер.exe"
           # Библиотеки Qt и плагины копируем явно (windeployqt не видит SVG-плагины)
           $qt = $env:QT_ROOT_DIR
           foreach ($dll in "Qt5Core","Qt5Gui","Qt5Widgets","Qt5Svg") { Copy-Item "$qt\bin\$dll.dll" $out\ }
@@ -83,7 +83,7 @@ jobs:
       - name: Архив для выпуска
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
-        run: Compress-Archive -Path dist\AristocratVideoConverter -DestinationPath AristocratVideoConverter-Windows-x64.zip
+        run: Compress-Archive -Path "dist\Aristocrat Видеоконвертер" -DestinationPath AristocratVideoConverter-Windows-x64.zip
 
       - name: Выпуск
         if: startsWith(github.ref, 'refs/tags/v')
@@ -136,7 +136,7 @@ jobs:
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
             -d AppDir/usr/share/applications/aristocrat-video-converter.desktop \
             -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
-          mv Aristocrat*.AppImage AristocratVideoConverter-x86_64.AppImage
+          mv Aristocrat*.AppImage "Aristocrat Видеоконвертер-x86_64.AppImage"
 
       - name: Проверка запуска (скриншот в журнал)
         env:
@@ -149,7 +149,7 @@ jobs:
           shot() {   # $1 — имя, остальное — аргументы программы
             name=$1; shift
             xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
-              ./AristocratVideoConverter-x86_64.AppImage "$@" & APP=$!
+              "./Aristocrat Видеоконвертер-x86_64.AppImage" "$@" & APP=$!
               sleep 14
               if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
               import -window root shot.png
@@ -162,14 +162,15 @@ jobs:
           shot convert "$PWD/Кассета 1994.mp4"
           shot download --page=1
           shot settings --demo-settings=1
+          ARISTOCRAT_LANG=en shot english --demo-settings=2
 
       - uses: actions/upload-artifact@v4
         with:
           name: AristocratVideoConverter-Linux-x86_64
-          path: AristocratVideoConverter-x86_64.AppImage
+          path: "Aristocrat Видеоконвертер-x86_64.AppImage"
 
       - name: Выпуск
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: AristocratVideoConverter-x86_64.AppImage
+          files: "Aristocrat Видеоконвертер-x86_64.AppImage"

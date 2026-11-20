@@ -1,4 +1,5 @@
 #include "Task.h"
+#include "I18n.h"
 
 #include <QtMath>
 
@@ -17,11 +18,11 @@ bool EditOptions::hasVideoFilters() const
 QString UpscaleOptions::modeName(Mode m)
 {
     switch (m) {
-    case None: return QStringLiteral("Без апскейла");
-    case Fast1080: return QStringLiteral("1080p — быстро");
-    case Fast4K: return QStringLiteral("4K — быстро");
-    case AI1080: return QStringLiteral("1080p — нейросеть");
-    case AI4K: return QStringLiteral("4K — нейросеть");
+    case None: return T("Без апскейла");
+    case Fast1080: return T("1080p — быстро");
+    case Fast4K: return T("4K — быстро");
+    case AI1080: return T("1080p — нейросеть");
+    case AI4K: return T("4K — нейросеть");
     }
     return {};
 }
@@ -112,6 +113,6 @@ QString formatSize(qint64 bytes)
 {
     const double mb = bytes / (1024.0 * 1024.0);
     if (mb >= 1024.0)
-        return QString::number(mb / 1024.0, 'f', 2).replace('.', ',') + QStringLiteral(" ГБ");
-    return QString::number(mb, 'f', 2).replace('.', ',') + QStringLiteral(" МБ");
+        return QString::number(mb / 1024.0, 'f', 2).replace('.', ',') + T(" ГБ");
+    return QString::number(mb, 'f', 2).replace('.', ',') + T(" МБ");
 }

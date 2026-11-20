@@ -1,4 +1,5 @@
 #include "EditDialog.h"
+#include "core/I18n.h"
 #include "FramePreview.h"
 #include "Widgets.h"
 #include "core/FfmpegCommand.h"
@@ -61,13 +62,13 @@ EditDialog::EditDialog(const TaskPtr &task, int initialTab, QWidget *parent)
     bodyLay->setSpacing(18);
 
     auto *left = new QVBoxLayout;
-    auto *l1 = new QLabel(QStringLiteral("Исходник"), body);
+    auto *l1 = new QLabel(T("Исходник"), body);
     l1->setObjectName(QStringLiteral("Muted"));
     m_orig = new PreviewLabel(body);
     m_orig->setSourceSize(sourceSize());
     m_orig->setCropRect(m_opt.crop);
     auto *outHead = new QHBoxLayout;
-    auto *l2 = new QLabel(QStringLiteral("Результат"), body);
+    auto *l2 = new QLabel(T("Результат"), body);
     l2->setObjectName(QStringLiteral("Muted"));
     m_timeLabel = new QLabel(body);
     m_timeLabel->setObjectName(QStringLiteral("Muted"));
@@ -95,8 +96,8 @@ EditDialog::EditDialog(const TaskPtr &task, int initialTab, QWidget *parent)
     bodyLay->addWidget(pages);
 
     // Верхние вкладки только переключают правую панель
-    for (const QString &t : {QStringLiteral("Кадрирование"), QStringLiteral("Эффекты"), QStringLiteral("Водяной знак"),
-                             QStringLiteral("Субтитры"), QStringLiteral("Аудио")})
+    for (const QString &t : {T("Кадрирование"), T("Эффекты"), T("Водяной знак"),
+                             T("Субтитры"), T("Аудио")})
         m_tabs->addTab(new QWidget, t);
     m_tabs->setMaximumHeight(m_tabs->tabBar()->sizeHint().height() + 2);
     root->insertWidget(1, body, 10);
@@ -110,10 +111,10 @@ EditDialog::EditDialog(const TaskPtr &task, int initialTab, QWidget *parent)
 
     auto *btns = new QHBoxLayout;
     btns->setContentsMargins(18, 0, 18, 0);
-    auto *applyAll = new QPushButton(QStringLiteral("Применить ко всем"), this);
-    auto *reset = new QPushButton(QStringLiteral("Сбросить всё"), this);
+    auto *applyAll = new QPushButton(T("Применить ко всем"), this);
+    auto *reset = new QPushButton(T("Сбросить всё"), this);
     auto *ok = Ui::primaryButton(QStringLiteral("OK"), this);
-    auto *cancel = Ui::primaryButton(QStringLiteral("Отмена"), this);
+    auto *cancel = Ui::primaryButton(T("Отмена"), this);
     ok->setMinimumWidth(140);
     cancel->setMinimumWidth(140);
     btns->addWidget(applyAll);
@@ -185,12 +186,12 @@ QWidget *EditDialog::buildCropTab()
     lay->setContentsMargins(20, 18, 20, 18);
     lay->setSpacing(12);
 
-    lay->addWidget(new QLabel(QStringLiteral("Поворот:")));
+    lay->addWidget(new QLabel(T("Поворот:")));
     auto *rot = new QHBoxLayout;
     struct B { const char *icon; const char *tip; int kind; };
     for (const B &b : {B{"rotl", "Повернуть влево на 90°", 0}, B{"rotr", "Повернуть вправо на 90°", 1},
                        B{"fliph", "Отразить по горизонтали", 2}, B{"flipv", "Отразить по вертикали", 3}}) {
-        auto *btn = Ui::iconButton(b.icon, QString::fromUtf8(b.tip), w, 26);
+        auto *btn = Ui::iconButton(b.icon, T(b.tip), w, 26);
         btn->setStyleSheet(QStringLiteral("QToolButton{background:#3A2F33;border:1px solid #4A3E41;border-radius:4px;padding:8px;}"
                                           "QToolButton:hover{border-color:#E2BC5C;}"));
         rot->addWidget(btn);
@@ -200,47 +201,47 @@ QWidget *EditDialog::buildCropTab()
             else if (kind == 1) m_opt.rotate = (m_opt.rotate + 90) % 360;
             else if (kind == 2) m_opt.flipH = !m_opt.flipH;
             else m_opt.flipV = !m_opt.flipV;
-            m_rotLabel->setText(QStringLiteral("Поворот: %1°%2%3").arg(m_opt.rotate)
-                                    .arg(m_opt.flipH ? QStringLiteral(", отражено ↔") : QString())
-                                    .arg(m_opt.flipV ? QStringLiteral(", отражено ↕") : QString()));
+            m_rotLabel->setText(T("Поворот: %1°%2%3").arg(m_opt.rotate)
+                                    .arg(m_opt.flipH ? T(", отражено ↔") : QString())
+                                    .arg(m_opt.flipV ? T(", отражено ↕") : QString()));
             changed();
         });
     }
     rot->addStretch();
     lay->addLayout(rot);
-    m_rotLabel = new QLabel(QStringLiteral("Поворот: %1°").arg(m_opt.rotate), w);
+    m_rotLabel = new QLabel(T("Поворот: %1°").arg(m_opt.rotate), w);
     m_rotLabel->setObjectName(QStringLiteral("Muted"));
     lay->addWidget(m_rotLabel);
 
     lay->addSpacing(8);
-    lay->addWidget(new QLabel(QStringLiteral("Исходный размер:  %1 * %2").arg(m_task->info.width).arg(m_task->info.height)));
+    lay->addWidget(new QLabel(T("Исходный размер:  %1 * %2").arg(m_task->info.width).arg(m_task->info.height)));
 
     lay->addSpacing(8);
-    lay->addWidget(new QLabel(QStringLiteral("Область кадра (мышью на верхнем кадре или числами):")));
+    lay->addWidget(new QLabel(T("Область кадра (мышью на верхнем кадре или числами):")));
     auto *g = new QGridLayout;
     auto mk = [w](int max) { auto *s = new QSpinBox(w); s->setRange(0, max); s->setSingleStep(2); return s; };
     m_cropW = mk(m_task->info.width);
     m_cropH = mk(m_task->info.height);
     m_cropX = mk(m_task->info.width);
     m_cropY = mk(m_task->info.height);
-    g->addWidget(new QLabel(QStringLiteral("Ширина")), 0, 0);
+    g->addWidget(new QLabel(T("Ширина")), 0, 0);
     g->addWidget(m_cropW, 0, 1);
-    g->addWidget(new QLabel(QStringLiteral("Высота")), 0, 2);
+    g->addWidget(new QLabel(T("Высота")), 0, 2);
     g->addWidget(m_cropH, 0, 3);
     g->addWidget(new QLabel(QStringLiteral("X")), 1, 0);
     g->addWidget(m_cropX, 1, 1);
     g->addWidget(new QLabel(QStringLiteral("Y")), 1, 2);
     g->addWidget(m_cropY, 1, 3);
     lay->addLayout(g);
-    auto *center = new QPushButton(QStringLiteral("По центру"), w);
+    auto *center = new QPushButton(T("По центру"), w);
     lay->addWidget(center);
 
     lay->addSpacing(8);
-    lay->addWidget(new QLabel(QStringLiteral("Соотношение сторон:")));
+    lay->addWidget(new QLabel(T("Соотношение сторон:")));
     m_aspect = new QComboBox(w);
-    m_aspect->addItem(QStringLiteral("Как в оригинале"), 0.0);
-    m_aspect->addItem(QStringLiteral("Во весь экран (без чёрных полей)"), -1.0);
-    m_aspect->addItem(QStringLiteral("Растянуть на весь кадр"), -2.0);
+    m_aspect->addItem(T("Как в оригинале"), 0.0);
+    m_aspect->addItem(T("Во весь экран (без чёрных полей)"), -1.0);
+    m_aspect->addItem(T("Растянуть на весь кадр"), -2.0);
     m_aspect->addItem(QStringLiteral("16:9"), 16.0 / 9.0);
     m_aspect->addItem(QStringLiteral("4:3"), 4.0 / 3.0);
     m_aspect->addItem(QStringLiteral("1:1"), 1.0);
@@ -254,7 +255,7 @@ QWidget *EditDialog::buildCropTab()
     if (m_opt.fit == 1) m_aspect->setCurrentIndex(1);
     else if (m_opt.fit == 2) m_aspect->setCurrentIndex(2);
     lay->addStretch();
-    auto *reset = new QPushButton(QStringLiteral("Сбросить"), w);
+    auto *reset = new QPushButton(T("Сбросить"), w);
     lay->addWidget(reset);
 
     syncCropFields();
@@ -280,7 +281,7 @@ QWidget *EditDialog::buildCropTab()
         m_opt.crop = QRect();
         m_opt.rotate = 0;
         m_opt.flipH = m_opt.flipV = false;
-        m_rotLabel->setText(QStringLiteral("Поворот: 0°"));
+        m_rotLabel->setText(T("Поворот: 0°"));
         m_aspect->setCurrentIndex(0);
         m_opt.fit = 0;
         m_opt.autoBars = false;
@@ -315,7 +316,7 @@ void EditDialog::applyAspect()
     if (ar == -1.0) {
         // Во весь экран: ищем чёрные поля и заполняем кадр целиком
         m_opt.fit = 1;
-        m_barsLabel->setText(QStringLiteral("Поиск чёрных полей…"));
+        m_barsLabel->setText(T("Поиск чёрных полей…"));
         ConversionTask copy = *m_task;
         auto rect = QSharedPointer<QRect>::create();
         Ui::runAsync(this, [copy, rect] { *rect = FfmpegCommand::detectBlackBars(copy); }, [this, rect] {
@@ -325,9 +326,9 @@ void EditDialog::applyAspect()
             m_opt.crop = *rect;
             m_opt.autoBars = true;
             if (rect->isNull()) {
-                m_barsLabel->setText(QStringLiteral("Чёрных полей не найдено. Кадр будет заполнен целиком под выбранное разрешение."));
+                m_barsLabel->setText(T("Чёрных полей не найдено. Кадр будет заполнен целиком под выбранное разрешение."));
             } else {
-                m_barsLabel->setText(QStringLiteral("Чёрные поля убраны: слева %1, справа %2, сверху %3, снизу %4 пикс.")
+                m_barsLabel->setText(T("Чёрные поля убраны: слева %1, справа %2, сверху %3, снизу %4 пикс.")
                                          .arg(rect->x()).arg(src.width() - rect->right() - 1)
                                          .arg(rect->y()).arg(src.height() - rect->bottom() - 1));
             }
@@ -375,27 +376,27 @@ QWidget *EditDialog::buildEffectTab()
         lay->addLayout(h);
         connect(slider, &QSlider::valueChanged, this, [this, val](int v) { val->setText(QString::number(v)); });
     };
-    row(QStringLiteral("Яркость"), m_opt.brightness, m_bright);
-    row(QStringLiteral("Контраст"), m_opt.contrast, m_contrast);
-    row(QStringLiteral("Насыщенность"), m_opt.saturation, m_sat);
+    row(T("Яркость"), m_opt.brightness, m_bright);
+    row(T("Контраст"), m_opt.contrast, m_contrast);
+    row(T("Насыщенность"), m_opt.saturation, m_sat);
 
     lay->addSpacing(10);
-    m_deint = new QCheckBox(QStringLiteral("Убрать чересстрочность (гребёнку)"), w);
+    m_deint = new QCheckBox(T("Убрать чересстрочность (гребёнку)"), w);
     m_deint->setObjectName(QStringLiteral("PlainCheck"));
     m_deint->setChecked(m_opt.deinterlace);
-    m_denoise = new QCheckBox(QStringLiteral("Шумоподавление"), w);
+    m_denoise = new QCheckBox(T("Шумоподавление"), w);
     m_denoise->setObjectName(QStringLiteral("PlainCheck"));
     m_denoise->setChecked(m_opt.denoise);
     lay->addWidget(m_deint);
     if (m_task->info.interlaced) {
-        auto *hint = new QLabel(QStringLiteral("Видео чересстрочное — рекомендуется включить."), w);
+        auto *hint = new QLabel(T("Видео чересстрочное — рекомендуется включить."), w);
         hint->setObjectName(QStringLiteral("StatusLabel"));
         hint->setWordWrap(true);
         lay->addWidget(hint);
     }
     lay->addWidget(m_denoise);
     lay->addStretch();
-    auto *reset = new QPushButton(QStringLiteral("Сбросить"), w);
+    auto *reset = new QPushButton(T("Сбросить"), w);
     lay->addWidget(reset);
 
     auto apply = [this] {
@@ -429,32 +430,32 @@ QWidget *EditDialog::buildWatermarkTab()
     lay->setContentsMargins(20, 18, 20, 18);
     lay->setSpacing(10);
 
-    m_wmNone = new QRadioButton(QStringLiteral("Без водяного знака"), w);
-    m_wmText = new QRadioButton(QStringLiteral("Текст"), w);
-    m_wmImage = new QRadioButton(QStringLiteral("Картинка"), w);
+    m_wmNone = new QRadioButton(T("Без водяного знака"), w);
+    m_wmText = new QRadioButton(T("Текст"), w);
+    m_wmImage = new QRadioButton(T("Картинка"), w);
     auto *grp = new QButtonGroup(w);
     grp->addButton(m_wmNone);
     grp->addButton(m_wmText);
     grp->addButton(m_wmImage);
 
     m_wmTextEdit = new QLineEdit(m_opt.watermarkText, w);
-    m_wmTextEdit->setPlaceholderText(QStringLiteral("Текст водяного знака"));
+    m_wmTextEdit->setPlaceholderText(T("Текст водяного знака"));
     m_wmImagePath = new QLineEdit(m_opt.watermarkImage, w);
     m_wmImagePath->setReadOnly(true);
-    auto *browse = new QPushButton(QStringLiteral("Выбрать…"), w);
+    auto *browse = new QPushButton(T("Выбрать…"), w);
     auto *imgRow = new QHBoxLayout;
     imgRow->addWidget(m_wmImagePath, 1);
     imgRow->addWidget(browse);
 
     m_wmPos = new QComboBox(w);
-    m_wmPos->addItems({QStringLiteral("Слева сверху"), QStringLiteral("Справа сверху"), QStringLiteral("Слева снизу"),
-                       QStringLiteral("Справа снизу"), QStringLiteral("По центру")});
+    m_wmPos->addItems({T("Слева сверху"), T("Справа сверху"), T("Слева снизу"),
+                       T("Справа снизу"), T("По центру")});
     m_wmPos->setCurrentIndex(m_opt.watermarkPos);
     m_wmOpacity = makeSlider(5, 100, m_opt.watermarkOpacity, w);
     m_wmSize = new QSpinBox(w);
     m_wmSize->setRange(4, 200);
     m_wmSize->setValue(m_opt.watermarkSize);
-    m_wmSize->setToolTip(QStringLiteral("Для текста — размер шрифта, для картинки — % ширины кадра"));
+    m_wmSize->setToolTip(T("Для текста — размер шрифта, для картинки — % ширины кадра"));
 
     lay->addWidget(m_wmNone);
     lay->addWidget(m_wmText);
@@ -462,9 +463,9 @@ QWidget *EditDialog::buildWatermarkTab()
     lay->addWidget(m_wmImage);
     lay->addLayout(imgRow);
     auto *form = new QFormLayout;
-    form->addRow(QStringLiteral("Положение:"), m_wmPos);
-    form->addRow(QStringLiteral("Прозрачность:"), m_wmOpacity);
-    form->addRow(QStringLiteral("Размер:"), m_wmSize);
+    form->addRow(T("Положение:"), m_wmPos);
+    form->addRow(T("Прозрачность:"), m_wmOpacity);
+    form->addRow(T("Размер:"), m_wmSize);
     lay->addSpacing(8);
     lay->addLayout(form);
     lay->addStretch();
@@ -487,8 +488,8 @@ QWidget *EditDialog::buildWatermarkTab()
     connect(m_wmOpacity, &QSlider::valueChanged, this, apply);
     connect(m_wmSize, QOverload<int>::of(&QSpinBox::valueChanged), this, apply);
     connect(browse, &QPushButton::clicked, this, [this, apply] {
-        const QString f = QFileDialog::getOpenFileName(this, QStringLiteral("Картинка для водяного знака"),
-                                                       Settings::lastOpenDir(), QStringLiteral("Изображения (*.png *.jpg *.jpeg *.bmp *.webp)"));
+        const QString f = QFileDialog::getOpenFileName(this, T("Картинка для водяного знака"),
+                                                       Settings::lastOpenDir(), T("Изображения (*.png *.jpg *.jpeg *.bmp *.webp)"));
         if (f.isEmpty())
             return;
         m_wmImagePath->setText(f);
@@ -508,26 +509,26 @@ QWidget *EditDialog::buildSubtitleTab()
     lay->setContentsMargins(20, 18, 20, 18);
     lay->setSpacing(10);
 
-    lay->addWidget(new QLabel(QStringLiteral("Встроенные субтитры:")));
+    lay->addWidget(new QLabel(T("Встроенные субтитры:")));
     m_subTrack = new QComboBox(w);
-    m_subTrack->addItem(QStringLiteral("Нет"), -1);
+    m_subTrack->addItem(T("Нет"), -1);
     for (const StreamTrack &t : m_task->info.subtitleTracks)
         m_subTrack->addItem(t.details(), t.index);
     m_subTrack->setCurrentIndex(qMax(0, m_subTrack->findData(m_opt.subtitleTrack)));
     lay->addWidget(m_subTrack);
 
     lay->addSpacing(8);
-    lay->addWidget(new QLabel(QStringLiteral("Или файл субтитров (SRT, ASS):")));
+    lay->addWidget(new QLabel(T("Или файл субтитров (SRT, ASS):")));
     m_subFile = new QLineEdit(m_opt.subtitleFile, w);
     m_subFile->setReadOnly(true);
-    auto *browse = new QPushButton(QStringLiteral("Добавить…"), w);
-    auto *clear = new QPushButton(QStringLiteral("Убрать"), w);
+    auto *browse = new QPushButton(T("Добавить…"), w);
+    auto *clear = new QPushButton(T("Убрать"), w);
     auto *row = new QHBoxLayout;
     row->addWidget(browse);
     row->addWidget(clear);
     lay->addWidget(m_subFile);
     lay->addLayout(row);
-    auto *note = new QLabel(QStringLiteral("Субтитры впечатываются в изображение и будут видны на любом устройстве."), w);
+    auto *note = new QLabel(T("Субтитры впечатываются в изображение и будут видны на любом устройстве."), w);
     note->setObjectName(QStringLiteral("Muted"));
     note->setWordWrap(true);
     lay->addWidget(note);
@@ -539,8 +540,8 @@ QWidget *EditDialog::buildSubtitleTab()
         changed();
     });
     connect(browse, &QPushButton::clicked, this, [this] {
-        const QString f = QFileDialog::getOpenFileName(this, QStringLiteral("Файл субтитров"), QFileInfo(m_task->input).absolutePath(),
-                                                       QStringLiteral("Субтитры (*.srt *.ass *.ssa *.vtt)"));
+        const QString f = QFileDialog::getOpenFileName(this, T("Файл субтитров"), QFileInfo(m_task->input).absolutePath(),
+                                                       T("Субтитры (*.srt *.ass *.ssa *.vtt)"));
         if (f.isEmpty())
             return;
         m_opt.subtitleFile = f;
@@ -565,17 +566,17 @@ QWidget *EditDialog::buildAudioTab()
     lay->setContentsMargins(20, 18, 20, 18);
     lay->setSpacing(10);
 
-    lay->addWidget(new QLabel(QStringLiteral("Звуковая дорожка:")));
+    lay->addWidget(new QLabel(T("Звуковая дорожка:")));
     m_audioTrack = new QComboBox(w);
     for (const StreamTrack &t : m_task->info.audioTracks)
         m_audioTrack->addItem(t.label(), t.index);
-    m_audioTrack->addItem(QStringLiteral("Без звука"), -1);
+    m_audioTrack->addItem(T("Без звука"), -1);
     m_audioTrack->setCurrentIndex(qMax(0, m_audioTrack->findData(m_opt.audioTrack)));
     lay->addWidget(m_audioTrack);
 
     lay->addSpacing(8);
     auto *h = new QHBoxLayout;
-    h->addWidget(new QLabel(QStringLiteral("Громкость:")));
+    h->addWidget(new QLabel(T("Громкость:")));
     m_volume = makeSlider(0, 300, m_opt.volume, w);
     m_volumeLabel = new QLabel(QStringLiteral("%1%").arg(m_opt.volume), w);
     m_volumeLabel->setMinimumWidth(44);

@@ -1,4 +1,5 @@
 #include "TrimDialog.h"
+#include "core/I18n.h"
 #include "FramePreview.h"
 #include "Widgets.h"
 
@@ -282,7 +283,7 @@ void TimelineWidget::keyReleaseEvent(QKeyEvent *e)
 TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     : FramedDialog(parent, true), m_task(task)
 {
-    setWindowTitle(QStringLiteral("Обрезка — ") + QFileInfo(task->input).fileName());
+    setWindowTitle(T("Обрезка — ") + QFileInfo(task->input).fileName());
     resize(1000, 720);
     const double dur = task->info.duration;
 
@@ -300,12 +301,12 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     m_posLabel->setMinimumWidth(230);
     bar->addWidget(m_posLabel);
     bar->addStretch();
-    auto *moveLbl = new QLabel(QStringLiteral("Стрелки двигают:"), this);
+    auto *moveLbl = new QLabel(T("Стрелки двигают:"), this);
     moveLbl->setObjectName(QStringLiteral("Muted"));
     bar->addWidget(moveLbl);
     const char *names[3] = {"Позицию", "Начало", "Конец"};
     for (int i = 0; i < 3; ++i) {
-        m_modeBtns[i] = new QPushButton(QString::fromUtf8(names[i]), this);
+        m_modeBtns[i] = new QPushButton(T(names[i]), this);
         m_modeBtns[i]->setObjectName(i == 0 ? QStringLiteral("SegLeft") : i == 2 ? QStringLiteral("SegRight") : QStringLiteral("SegLeft"));
         if (i == 1) m_modeBtns[i]->setStyleSheet(QStringLiteral("border-radius:0;"));
         m_modeBtns[i]->setCheckable(true);
@@ -321,7 +322,7 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     m_timeline->setThumbCount(m_thumbCount);
     root->addWidget(m_timeline);
 
-    auto *hint = new QLabel(QStringLiteral("← → — шаг 1 с, удерживайте для быстрой перемотки · Shift + ← → — один кадр · "
+    auto *hint = new QLabel(T("← → — шаг 1 с, удерживайте для быстрой перемотки · Shift + ← → — один кадр · "
                                            "Tab — следующая метка · щёлкните по метке, чтобы двигать её"),
                             this);
     hint->setObjectName(QStringLiteral("Muted"));
@@ -337,14 +338,14 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
         e->setTimeRange(QTime(0, 0), toTime(dur));
         e->setMinimumWidth(130);
     }
-    auto *setStart = new QPushButton(QStringLiteral("Начало здесь"), this);
-    auto *setEnd = new QPushButton(QStringLiteral("Конец здесь"), this);
+    auto *setStart = new QPushButton(T("Начало здесь"), this);
+    auto *setEnd = new QPushButton(T("Конец здесь"), this);
     for (QPushButton *b : {setStart, setEnd})
         b->setFocusPolicy(Qt::NoFocus);
-    grid->addWidget(new QLabel(QStringLiteral("Начало:")), 0, 0);
+    grid->addWidget(new QLabel(T("Начало:")), 0, 0);
     grid->addWidget(m_start, 0, 1);
     grid->addWidget(setStart, 0, 2);
-    grid->addWidget(new QLabel(QStringLiteral("Конец:")), 0, 4);
+    grid->addWidget(new QLabel(T("Конец:")), 0, 4);
     grid->addWidget(m_end, 0, 5);
     grid->addWidget(setEnd, 0, 6);
     grid->setColumnMinimumWidth(3, 30);
@@ -355,9 +356,9 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     root->addLayout(grid);
 
     auto *btns = new QHBoxLayout;
-    auto *reset = new QPushButton(QStringLiteral("Сбросить"), this);
-    auto *ok = Ui::primaryButton(QStringLiteral("Сохранить"), this);
-    auto *cancel = Ui::primaryButton(QStringLiteral("Отмена"), this);
+    auto *reset = new QPushButton(T("Сбросить"), this);
+    auto *ok = Ui::primaryButton(T("Сохранить"), this);
+    auto *cancel = Ui::primaryButton(T("Отмена"), this);
     for (QPushButton *b : {reset, ok, cancel}) {
         b->setFocusPolicy(Qt::NoFocus);
         b->setMinimumWidth(130);
@@ -379,7 +380,7 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     connect(&m_frameTimer, &QTimer::timeout, this, &TrimDialog::grabFrame);
 
     connect(m_timeline, &TimelineWidget::positionChanged, this, [this](double t) {
-        m_posLabel->setText(QStringLiteral("Позиция:  %1  /  %2").arg(fmtTime(t), fmtTime(m_task->info.duration)));
+        m_posLabel->setText(T("Позиция:  %1  /  %2").arg(fmtTime(t), fmtTime(m_task->info.duration)));
         requestFrame();
     });
     connect(m_timeline, &TimelineWidget::rangeChanged, this, &TrimDialog::syncEditsFromTimeline);
@@ -410,7 +411,7 @@ TrimDialog::TrimDialog(const TaskPtr &task, QWidget *parent)
     connect(ok, &QPushButton::clicked, this, &QDialog::accept);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
-    m_posLabel->setText(QStringLiteral("Позиция:  %1  /  %2").arg(fmtTime(m_timeline->position()), fmtTime(dur)));
+    m_posLabel->setText(T("Позиция:  %1  /  %2").arg(fmtTime(m_timeline->position()), fmtTime(dur)));
     m_timeline->setFocus();
     grabFrame();
     loadThumbs(0);
@@ -438,7 +439,7 @@ double TrimDialog::end() const
 
 void TrimDialog::updateInfo()
 {
-    m_info->setText(QStringLiteral("Длительность: %1").arg(fmtTime(m_timeline->end() - m_timeline->start())));
+    m_info->setText(T("Длительность: %1").arg(fmtTime(m_timeline->end() - m_timeline->start())));
 }
 
 void TrimDialog::requestFrame()

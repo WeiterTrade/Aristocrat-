@@ -1,4 +1,5 @@
 #include "PresetEditDialog.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 
 #include <QComboBox>
@@ -18,7 +19,7 @@ static void selectData(QComboBox *c, const QVariant &v)
 PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
     : FramedDialog(parent, false), m_base(p)
 {
-    setWindowTitle(QStringLiteral("Настройки формата"));
+    setWindowTitle(T("Настройки формата"));
     setMinimumWidth(460);
 
     auto *root = contentLayout();
@@ -28,7 +29,7 @@ PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
     form->setHorizontalSpacing(16);
     form->setVerticalSpacing(10);
 
-    m_name = new QLineEdit(p.custom ? p.name : p.name + QStringLiteral(" (своё)"), this);
+    m_name = new QLineEdit(p.custom ? p.name : T(p.name) + T(" (своё)"), this);
 
     m_ext = new QComboBox(this);
     for (const QString &e : {"mp4", "mkv", "mov", "avi", "wmv", "webm", "flv", "mpg", "m4v", "3gp",
@@ -46,22 +47,22 @@ PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
     selectData(m_vcodec, p.vcodec);
 
     m_res = new QComboBox(this);
-    m_res->addItem(QStringLiteral("Как в исходнике"), QSize(0, 0));
+    m_res->addItem(T("Как в исходнике"), QSize(0, 0));
     for (const QSize &s : {QSize(3840, 2160), QSize(2560, 1440), QSize(1920, 1080), QSize(1280, 720),
                            QSize(1024, 576), QSize(854, 480), QSize(720, 576), QSize(720, 480), QSize(640, 360)})
         m_res->addItem(QStringLiteral("%1*%2").arg(s.width()).arg(s.height()), s);
     selectData(m_res, QSize(p.width, p.height));
 
     m_fps = new QComboBox(this);
-    m_fps->addItem(QStringLiteral("Как в исходнике"), 0.0);
+    m_fps->addItem(T("Как в исходнике"), 0.0);
     for (double f : {23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0})
         m_fps->addItem(QString::number(f), f);
     selectData(m_fps, p.fps);
 
     m_vbr = new QComboBox(this);
-    m_vbr->addItem(QStringLiteral("Авто (по качеству)"), 0);
+    m_vbr->addItem(T("Авто (по качеству)"), 0);
     for (int b : {800, 1500, 2500, 4000, 6000, 8000, 12000, 16000, 20000, 30000, 40000})
-        m_vbr->addItem(QStringLiteral("%1 кбит/с").arg(b), b);
+        m_vbr->addItem(T("%1 кбит/с").arg(b), b);
     selectData(m_vbr, p.vbitrate);
 
     m_acodec = new QComboBox(this);
@@ -76,29 +77,29 @@ PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
     selectData(m_acodec, p.acodec);
 
     m_abr = new QComboBox(this);
-    m_abr->addItem(QStringLiteral("По умолчанию"), 0);
+    m_abr->addItem(T("По умолчанию"), 0);
     for (int b : {64, 96, 128, 160, 192, 256, 320})
-        m_abr->addItem(QStringLiteral("%1 кбит/с").arg(b), b);
+        m_abr->addItem(T("%1 кбит/с").arg(b), b);
     selectData(m_abr, p.abitrate);
 
-    form->addRow(QStringLiteral("Название:"), m_name);
-    form->addRow(QStringLiteral("Контейнер:"), m_ext);
+    form->addRow(T("Название:"), m_name);
+    form->addRow(T("Контейнер:"), m_ext);
     if (!p.isAudioOnly()) {
-        form->addRow(QStringLiteral("Видеокодек:"), m_vcodec);
-        form->addRow(QStringLiteral("Разрешение:"), m_res);
-        form->addRow(QStringLiteral("Частота кадров:"), m_fps);
-        form->addRow(QStringLiteral("Битрейт видео:"), m_vbr);
+        form->addRow(T("Видеокодек:"), m_vcodec);
+        form->addRow(T("Разрешение:"), m_res);
+        form->addRow(T("Частота кадров:"), m_fps);
+        form->addRow(T("Битрейт видео:"), m_vbr);
     } else {
         m_vcodec->hide(); m_res->hide(); m_fps->hide(); m_vbr->hide();
     }
-    form->addRow(QStringLiteral("Аудиокодек:"), m_acodec);
-    form->addRow(QStringLiteral("Битрейт звука:"), m_abr);
+    form->addRow(T("Аудиокодек:"), m_acodec);
+    form->addRow(T("Битрейт звука:"), m_abr);
     root->addLayout(form);
 
     auto *btns = new QHBoxLayout;
     btns->addStretch();
-    auto *cancel = new QPushButton(QStringLiteral("Отмена"), this);
-    auto *ok = Ui::primaryButton(QStringLiteral("Сохранить"), this);
+    auto *cancel = new QPushButton(T("Отмена"), this);
+    auto *ok = Ui::primaryButton(T("Сохранить"), this);
     btns->addWidget(cancel);
     btns->addWidget(ok);
     root->addSpacing(12);
@@ -110,7 +111,7 @@ PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
 Preset PresetEditDialog::preset() const
 {
     Preset p = m_base;
-    p.name = m_name->text().trimmed().isEmpty() ? QStringLiteral("Свой формат") : m_name->text().trimmed();
+    p.name = m_name->text().trimmed().isEmpty() ? T("Свой формат") : m_name->text().trimmed();
     p.ext = m_ext->currentData().toString();
     if (!m_base.isAudioOnly()) {
         p.vcodec = m_vcodec->currentData().toString();

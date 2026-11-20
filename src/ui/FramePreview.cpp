@@ -1,4 +1,5 @@
 #include "FramePreview.h"
+#include "core/I18n.h"
 #include "core/FfmpegCommand.h"
 #include "core/Tools.h"
 
@@ -75,7 +76,7 @@ void PreviewLabel::paintEvent(QPaintEvent *)
         p.drawImage(r, m_img);
     if (m_busy || m_img.isNull()) {
         p.setPen(QColor("#A99F90"));
-        p.drawText(rect(), Qt::AlignCenter, m_busy ? QStringLiteral("Загрузка кадра…") : QStringLiteral("Нет изображения"));
+        p.drawText(rect(), Qt::AlignCenter, m_busy ? T("Загрузка кадра…") : T("Нет изображения"));
     }
     if (m_editable && !m_img.isNull() && m_source.isValid()) {
         QRectF c = r;

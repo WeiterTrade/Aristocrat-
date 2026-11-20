@@ -1,4 +1,5 @@
 #include "FormatPopup.h"
+#include "core/I18n.h"
 #include "PresetEditDialog.h"
 #include "Widgets.h"
 
@@ -27,10 +28,10 @@ FormatPopup::FormatPopup(QWidget *parent)
     m_tabs = new QTabBar(this);
     m_tabs->setExpanding(true);
     m_tabs->setDrawBase(false);
-    m_tabs->addTab(QStringLiteral("Недавние"));
-    m_tabs->addTab(QStringLiteral("Видео"));
-    m_tabs->addTab(QStringLiteral("Аудио"));
-    m_tabs->addTab(QStringLiteral("Устройства"));
+    m_tabs->addTab(T("Недавние"));
+    m_tabs->addTab(T("Видео"));
+    m_tabs->addTab(T("Аудио"));
+    m_tabs->addTab(T("Устройства"));
     m_tabs->setCurrentIndex(1);
     root->addWidget(m_tabs);
 
@@ -49,10 +50,10 @@ FormatPopup::FormatPopup(QWidget *parent)
     auto *bottom = new QHBoxLayout;
     bottom->setContentsMargins(16, 10, 16, 12);
     m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(QStringLiteral("Поиск"));
+    m_search->setPlaceholderText(T("Поиск"));
     m_search->setFixedWidth(170);
     m_search->addAction(Ui::icon("search"), QLineEdit::LeadingPosition);
-    auto *create = new QPushButton(Ui::icon("add", true), QStringLiteral("Создать свой"), this);
+    auto *create = new QPushButton(Ui::icon("add", true), T("Создать свой"), this);
     create->setFlat(true);
     create->setCursor(Qt::PointingHandCursor);
     bottom->addWidget(m_search);
@@ -137,7 +138,7 @@ void FormatPopup::fillPresets(const QList<Preset> &list)
 {
     m_list->clear();
     if (list.isEmpty()) {
-        auto *it = new QListWidgetItem(QStringLiteral("Здесь пока пусто"));
+        auto *it = new QListWidgetItem(T("Здесь пока пусто"));
         it->setFlags(Qt::NoItemFlags);
         m_list->addItem(it);
         return;
@@ -157,12 +158,12 @@ void FormatPopup::fillPresets(const QList<Preset> &list)
         const bool cur = p.id == m_current;
         auto *badge = new QLabel(w);
         badge->setPixmap(Ui::formatBadge(p.badge, 38, cur));
-        auto *name = new QLabel(m_tabs->currentIndex() == 0 ? p.title() : p.name, w);
+        auto *name = new QLabel(m_tabs->currentIndex() == 0 ? p.title() : T(p.name), w);
         name->setStyleSheet(cur ? "color:#E8C266;" : "color:#E9E1D2;");
         name->setMinimumWidth(170);
         auto *info = new QLabel(p.resolutionText() + "\n" + p.codecText(), w);
         info->setStyleSheet(cur ? "color:#E8C266;" : "color:#A99F90;");
-        auto *edit = Ui::iconButton(QStringLiteral("edit"), QStringLiteral("Настроить формат"), w);
+        auto *edit = Ui::iconButton(QStringLiteral("edit"), T("Настроить формат"), w);
         edit->setIcon(Ui::icon("edit", true));
         h->addWidget(badge);
         h->addWidget(name);

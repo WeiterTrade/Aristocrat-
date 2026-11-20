@@ -1,4 +1,5 @@
 #include "Frameless.h"
+#include "core/I18n.h"
 #include "Widgets.h"
 
 #include <QApplication>
@@ -124,18 +125,18 @@ WindowButtons::WindowButtons(QWidget *window, bool minimize, bool maximize, QWid
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
     if (minimize) {
-        auto *b = winButton("win-min", QStringLiteral("Свернуть"), this);
+        auto *b = winButton("win-min", T("Свернуть"), this);
         connect(b, &QToolButton::clicked, window, &QWidget::showMinimized);
         lay->addWidget(b);
     }
     if (maximize) {
-        m_max = winButton("win-max", QStringLiteral("Развернуть"), this);
+        m_max = winButton("win-max", T("Развернуть"), this);
         connect(m_max, &QToolButton::clicked, this, [this] {
             m_window->isMaximized() ? m_window->showNormal() : m_window->showMaximized();
         });
         lay->addWidget(m_max);
     }
-    auto *c = winButton("win-close", QStringLiteral("Закрыть"), this, true);
+    auto *c = winButton("win-close", T("Закрыть"), this, true);
     connect(c, &QToolButton::clicked, window, &QWidget::close);
     lay->addWidget(c);
     window->installEventFilter(this);
@@ -154,7 +155,7 @@ void WindowButtons::updateState()
         return;
     const bool maxed = m_window->isMaximized();
     m_max->setIcon(Ui::icon(maxed ? "win-restore" : "win-max"));
-    m_max->setToolTip(maxed ? QStringLiteral("Восстановить") : QStringLiteral("Развернуть"));
+    m_max->setToolTip(maxed ? T("Восстановить") : T("Развернуть"));
 }
 
 // ---------------- FramedDialog ----------------
@@ -287,7 +288,7 @@ QString askText(QWidget *parent, const QString &title, const QString &label, con
     lay->addWidget(edit);
     auto *btns = new QHBoxLayout;
     btns->addStretch();
-    auto *n = new QPushButton(QStringLiteral("Отмена"), d);
+    auto *n = new QPushButton(T("Отмена"), d);
     auto *y = primaryButton(QStringLiteral("OK"), d);
     y->setDefault(true);
     btns->addWidget(n);

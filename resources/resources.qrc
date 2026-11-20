@@ -2,6 +2,11 @@
 <qresource prefix="/">
   <file>style.qss</file>
   <file>presets.json</file>
+  <file>i18n/en.json</file>
+  <file>i18n/es.json</file>
+  <file>i18n/fr.json</file>
+  <file>i18n/it.json</file>
+  <file>i18n/kk.json</file>
   <file>logo/logo.svg</file>
   <file>logo/logo-small.svg</file>
   <file>logo/aristocrat.png</file>

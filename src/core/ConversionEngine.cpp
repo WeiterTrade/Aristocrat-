@@ -1,4 +1,5 @@
 #include "ConversionEngine.h"
+#include "I18n.h"
 #include "ConversionWorker.h"
 #include "FfmpegCommand.h"
 #include "Tools.h"
@@ -40,7 +41,7 @@ void ConversionEngine::start(const QList<TaskPtr> &tasks, const QString &outputD
             continue;
         t->status = ConversionTask::Waiting;
         t->progress = 0;
-        t->message = QStringLiteral("В очереди");
+        t->message = T("В очереди");
         m_queue << t;
         m_all << t;
         emit taskChanged(t->id);
@@ -74,7 +75,7 @@ void ConversionEngine::enqueue(const TaskPtr &task)
         return;
     task->status = ConversionTask::Waiting;
     task->progress = 0;
-    task->message = QStringLiteral("В очереди");
+    task->message = T("В очереди");
     m_queue << task;
     if (!m_all.contains(task))
         m_all << task;
@@ -185,17 +186,17 @@ void ConversionEngine::startMerge()
     }
     const QString ext = QFileInfo(m_outputs.first()).suffix();
     const QString out = reserveOutputPath(QDir(m_outDir).filePath(
-        QStringLiteral("Объединённое видео %1.%2").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh-mm"), ext)));
-    emit message(QStringLiteral("Объединение видео…"));
+        T("Объединённое видео %1.%2").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh-mm"), ext)));
+    emit message(T("Объединение видео…"));
     m_merge = new QProcess(this);
     connect(m_merge, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, out](int code, QProcess::ExitStatus st) {
         m_merge->deleteLater();
         m_merge = nullptr;
         if (st == QProcess::NormalExit && code == 0) {
             m_outputs << out;
-            emit message(QStringLiteral("Видео объединены: %1").arg(QFileInfo(out).fileName()));
+            emit message(T("Видео объединены: %1").arg(QFileInfo(out).fileName()));
         } else {
-            emit message(QStringLiteral("Не удалось объединить видео: для склейки у всех файлов должен быть одинаковый формат."));
+            emit message(T("Не удалось объединить видео: для склейки у всех файлов должен быть одинаковый формат."));
         }
         finishAll();
     });

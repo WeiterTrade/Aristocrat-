@@ -1,4 +1,5 @@
 #include "MediaInfo.h"
+#include "I18n.h"
 #include "Tools.h"
 
 #include <QFileInfo>
@@ -11,9 +12,9 @@
 QString StreamTrack::label() const
 {
     if (isDefault)
-        return QStringLiteral("По умолчанию");
+        return T("По умолчанию");
     QStringList parts;
-    parts << QStringLiteral("Дорожка %1").arg(index + 1);
+    parts << T("Дорожка %1").arg(index + 1);
     if (!language.isEmpty() && language != QLatin1String("und"))
         parts << language;
     else if (!title.isEmpty())
@@ -30,7 +31,7 @@ QString StreamTrack::details() const
     if (!codec.isEmpty())
         parts << codec.toUpper();
     if (channels > 0)
-        parts << (channels == 1 ? QStringLiteral("моно") : channels == 2 ? QStringLiteral("стерео") : QStringLiteral("%1 кан.").arg(channels));
+        parts << (channels == 1 ? T("моно") : channels == 2 ? T("стерео") : T("%1 кан.").arg(channels));
     if (!title.isEmpty())
         parts << title;
     return parts.join(QStringLiteral(" · "));
@@ -55,7 +56,7 @@ MediaInfo MediaInfo::probe(const QString &path)
     mi.container = fi.suffix().toUpper();
 
     if (Tools::ffprobe().isEmpty()) {
-        mi.error = QStringLiteral("Не найден ffprobe. Положите FFmpeg в папку tools рядом с программой.");
+        mi.error = T("Не найден ffprobe. Положите FFmpeg в папку tools рядом с программой.");
         return mi;
     }
 
@@ -63,14 +64,14 @@ MediaInfo MediaInfo::probe(const QString &path)
     p.start(Tools::ffprobe(), {"-v", "error", "-print_format", "json", "-show_format", "-show_streams", path});
     if (!p.waitForFinished(30000)) {
         p.kill();
-        mi.error = QStringLiteral("ffprobe не ответил");
+        mi.error = T("ffprobe не ответил");
         return mi;
     }
     const QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput());
     if (!doc.isObject()) {
         mi.error = QString::fromUtf8(p.readAllStandardError()).trimmed();
         if (mi.error.isEmpty())
-            mi.error = QStringLiteral("Файл не распознан");
+            mi.error = T("Файл не распознан");
         return mi;
     }
 
@@ -133,6 +134,6 @@ MediaInfo MediaInfo::probe(const QString &path)
 
     mi.ok = mi.hasVideo || !mi.audioTracks.isEmpty();
     if (!mi.ok)
-        mi.error = QStringLiteral("В файле нет видео или звука");
+        mi.error = T("В файле нет видео или звука");
     return mi;
 }
