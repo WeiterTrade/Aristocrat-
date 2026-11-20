@@ -224,7 +224,10 @@ jobs:
             -t 30 -target pal-dvd -shortest dvd/VIDEO_TS/VTS_01_1.VOB
           ARISTOCRAT_LANG=ru shot dvd "--demo-dvd=$PWD/dvd"
           cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
-          SHOT_WAIT=30 ARISTOCRAT_LANG=ru shot chapters "--demo-chapters=$PWD/Кассета 1994.mp4|http://127.0.0.1:8790/scenes.html"
+          cp "$PWD/Кассета 1994.mp4" "$PWD/Сцены.mp4"
+          ARISTOCRAT_TEST_AUTOCREATE=1 SHOT_WAIT=30 ARISTOCRAT_LANG=ru shot chapters "--demo-chapters=$PWD/Сцены.mp4|http://127.0.0.1:8790/scenes.html"
+          echo "--- главы в переупакованном MKV ---"; ls -la Сцены* || true
+          $T/ffprobe -v error -show_chapters -of compact "$PWD/Сцены.mkv" || echo "MKV не создан"
           # Менеджер Adult Empire: страница-образец, обложки, видео; релиз создаётся сам
           (cd tests/release && $OLDPWD/$T/ffmpeg -hide_banner -loglevel error -f lavfi -i "color=c=0x8a1f3c:s=600x850" -frames:v 1 -y 5125349h.jpg \
             && $OLDPWD/$T/ffmpeg -hide_banner -loglevel error -f lavfi -i "color=c=0x1f5a8a:s=600x850" -frames:v 1 -y 5125349bh.jpg \

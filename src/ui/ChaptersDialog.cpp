@@ -24,6 +24,7 @@
 #include <QTableWidget>
 #include <QTextStream>
 #include <QMenu>
+#include <QTimer>
 #include <QDateTime>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -253,6 +254,8 @@ void ChaptersDialog::translateTitles()
             m_table->item(r, ColTitle)->setText(t);
         }
         setBusy(false, T("Готово. Проверьте названия и тайм-коды — их можно исправить прямо в таблице."));
+        if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
+            QTimer::singleShot(500, this, &ChaptersDialog::save);
     });
     connect(tr, &Translator::failed, this, [this, tr](const QString &reason) {
         tr->deleteLater();
