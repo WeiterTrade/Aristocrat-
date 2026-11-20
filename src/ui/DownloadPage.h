@@ -94,10 +94,12 @@ signals:
     void removeRequested(const DownloadPtr &item);
     void convertRequested(const QString &file);
     void chaptersRequested(const QString &file, const QString &pageUrl);
+    void releaseRequested(const QString &file, const QString &pageUrl);
 
 private:
     DownloadPtr m_item;
     QPushButton *m_chapters;
+    QPushButton *m_release;
     QLabel *m_thumb;
     QLabel *m_title;
     QLabel *m_meta;
@@ -124,6 +126,7 @@ public:
 
 signals:
     void convertRequested(const QString &file, bool autoStart);
+    void releaseRequested(const QString &file, const QString &pageUrl);
 
 private:
     QWidget *buildSubBar();

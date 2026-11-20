@@ -29,6 +29,8 @@ public:
     void openFirstTrim();
     void reloadSettings();
     void addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless);
+    // Видео из Менеджера релизов: своё имя и папка, главы вставляются после конвертации
+    void addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless, const QString &chaptersMeta);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;

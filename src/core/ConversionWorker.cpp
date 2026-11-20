@@ -1,4 +1,5 @@
 #include "ConversionWorker.h"
+#include "Chapters.h"
 #include "I18n.h"
 #include "ConversionEngine.h"
 #include "FfmpegCommand.h"
@@ -82,7 +83,9 @@ void ConversionWorker::next()
         finishCurrent(ConversionTask::Failed, m_current->info.error.isEmpty() ? T("Файл не прочитан") : m_current->info.error);
         return;
     }
-    m_current->outputPath = m_pool->reserveOutputPath(QDir(m_outDir).filePath(m_current->outputFileName()));
+    const QString outDir = m_current->outputDir.isEmpty() ? m_outDir : m_current->outputDir;
+    QDir().mkpath(outDir);
+    m_current->outputPath = m_pool->reserveOutputPath(QDir(outDir).filePath(m_current->outputFileName()));
 
     if (m_current->upscale.isAI() && m_current->info.hasVideo && !m_current->preset.isAudioOnly())
         startAI();
@@ -169,6 +172,13 @@ void ConversionWorker::onFinished(int code, QProcess::ExitStatus status)
         return;
     }
 
+    if (!ok && m_phase == Phase::Chapters) {
+        // Видео готово, не вставились только главы — файл оставляем
+        QFile::remove(m_current->outputPath + QStringLiteral(".chapters.") + m_current->preset.ext);
+        finishCurrent(ConversionTask::Done);
+        return;
+    }
+
     if (!ok) {
         QString err = m_stderr.trimmed();
         if (code == -1)
@@ -182,8 +192,16 @@ void ConversionWorker::onFinished(int code, QProcess::ExitStatus status)
 
     switch (m_phase) {
     case Phase::Single:
+        doneOrChapters();
+        break;
+    case Phase::Chapters: {
+        const QString tmp = m_current->outputPath + QStringLiteral(".chapters.") + m_current->preset.ext;
+        QFile::remove(m_current->outputPath);
+        QFile::rename(tmp, m_current->outputPath);
+        QFile::remove(m_current->chaptersMeta);
         finishCurrent(ConversionTask::Done);
         break;
+    }
     case Phase::AIExtract:
         aiStartUpscale();
         break;
@@ -203,11 +221,24 @@ void ConversionWorker::onFinished(int code, QProcess::ExitStatus status)
     }
     case Phase::AIMux:
         QDir(m_work).removeRecursively();
-        finishCurrent(ConversionTask::Done);
+        doneOrChapters();
         break;
     default:
         break;
     }
+}
+
+void ConversionWorker::doneOrChapters()
+{
+    // Главы (сцены) из Менеджера релизов вставляются отдельным быстрым проходом без перекодирования
+    if (m_current->chaptersMeta.isEmpty() || !QFileInfo::exists(m_current->chaptersMeta)) {
+        finishCurrent(ConversionTask::Done);
+        return;
+    }
+    m_current->message = T("Запись глав в видео…");
+    emit taskChanged(m_current->id);
+    const QString tmp = m_current->outputPath + QStringLiteral(".chapters.") + m_current->preset.ext;
+    run(Tools::ffmpeg(), Chapters::muxArgs(m_current->outputPath, m_current->chaptersMeta, tmp), Phase::Chapters);
 }
 
 void ConversionWorker::finishCurrent(ConversionTask::Status status, const QString &msg)

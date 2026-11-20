@@ -2,6 +2,7 @@
 <qresource prefix="/">
   <file>style.qss</file>
   <file>presets.json</file>
+  <file>ae_genres.json</file>
   <file>i18n/en.json</file>
   <file>i18n/es.json</file>
   <file>i18n/fr.json</file>

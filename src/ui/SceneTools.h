@@ -5,9 +5,14 @@
 #include <QStringList>
 #include <QTimer>
 #include <QUrl>
+#include <functional>
 
 class QWebEngineView;
 class QWebEnginePage;
+
+// Скрипты для страниц: поиск сцен (возвращает JSON-строку) и подтверждение 18+
+const char *sceneScript();
+const char *ageScript();
 
 // Чтение списка сцен со страницы фильма (Adult Empire и похожие сайты):
 // название сцены и тайм-коды «00:35:37 - 01:22:37».
@@ -35,6 +40,15 @@ private:
     bool m_done = false;
 };
 
+// Загрузка файла по ссылке через сетевой стек WebEngine (HTTPS без OpenSSL).
+// Запросы выполняются по очереди; при ошибке в обратный вызов приходят пустые данные.
+class WebFetch
+{
+public:
+    using Callback = std::function<void(const QByteArray &data)>;
+    static void get(const QUrl &url, QObject *context, Callback cb);
+};
+
 // Перевод строк на русский через бесплатный сервис Google Переводчик (без ключа).
 class Translator : public QObject
 {
@@ -50,7 +64,6 @@ signals:
 
 private:
     void next();
-    QWebEnginePage *m_page;
     QStringList m_in, m_out;
     QString m_to;
     int m_index = 0;

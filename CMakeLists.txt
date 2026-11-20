@@ -24,6 +24,7 @@ set(SOURCES
     src/core/LocalServer.cpp
     src/core/Dvd.cpp
     src/core/Chapters.cpp
+    src/core/Release.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp
@@ -57,7 +58,7 @@ if(WITH_WEBENGINE)
     find_package(Qt5 QUIET COMPONENTS WebEngineWidgets)
 endif()
 if(Qt5WebEngineWidgets_FOUND)
-    list(APPEND SOURCES src/ui/BrowserWindow.cpp src/ui/PageGrabber.cpp src/ui/SceneTools.cpp)
+    list(APPEND SOURCES src/ui/BrowserWindow.cpp src/ui/PageGrabber.cpp src/ui/SceneTools.cpp src/ui/ReleaseManager.cpp)
     message(STATUS "Встроенный браузер: включён")
 else()
     message(STATUS "Встроенный браузер: Qt WebEngine не найден, браузер отключён")

@@ -3,6 +3,9 @@
 #include "core/I18n.h"
 #include "Widgets.h"
 #include "ChaptersDialog.h"
+#ifdef HAVE_WEBENGINE
+#include "ReleaseManager.h"
+#endif
 #include "core/MediaInfo.h"
 #include "core/FfmpegCommand.h"
 #include "core/Dvd.h"
@@ -150,12 +153,41 @@ ToolboxPage::ToolboxPage(QWidget *parent)
         d.exec();
     });
 
+    // ---- Adult Empire Менеджер ----
+    QVBoxLayout *b5 = nullptr;
+    auto *rel = card(this, "folder", T("Adult Empire Менеджер"),
+                     T("По ссылке на релиз создаёт папку для медиатеки: NFO с переводом названия и описания, постер, заднюю "
+                       "обложку, фан-арт, фото актрис, видео с нужным именем и главами. Перед созданием всё можно проверить."),
+                     b5);
+    auto *openRel = Ui::primaryButton(T("Создать релиз…"), rel);
+    b5->addSpacing(6);
+    b5->addWidget(openRel);
+    b5->addStretch();
+    connect(openRel, &QPushButton::clicked, this, [this] { openRelease(); });
+#ifndef HAVE_WEBENGINE
+    openRel->setEnabled(false);
+#endif
+
     grid->addWidget(vhs, 0, 0);
     grid->addWidget(dvd, 0, 1);
     grid->addWidget(chap, 1, 0);
-    grid->addWidget(mods, 1, 1);
+    grid->addWidget(rel, 1, 1);
+    grid->addWidget(mods, 2, 0, 1, 2);
     root->addLayout(grid);
     root->addStretch();
+}
+
+void ToolboxPage::openRelease(const QString &url, const QString &video)
+{
+#ifdef HAVE_WEBENGINE
+    auto *d = new ReleaseManagerDialog(url, video, window());
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    connect(d, &ReleaseManagerDialog::videoRequested, this, &ToolboxPage::releaseVideo);
+    d->show();
+#else
+    Q_UNUSED(url)
+    Q_UNUSED(video)
+#endif
 }
 
 // ======================= Копирование DVD =======================

@@ -701,6 +701,31 @@ void ConvertPage::reloadSettings()
     m_hw->setChecked(Settings::hardwareAccel());
 }
 
+void ConvertPage::addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless,
+                                  const QString &chaptersMeta)
+{
+    TaskPtr task = addTask(input, name);
+    task->outputDir = dir;
+    task->chaptersMeta = chaptersMeta;
+    if (lossless) {
+        Preset p;
+        p.id = QStringLiteral("release-copy");
+        p.category = QStringLiteral("video");
+        p.group = QStringLiteral("MKV");
+        p.name = T("Копия без потерь");
+        p.badge = QStringLiteral("MKV");
+        p.ext = QStringLiteral("mkv");
+        p.vcodec = QStringLiteral("copy");
+        p.acodec = QStringLiteral("copy");
+        task->preset = p;
+    }
+    if (TaskCard *c = m_cards.value(task->id))
+        c->refresh();
+    m_autoStart.insert(task->id);
+    m_segConverting->setChecked(true);
+    updateView();
+}
+
 void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless)
 {
     for (const auto &t : titles) {

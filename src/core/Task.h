@@ -65,6 +65,8 @@ struct ConversionTask {
 
     Preset preset;
     QString outputName;       // имя без расширения
+    QString outputDir;        // своя папка (Менеджер релизов), пусто — общая
+    QString chaptersMeta;     // файл глав FFMETADATA — вставить в результат после конвертации
     EditOptions edit;
     UpscaleOptions upscale;
 

@@ -336,7 +336,13 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
     actions->addWidget(m_pause, 0, Qt::AlignHCenter);
     actions->addWidget(m_open);
     actions->addWidget(m_convert);
-    actions->addWidget(m_chapters);
+    m_release = new QPushButton(T("Релиз"), this);
+    m_release->setToolTip(T("Adult Empire Менеджер: папка с NFO, обложками и фото актрис"));
+    auto *extra = new QHBoxLayout;
+    extra->setSpacing(4);
+    extra->addWidget(m_chapters);
+    extra->addWidget(m_release);
+    actions->addLayout(extra);
     actions->addStretch();
     row->addLayout(actions);
     auto *close = Ui::iconButton("close", T("Убрать из списка"), this, 14);
@@ -347,6 +353,7 @@ DownloadCard::DownloadCard(const DownloadPtr &item, QWidget *parent)
     connect(m_open, &QPushButton::clicked, this, [this] { Ui::showInFolder(m_item->filePath, downloadDir()); });
     connect(m_convert, &QPushButton::clicked, this, [this] { emit convertRequested(m_item->filePath); });
     connect(m_chapters, &QPushButton::clicked, this, [this] { emit chaptersRequested(m_item->filePath, m_item->pageUrl); });
+    connect(m_release, &QPushButton::clicked, this, [this] { emit releaseRequested(m_item->filePath, m_item->pageUrl); });
     refresh();
 }
 
@@ -371,6 +378,7 @@ void DownloadCard::refresh()
     m_open->setVisible(d.status == DownloadItem::Done);
     m_convert->setVisible(d.status == DownloadItem::Done);
     m_chapters->setVisible(d.status == DownloadItem::Done && !d.pageUrl.isEmpty());
+    m_release->setVisible(d.status == DownloadItem::Done && d.pageUrl.contains(QLatin1String("adultempire"), Qt::CaseInsensitive));
     m_pause->setVisible(d.status != DownloadItem::Done);
     const bool canResume = d.status == DownloadItem::Paused || d.status == DownloadItem::Failed;
     m_pause->setIcon(Ui::icon(canResume ? "resume" : "pause", true));
@@ -854,6 +862,7 @@ void DownloadPage::addItem(const DownloadPtr &item)
         ChaptersDialog d(f, page, window());
         d.exec();
     });
+    connect(card, &DownloadCard::releaseRequested, this, &DownloadPage::releaseRequested);
     m_segActive->setChecked(true);
     if (item->thumb.isNull())
         loadThumb(item);

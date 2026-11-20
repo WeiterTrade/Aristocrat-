@@ -29,7 +29,8 @@ signals:
     void idle();
 
 private:
-    enum class Phase { Idle, Single, AIExtract, AIUpscale, AIEncode, AIMux };
+    enum class Phase { Idle, Single, AIExtract, AIUpscale, AIEncode, AIMux, Chapters };
+    void doneOrChapters();
 
     void next();
     void startSingle();

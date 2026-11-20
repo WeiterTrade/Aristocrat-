@@ -85,6 +85,13 @@ MainWindow::MainWindow(QWidget *parent)
         m_convert->addDvdTitles(titles, lossless);
         showPage(0);
     });
+    connect(toolbox, &ToolboxPage::releaseVideo, this,
+            [this](const QString &in, const QString &name, const QString &dir, bool lossless, const QString &meta) {
+                m_convert->addReleaseVideo(in, name, dir, lossless, meta);
+            });
+    connect(download, &DownloadPage::releaseRequested, this, [toolbox](const QString &file, const QString &page) {
+        toolbox->openRelease(page, file);
+    });
     connect(toolbox, &ToolboxPage::restoreRequested, this, [this](const QStringList &files, UpscaleOptions::Mode mode, bool vhs) {
         m_convert->addFilesWithUpscale(files, mode, vhs);
         m_nav->button(0)->setChecked(true);
@@ -185,6 +192,12 @@ void MainWindow::demoChapters(const QString &file, const QString &url)
         d->setAttribute(Qt::WA_DeleteOnClose);
         d->show();
     });
+}
+
+void MainWindow::demoRelease(const QString &url, const QString &video)
+{
+    showPage(4);
+    QTimer::singleShot(1000, this, [this, url, video] { m_toolbox->openRelease(url, video); });
 }
 
 void MainWindow::demoTheme(const QString &theme)

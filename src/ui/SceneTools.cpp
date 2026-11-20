@@ -11,6 +11,12 @@
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
+#include <QWebEngineDownloadItem>
+#include <QCoreApplication>
+#include <QApplication>
+#include <QDir>
+#include <QFile>
+#include <QPointer>
 
 // Подтверждение возраста (как в PageGrabber)
 static const char *kAge =
@@ -31,6 +37,9 @@ static const char *kScenes =
     "if(lines.length){title=lines[0];break;}}"
     "var key=m[1]+'|'+m[2];if(seen[key])continue;seen[key]=1;out.push({start:m[1],end:m[2],title:title});}"
     "return JSON.stringify(out);})()";
+
+const char *sceneScript() { return kScenes; }
+const char *ageScript() { return kAge; }
 
 SceneFetcher::SceneFetcher(QObject *parent)
     : QObject(parent)
@@ -116,32 +125,93 @@ void SceneFetcher::extract()
     });
 }
 
+// ---------------- Загрузка через WebEngine ----------------
+// У WebEngine свой HTTPS (Chromium), поэтому не нужны библиотеки OpenSSL, которых нет в Qt 5 под Windows.
+
+namespace {
+struct FetchRequest {
+    QUrl url;
+    QPointer<QObject> context;
+    WebFetch::Callback cb;
+};
+struct FetchState {
+    QWebEnginePage *page = nullptr;
+    QList<FetchRequest> queue;
+    bool busy = false;
+    QTimer *timer = nullptr;
+    int serial = 0;
+};
+FetchState &fetchState()
+{
+    static FetchState s;
+    return s;
+}
+void fetchNext();
+void fetchDone(const QByteArray &data)
+{
+    FetchState &s = fetchState();
+    if (!s.busy)
+        return;
+    s.timer->stop();
+    s.busy = false;
+    ++s.serial;
+    const FetchRequest r = s.queue.takeFirst();
+    if (r.context)
+        r.cb(data);
+    QTimer::singleShot(0, [] { fetchNext(); });
+}
+void fetchNext()
+{
+    FetchState &s = fetchState();
+    if (s.busy || s.queue.isEmpty())
+        return;
+    if (!s.page) {
+        s.page = new QWebEnginePage(BrowserWindow::profile(), qApp);
+        s.timer = new QTimer(qApp);
+        s.timer->setSingleShot(true);
+        QObject::connect(s.timer, &QTimer::timeout, [] { fetchDone({}); });
+        QObject::connect(BrowserWindow::profile(), &QWebEngineProfile::downloadRequested, qApp,
+                         [](QWebEngineDownloadItem *item) {
+            FetchState &st = fetchState();
+            if (item->page() != st.page || !st.busy)
+                return;   // загрузки других страниц нас не касаются
+            const int serial = st.serial;
+            const QString dir = QDir::temp().filePath(QStringLiteral("aristocrat-fetch"));
+            QDir().mkpath(dir);
+            const QString name = QStringLiteral("f%1-%2.bin").arg(QCoreApplication::applicationPid()).arg(serial);
+            QFile::remove(QDir(dir).filePath(name));
+            item->setDownloadDirectory(dir);
+            item->setDownloadFileName(name);
+            QObject::connect(item, &QWebEngineDownloadItem::finished, qApp, [item, dir, name, serial] {
+                QByteArray data;
+                QFile f(QDir(dir).filePath(name));
+                if (item->state() == QWebEngineDownloadItem::DownloadCompleted && f.open(QIODevice::ReadOnly))
+                    data = f.readAll();
+                f.close();
+                f.remove();
+                if (fetchState().serial == serial)
+                    fetchDone(data);
+            });
+            item->accept();
+        });
+    }
+    s.busy = true;
+    s.timer->start(60000);
+    s.page->download(s.queue.first().url);
+}
+} // namespace
+
+void WebFetch::get(const QUrl &url, QObject *context, Callback cb)
+{
+    fetchState().queue << FetchRequest{url, context, std::move(cb)};
+    fetchNext();
+}
+
 // ---------------- Перевод ----------------
 
 Translator::Translator(QObject *parent)
     : QObject(parent)
 {
-    m_page = new QWebEnginePage(this);   // отдельный профиль «без следов»
-    connect(m_page, &QWebEnginePage::loadFinished, this, [this](bool ok) {
-        if (!ok) {
-            emit failed(T("Сервис перевода недоступен. Проверьте подключение к интернету."));
-            return;
-        }
-        m_page->toPlainText([this](const QString &text) {
-            // Ответ: [[["перевод","оригинал",…],…],…]
-            const QJsonArray parts = QJsonDocument::fromJson(text.toUtf8()).array().at(0).toArray();
-            QString joined;
-            for (const QJsonValue &p : parts)
-                joined += p.toArray().at(0).toString();
-            const QStringList lines = joined.split('\n');
-            const int batchStart = m_index;
-            const int batchSize = qMin(40, m_in.size() - batchStart);
-            for (int i = 0; i < batchSize; ++i)
-                m_out << (i < lines.size() ? lines[i].trimmed() : m_in[batchStart + i]);
-            m_index += batchSize;
-            next();
-        });
-    });
 }
 
 Translator::~Translator() = default;
@@ -164,5 +234,21 @@ void Translator::next()
     const QStringList batch = m_in.mid(m_index, 40);
     const QByteArray query = "client=gtx&sl=auto&tl=" + QUrl::toPercentEncoding(m_to) + "&dt=t&q="
                              + QUrl::toPercentEncoding(batch.join('\n'));
-    m_page->load(QUrl::fromEncoded("https://translate.googleapis.com/translate_a/single?" + query));
+    WebFetch::get(QUrl::fromEncoded("https://translate.googleapis.com/translate_a/single?" + query), this,
+                  [this, batch](const QByteArray &data) {
+        // Ответ: [[["перевод","оригинал",…],…],…]
+        const QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isArray()) {
+            emit failed(T("Сервис перевода недоступен. Проверьте подключение к интернету."));
+            return;
+        }
+        QString joined;
+        for (const QJsonValue &p : doc.array().at(0).toArray())
+            joined += p.toArray().at(0).toString();
+        const QStringList lines = joined.split('\n');
+        for (int i = 0; i < batch.size(); ++i)
+            m_out << (i < lines.size() && !lines[i].trimmed().isEmpty() ? lines[i].trimmed() : batch[i]);
+        m_index += batch.size();
+        next();
+    });
 }
