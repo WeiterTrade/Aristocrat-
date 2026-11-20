@@ -187,6 +187,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
         c->setMinimumContentsLength(12);
     }
     m_subs->setMinimumContentsLength(15);
+    m_audio->setMinimumContentsLength(14);
     auto *info = Ui::iconButton("info", QString(), this);
     info->setIcon(Ui::icon("info", true));
     opts->addWidget(m_subs);
