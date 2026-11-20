@@ -3,6 +3,7 @@
 #include "Widgets.h"
 #ifdef HAVE_WEBENGINE
 #include "BrowserWindow.h"
+#include "PageGrabber.h"
 #endif
 #include "core/Settings.h"
 #include "core/Task.h"
@@ -217,6 +218,13 @@ void AnalyzeDialog::onAnalyzed(int code)
             hint = T("Видео защищено DRM — такие видео программа не скачивает.");
         else
             hint = T("Если ошибка повторяется, обновите модуль загрузки: ☰ → Настройки → Загрузка → «Обновить».");
+#ifdef HAVE_WEBENGINE
+        // Сайт не поддерживается напрямую — программа поищет видео на странице сама
+        if (m_headers.isEmpty() && err.contains(QLatin1String("Unsupported URL"), Qt::CaseInsensitive)) {
+            done(3);
+            return;
+        }
+#endif
         m_state->setText(T("Не получилось. ") + hint);
         if (m_headers.isEmpty() && m_browserBtn)
             m_browserBtn->show();
@@ -708,6 +716,13 @@ void DownloadPage::addUrl(const QString &url)
         Ui::message(this, T("Загрузка видео"), T("Модуль загрузки (yt-dlp) не найден в папке tools рядом с программой."));
         return;
     }
+#ifdef HAVE_WEBENGINE
+    // Сайты по подписке (Adult Empire): вход в аккаунт и поиск видео без окна браузера
+    if (Sites::needsLogin(QUrl(url))) {
+        grabAndAdd(url, true);
+        return;
+    }
+#endif
     QSettings s;
     if (s.value("download/oneClick", false).toBool()) {
         // Быстрый режим: без окна выбора, качество из настроек
@@ -720,13 +735,70 @@ void DownloadPage::addUrl(const QString &url)
     }
     AnalyzeDialog dlg(url, baseArgs(false), cookieArgs(m_browser->currentData().toString()), window());
     const int r = dlg.exec();
-    if (r == 2) {             // сайт не поддерживается — открываем во встроенном браузере
+    if (r == 2) {             // открыть во встроенном браузере
         openBrowser(url);
+        return;
+    }
+    if (r == 3) {             // сайт не поддерживается напрямую — ищем видео на странице сами
+        grabAndAdd(url, false);
         return;
     }
     if (r != QDialog::Accepted)
         return;
     addItem(dlg.result());
+}
+
+void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
+{
+#ifdef HAVE_WEBENGINE
+    const QUrl url = QUrl::fromUserInput(urlText);
+    QString user, pass, error;
+    bool forceLogin = loginSite && !Sites::isLoggedIn(url);
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        if (loginSite && forceLogin) {
+            SiteLoginDialog ld(url, error, window());
+            if (ld.exec() != QDialog::Accepted)
+                return;
+            user = ld.skipLogin() ? QString() : ld.user();
+            pass = ld.skipLogin() ? QString() : ld.password();
+        }
+        GrabDialog gd(url, user, pass, window());
+        const int r = gd.exec();
+        if (r == QDialog::Accepted) {
+            AnalyzeDialog dlg(gd.media().toString(), baseArgs(false), QStringList(), window(), gd.headers());
+            if (dlg.exec() != QDialog::Accepted)
+                return;
+            DownloadPtr item = dlg.result();
+            item->external = true;
+            item->headers = gd.headers();
+            if (!gd.pageTitle().trimmed().isEmpty())
+                item->title = safeFileName(gd.pageTitle());
+            item->site = Sites::siteName(url);
+            if (!gd.thumb().isEmpty())
+                item->thumbUrl = gd.thumb();
+            addItem(item);
+            return;
+        }
+        if (r != 2)
+            return;   // отменено
+        if (loginSite && (gd.loginFailed() || !forceLogin)) {
+            // Вход не удался или старый вход устарел — просим войти ещё раз
+            Sites::setLoggedIn(url, false);
+            error = gd.loginFailed() ? gd.error()
+                                     : T("Видео не найдено. Возможно, вход устарел — войдите в аккаунт ещё раз.");
+            forceLogin = true;
+            pass.clear();
+            continue;
+        }
+        if (Ui::ask(this, T("Загрузка видео"), gd.error() + QStringLiteral("<br><br>") + T("Открыть страницу во встроенном браузере?"),
+                    T("Открыть"), T("Отмена")))
+            openBrowser(urlText);
+        return;
+    }
+#else
+    Q_UNUSED(urlText)
+    Q_UNUSED(loginSite)
+#endif
 }
 
 void DownloadPage::openBrowser(const QString &url)

@@ -48,6 +48,8 @@ int main(int argc, char *argv[])
             w.showPage(a.mid(7).toInt());
         else if (a == QLatin1String("--demo-trim"))
             w.demoTrim();
+        else if (a.startsWith(QLatin1String("--demo-grab=")))
+            w.demoGrab(a.mid(12));
         else if (a.startsWith(QLatin1String("--demo-browser=")))
             w.demoBrowser(a.mid(15));
         else if (a.startsWith(QLatin1String("--demo-settings")))

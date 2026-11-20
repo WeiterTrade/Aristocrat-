@@ -5,6 +5,9 @@
 #include "Frameless.h"
 #include "SettingsDialog.h"
 #include "core/LocalServer.h"
+#ifdef HAVE_WEBENGINE
+#include "PageGrabber.h"
+#endif
 #include "core/I18n.h"
 #include <QProcess>
 #include "PlaceholderPage.h"
@@ -113,6 +116,23 @@ void MainWindow::showPage(int index)
         b->setChecked(true);
         m_pages->setCurrentIndex(index);
     }
+}
+
+void MainWindow::demoGrab(const QString &url)
+{
+#ifdef HAVE_WEBENGINE
+    // Автопроверка: вход, подтверждение 18+ и поиск видео без окон (логин/пароль — из переменных окружения)
+    QSettings().setValue(QStringLiteral("sites/adultConfirmed"), true);
+    auto *g = new PageGrabber(this);
+    connect(g, &PageGrabber::progress, this, [](const QString &t) { qInfo("GRAB STEP %s", qPrintable(t)); });
+    connect(g, &PageGrabber::finished, this, [](const QUrl &m, const QStringList &h, const QString &title, const QString &) {
+        qInfo("GRAB OK %s | %s | %s", qPrintable(m.toString()), qPrintable(title), qPrintable(h.filter(QStringLiteral("Cookie")).join(' ')));
+    });
+    connect(g, &PageGrabber::failed, this, [](const QString &r, bool login) { qInfo("GRAB FAIL %s login=%d", qPrintable(r), login); });
+    g->start(QUrl(url), qEnvironmentVariable("ARISTOCRAT_TEST_USER"), qEnvironmentVariable("ARISTOCRAT_TEST_PASS"));
+#else
+    Q_UNUSED(url)
+#endif
 }
 
 void MainWindow::demoBrowser(const QString &url)

@@ -67,7 +67,7 @@ static QList<QNetworkCookie> &cookies()
     return list;
 }
 
-static MediaSniffer *sniffer()
+MediaSniffer *BrowserWindow::sniffer()
 {
     static MediaSniffer *s = nullptr;
     if (!s)
@@ -265,7 +265,7 @@ void BrowserWindow::updatePanel()
     m_found->setWordWrap(true);
 }
 
-QStringList BrowserWindow::headersFor(const QUrl &media, const QUrl &page) const
+QStringList BrowserWindow::headersFor(const QUrl &media, const QUrl &page)
 {
     QStringList h;
     h << QStringLiteral("Referer:") + page.toString();

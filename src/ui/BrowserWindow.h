@@ -43,6 +43,9 @@ public:
     void open(const QUrl &url);
 
     static QWebEngineProfile *profile();
+    static MediaSniffer *sniffer();
+    // Заголовки, с которыми браузер запрашивал поток: Referer, Origin, User-Agent, Cookie
+    static QStringList headersFor(const QUrl &media, const QUrl &page);
 
 signals:
     // Пользователь нажал «Скачать»: поток, заголовки (Referer, Cookie, User-Agent), название страницы
@@ -56,7 +59,6 @@ private:
     void onFound(const QUrl &url, const QString &kind, const QUrl &page);
     void updatePanel();
     void startDownload();
-    QStringList headersFor(const QUrl &media, const QUrl &page) const;
 
     QWebEngineView *m_view;
     QLineEdit *m_address;

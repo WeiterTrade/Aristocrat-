@@ -260,6 +260,25 @@ jobs:
           convert shot.png -resize 1100x -quality 60 browser.jpg
           echo "SCREENSHOT_BEGIN browser"; base64 -w 8000 browser.jpg; echo "SCREENSHOT_END"
 
+      - name: Проверка входа на сайт и поиска видео без окна (Linux)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          ARISTOCRAT_LANG: ru
+          ARISTOCRAT_TEST_LOGIN: 1
+          ARISTOCRAT_TEST_USER: user@test.ru
+          ARISTOCRAT_TEST_PASS: secret
+        run: |
+          mkdir -p site/hls && cp hls/index*.m3u8 hls/*.ts site/hls/
+          python3 tests/login_site.py site >/dev/null 2>&1 &
+          sleep 1
+          xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
+            "./Aristocrat Видеоконвертер-x86_64.AppImage" --demo-grab=http://127.0.0.1:8766/movie.html > grab.log 2>&1 & APP=$!
+            sleep 40
+            kill $APP
+          '
+          grep "GRAB" grab.log
+          grep -q "GRAB OK" grab.log
+
       - name: Расширение для браузера (архивы)
         run: |
           for v in chromium firefox; do

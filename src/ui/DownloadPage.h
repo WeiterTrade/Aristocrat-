@@ -117,6 +117,7 @@ public:
     void addExternal(const QJsonObject &media);   // видео из расширения браузера
     void showExtensionHelp();
     void openBrowser(const QString &url = QString());
+    void grabAndAdd(const QString &url, bool loginSite);   // найти видео на странице (с входом в аккаунт)
 
 signals:
     void convertRequested(const QString &file, bool autoStart);
