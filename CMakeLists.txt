@@ -31,6 +31,8 @@ set(SOURCES
     src/ui/PlaceholderPage.cpp
     src/ui/ToolboxPage.cpp
     src/ui/Widgets.cpp
+    src/ui/Frameless.cpp
+    src/ui/DownloadPage.cpp
 )
 
 set(RESOURCES resources/resources.qrc)

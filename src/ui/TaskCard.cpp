@@ -1,6 +1,7 @@
 #include "TaskCard.h"
 #include "EditDialog.h"
 #include "FormatPopup.h"
+#include "Frameless.h"
 #include "FramePreview.h"
 #include "OutputSizeDialog.h"
 #include "TrimDialog.h"
@@ -42,6 +43,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
 {
     setObjectName(QStringLiteral("TaskCard"));
     setAttribute(Qt::WA_StyledBackground);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);   // не растягиваться по высоте
 
     auto *row = new QHBoxLayout(this);
     row->setContentsMargins(24, 20, 10, 20);
@@ -264,15 +266,15 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
             t += QStringLiteral("Видео: %1, %2×%3, %4 кадр/с%5<br>").arg(mi.videoCodec.toUpper()).arg(mi.width).arg(mi.height)
                      .arg(mi.fps, 0, 'f', 2).arg(mi.interlaced ? QStringLiteral(", чересстрочное") : QString());
         for (const StreamTrack &a : mi.audioTracks)
-            t += QStringLiteral("Звук: %1<br>").arg(a.label().toHtmlEscaped());
+            t += QStringLiteral("Звук: %1%2<br>").arg(a.details().toHtmlEscaped(), a.isDefault ? QStringLiteral(" (по умолчанию)") : QString());
         for (const StreamTrack &s : mi.subtitleTracks)
-            t += QStringLiteral("Субтитры: %1<br>").arg(s.label().toHtmlEscaped());
+            t += QStringLiteral("Субтитры: %1<br>").arg(s.details().toHtmlEscaped());
         t += QStringLiteral("<br>Битрейт: %1 кбит/с<br>Формат на выходе: %2 (%3)")
                  .arg(mi.bitrate / 1000).arg(m_task->preset.title().toHtmlEscaped(), m_task->preset.codecText());
         if (m_task->upscale.mode != UpscaleOptions::None)
             t += QStringLiteral("<br>Апскейл: %1%2").arg(UpscaleOptions::modeName(m_task->upscale.mode),
                                                         m_task->upscale.vhsRestore ? QStringLiteral(" + восстановление VHS") : QString());
-        QMessageBox::information(this, QStringLiteral("Сведения о файле"), t);
+        Ui::message(this, QStringLiteral("Сведения о файле"), t);
     });
     connect(m_subs, QOverload<int>::of(&QComboBox::activated), this, [this](int) {
         if (m_updatingCombos)
@@ -304,9 +306,9 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
         } else {
             const auto mode = UpscaleOptions::Mode(v);
             if ((mode == UpscaleOptions::AI1080 || mode == UpscaleOptions::AI4K) && !Tools::hasRealesrgan()) {
-                QMessageBox::warning(this, QStringLiteral("Нейросетевой апскейл"),
-                                     QStringLiteral("Модуль Real-ESRGAN не найден.\n\nПоложите папку realesrgan (с файлом realesrgan-ncnn-vulkan "
-                                                    "и папкой models) в папку tools рядом с программой. Пока можно использовать быстрый апскейл."));
+                Ui::message(this, QStringLiteral("Нейросетевой апскейл"),
+                            QStringLiteral("Модуль Real-ESRGAN не найден.<br><br>Положите папку realesrgan (с файлом realesrgan-ncnn-vulkan "
+                                           "и папкой models) в папку tools рядом с программой. Пока можно использовать быстрый апскейл."));
             }
             m_task->upscale.mode = mode;
         }
@@ -363,7 +365,7 @@ void TaskCard::rebuildTrackCombos()
     m_subs->clear();
     m_subs->addItem(QStringLiteral("Без субтитров"), -1);
     for (const StreamTrack &t : m_task->info.subtitleTracks)
-        m_subs->addItem(t.label(), t.index);
+        m_subs->addItem(t.details(), t.index);
     if (!m_task->edit.subtitleFile.isEmpty())
         m_subs->addItem(QFileInfo(m_task->edit.subtitleFile).fileName(), -3);
     m_subs->addItem(QStringLiteral("+ Добавить субтитры…"), -2);
@@ -373,8 +375,10 @@ void TaskCard::rebuildTrackCombos()
         m_subs->setCurrentIndex(qMax(0, m_subs->findData(m_task->edit.subtitleTrack)));
 
     m_audio->clear();
-    for (const StreamTrack &t : m_task->info.audioTracks)
+    for (const StreamTrack &t : m_task->info.audioTracks) {
         m_audio->addItem(Ui::icon("audio"), t.label(), t.index);
+        m_audio->setItemData(m_audio->count() - 1, t.details(), Qt::ToolTipRole);
+    }
     m_audio->addItem(QStringLiteral("Без звука"), -1);
     m_audio->setCurrentIndex(qMax(0, m_audio->findData(m_task->edit.audioTrack)));
     m_updatingCombos = false;
@@ -508,8 +512,8 @@ void TaskCard::openTrim()
 void TaskCard::renameTarget()
 {
     bool ok = false;
-    const QString n = QInputDialog::getText(this, QStringLiteral("Имя файла"), QStringLiteral("Новое имя (без расширения):"),
-                                            QLineEdit::Normal, m_task->outputName, &ok);
+    const QString n = Ui::askText(this, QStringLiteral("Имя файла"), QStringLiteral("Новое имя (без расширения):"),
+                                  m_task->outputName, &ok);
     QString clean = n.trimmed();
     for (const QChar c : QStringLiteral("\\/:*?\"<>|"))
         clean.remove(c);

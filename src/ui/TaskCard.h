@@ -21,6 +21,7 @@ public:
 
     void refresh();            // перечитать данные задачи
     void setInfoLoaded();      // ffprobe завершён
+    void openTrim();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *ev) override;
@@ -36,7 +37,6 @@ private:
     void openFormatPopup();
     void openSizeDialog();
     void openEdit(int tab);
-    void openTrim();
     void rebuildTrackCombos();
     void renameTarget();
     void loadThumbnail();

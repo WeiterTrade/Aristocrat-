@@ -3,6 +3,7 @@
 #include "core/Task.h"
 
 #include <QHash>
+#include <QSet>
 #include <QWidget>
 
 class QStackedWidget;
@@ -22,8 +23,10 @@ class ConvertPage : public QWidget
 public:
     explicit ConvertPage(QWidget *parent = nullptr);
     void addFiles(const QStringList &paths);
+    void addFileAndConvert(const QString &file, bool autoStart);
     void addFilesWithUpscale(const QStringList &paths, UpscaleOptions::Mode mode, bool vhs);
     bool isBusy() const { return m_engine->isRunning(); }
+    void openFirstTrim();
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
@@ -37,7 +40,7 @@ private:
     void chooseFiles();
     void chooseFolder();
     void loadDvdFolder();
-    void addTask(const QString &input, const QString &displayName = QString());
+    TaskPtr addTask(const QString &input, const QString &displayName = QString());
     void removeTask(const TaskPtr &t);
     void convertAll();
     void convertOne(const TaskPtr &t);
@@ -54,7 +57,7 @@ private:
     QList<TaskPtr> m_tasks;
     QHash<int, TaskCard *> m_cards;
     int m_nextId = 1;
-    QList<TaskPtr> m_pendingUpscale;
+    QSet<int> m_autoStart;
 
     QStackedWidget *m_stack;
     QVBoxLayout *m_cardLayout;

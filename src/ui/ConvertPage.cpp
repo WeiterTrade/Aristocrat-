@@ -1,6 +1,7 @@
 #include "ConvertPage.h"
 #include "DropZone.h"
 #include "FormatPopup.h"
+#include "Frameless.h"
 #include "TaskCard.h"
 #include "Widgets.h"
 #include "core/Settings.h"
@@ -133,8 +134,8 @@ QWidget *ConvertPage::buildSubBar()
     auto *dvdMenu = new QMenu(dvd);
     dvdMenu->addAction(QStringLiteral("Папка DVD (VIDEO_TS)…"), this, &ConvertPage::loadDvdFolder);
     dvdMenu->addAction(QStringLiteral("Образ ISO…"), this, [this] {
-        QMessageBox::information(this, QStringLiteral("Образ ISO"),
-                                 QStringLiteral("Откройте образ как диск (в Windows 8+ — двойной щелчок, в Linux — «Открыть с помощью» → "
+        Ui::message(this, QStringLiteral("Образ ISO"),
+                    QStringLiteral("Откройте образ как диск (в Windows 8+ — двойной щелчок, в Linux — «Открыть с помощью» → "
                                                 "подключение образа), затем выберите «Папка DVD (VIDEO_TS)» и укажите папку VIDEO_TS на нём."));
     });
     dvd->setMenu(dvdMenu);
@@ -396,7 +397,7 @@ void ConvertPage::loadDvdFolder()
         parts[p[1]] << fi.absoluteFilePath();
     }
     if (sizes.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("DVD"), QStringLiteral("В папке нет файлов VTS_xx_x.VOB."));
+        Ui::message(this, QStringLiteral("DVD"), QStringLiteral("В папке нет файлов VTS_xx_x.VOB."));
         return;
     }
     QString best;
@@ -451,7 +452,7 @@ void ConvertPage::addFilesWithUpscale(const QStringList &paths, UpscaleOptions::
     }
 }
 
-void ConvertPage::addTask(const QString &input, const QString &displayName)
+TaskPtr ConvertPage::addTask(const QString &input, const QString &displayName)
 {
     TaskPtr t = TaskPtr::create();
     t->id = m_nextId++;
@@ -491,16 +492,26 @@ void ConvertPage::addTask(const QString &input, const QString &displayName)
         // Чересстрочное видео (кассеты, DVD, ТВ) — сразу включаем устранение гребёнки
         if (t->info.interlaced)
             t->edit.deinterlace = true;
-        if (QFileInfo(t->input).fileName().startsWith("concat:"))
-            t->info.size = 0;
         card->setInfoLoaded();
+        if (m_autoStart.remove(t->id) && t->info.ok)
+            convertOne(t);
     });
+    return t;
+}
+
+void ConvertPage::addFileAndConvert(const QString &file, bool autoStart)
+{
+    TaskPtr t = addTask(file);
+    if (autoStart)
+        m_autoStart.insert(t->id);
+    m_segConverting->setChecked(true);
+    updateView();
 }
 
 void ConvertPage::removeTask(const TaskPtr &t)
 {
     if (t->status == ConversionTask::Running) {
-        QMessageBox::information(this, QStringLiteral("Идёт конвертация"), QStringLiteral("Сначала остановите конвертацию этого файла."));
+        Ui::message(this, QStringLiteral("Идёт конвертация"), QStringLiteral("Сначала остановите конвертацию этого файла."));
         return;
     }
     if (t->status == ConversionTask::Waiting)
@@ -649,4 +660,11 @@ void ConvertPage::dropEvent(QDropEvent *e)
         addFiles(paths);
         e->acceptProposedAction();
     }
+}
+
+void ConvertPage::openFirstTrim()
+{
+    if (!m_tasks.isEmpty())
+        if (TaskCard *c = m_cards.value(m_tasks.first()->id))
+            c->openTrim();
 }

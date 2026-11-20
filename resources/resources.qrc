@@ -43,6 +43,7 @@
   <file>icons/cut.svg</file>
   <file>icons/download-active.svg</file>
   <file>icons/download-dark.svg</file>
+  <file>icons/download-empty.svg</file>
   <file>icons/download.svg</file>
   <file>icons/drop-active.svg</file>
   <file>icons/drop-dark.svg</file>
@@ -71,21 +72,39 @@
   <file>icons/folder-active.svg</file>
   <file>icons/folder-dark.svg</file>
   <file>icons/folder.svg</file>
+  <file>icons/globe-active.svg</file>
+  <file>icons/globe-dark.svg</file>
+  <file>icons/globe.svg</file>
   <file>icons/info-active.svg</file>
   <file>icons/info-dark.svg</file>
   <file>icons/info.svg</file>
+  <file>icons/key-active.svg</file>
+  <file>icons/key-dark.svg</file>
+  <file>icons/key.svg</file>
+  <file>icons/link-active.svg</file>
+  <file>icons/link-dark.svg</file>
+  <file>icons/link.svg</file>
   <file>icons/menu-active.svg</file>
   <file>icons/menu-dark.svg</file>
   <file>icons/menu.svg</file>
   <file>icons/merge-active.svg</file>
   <file>icons/merge-dark.svg</file>
   <file>icons/merge.svg</file>
+  <file>icons/pause-active.svg</file>
+  <file>icons/pause-dark.svg</file>
+  <file>icons/pause.svg</file>
   <file>icons/play-active.svg</file>
   <file>icons/play-dark.svg</file>
   <file>icons/play.svg</file>
+  <file>icons/record-active.svg</file>
+  <file>icons/record-dark.svg</file>
+  <file>icons/record.svg</file>
   <file>icons/res-active.svg</file>
   <file>icons/res-dark.svg</file>
   <file>icons/res.svg</file>
+  <file>icons/resume-active.svg</file>
+  <file>icons/resume-dark.svg</file>
+  <file>icons/resume.svg</file>
   <file>icons/rotl-active.svg</file>
   <file>icons/rotl-dark.svg</file>
   <file>icons/rotl.svg</file>
@@ -107,5 +126,17 @@
   <file>icons/upscale-active.svg</file>
   <file>icons/upscale-dark.svg</file>
   <file>icons/upscale.svg</file>
+  <file>icons/win-close-active.svg</file>
+  <file>icons/win-close-dark.svg</file>
+  <file>icons/win-close.svg</file>
+  <file>icons/win-max-active.svg</file>
+  <file>icons/win-max-dark.svg</file>
+  <file>icons/win-max.svg</file>
+  <file>icons/win-min-active.svg</file>
+  <file>icons/win-min-dark.svg</file>
+  <file>icons/win-min.svg</file>
+  <file>icons/win-restore-active.svg</file>
+  <file>icons/win-restore-dark.svg</file>
+  <file>icons/win-restore.svg</file>
 </qresource>
 </RCC>

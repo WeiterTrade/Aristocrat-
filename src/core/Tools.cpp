@@ -59,6 +59,18 @@ QString realesrganModelsDir()
     return QFileInfo(exe).absolutePath() + QStringLiteral("/models");
 }
 
+QString ytdlp()
+{
+    static QString p = findExecutable(QStringLiteral("yt-dlp"), {QStringLiteral("yt-dlp")});
+    return p;
+}
+
+QString deno()
+{
+    static QString p = findExecutable(QStringLiteral("deno"), {QStringLiteral("deno")});
+    return p;
+}
+
 bool hasFfmpeg() { return !ffmpeg().isEmpty() && !ffprobe().isEmpty(); }
 bool hasRealesrgan() { return !realesrgan().isEmpty(); }
 

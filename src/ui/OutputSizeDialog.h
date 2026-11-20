@@ -1,7 +1,7 @@
 #pragma once
 #include "core/Task.h"
 
-#include <QDialog>
+#include "Frameless.h"
 
 class QDoubleSpinBox;
 class QSlider;
@@ -9,7 +9,7 @@ class QComboBox;
 class QLabel;
 
 // Окно «Желаемый размер файла»: размер ↔ битрейт ↔ разрешение.
-class OutputSizeDialog : public QDialog
+class OutputSizeDialog : public FramedDialog
 {
     Q_OBJECT
 public:

@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "ConvertPage.h"
+#include "DownloadPage.h"
+#include "Frameless.h"
 #include "PlaceholderPage.h"
 #include "ToolboxPage.h"
 #include "Widgets.h"
@@ -13,28 +15,42 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QToolButton>
+#include <QStyle>
+#include <QTimer>
+#include <QAbstractButton>
 #include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("Aristocrat Video Converter"));
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint);
     setWindowIcon(QIcon(QStringLiteral(":/logo/logo.svg")));
     setMinimumSize(1100, 680);
     resize(1480, 880);
 
-    auto *central = new QWidget(this);
+    // Своя рамка: внешний виджет с отступом (за него тянем размер), внутри — всё остальное
+    auto *frame = new QWidget(this);
+    frame->setObjectName(QStringLiteral("MainFrame"));
+    frame->setAttribute(Qt::WA_StyledBackground);
+    m_frameLayout = new QVBoxLayout(frame);
+    m_frameLayout->setContentsMargins(4, 4, 4, 4);
+    auto *central = new QWidget(frame);
+    m_frameLayout->addWidget(central);
     auto *root = new QVBoxLayout(central);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
-    root->addWidget(buildHeader());
+    QWidget *header = buildHeader();
+    root->addWidget(header);
+    new DragArea(this, header, true);
 
     m_pages = new QStackedWidget(central);
     m_convert = new ConvertPage(m_pages);
     auto *toolbox = new ToolboxPage(m_pages);
     m_pages->addWidget(m_convert);
-    m_pages->addWidget(new PlaceholderPage("download", QStringLiteral("Загрузка видео"),
-                                           QStringLiteral("Скачивание роликов по ссылке появится в одной из следующих версий."), m_pages));
+    auto *download = new DownloadPage(m_pages);
+    m_download = download;
+    m_pages->addWidget(download);
     m_pages->addWidget(new PlaceholderPage("burn", QStringLiteral("Запись DVD"),
                                            QStringLiteral("Запись видео на DVD появится в одной из следующих версий."), m_pages));
     m_pages->addWidget(new PlaceholderPage("transfer", QStringLiteral("Передача на устройство"),
@@ -42,13 +58,21 @@ MainWindow::MainWindow(QWidget *parent)
                                                           "Пока выберите формат нужного устройства во вкладке «Устройства»."), m_pages));
     m_pages->addWidget(toolbox);
     root->addWidget(m_pages, 1);
-    setCentralWidget(central);
+    setCentralWidget(frame);
+    new FrameResizer(this, frame, 4);
 
     connect(m_nav, &QButtonGroup::idClicked, m_pages, &QStackedWidget::setCurrentIndex);
     connect(toolbox, &ToolboxPage::restoreRequested, this, [this](const QStringList &files, UpscaleOptions::Mode mode, bool vhs) {
         m_convert->addFilesWithUpscale(files, mode, vhs);
         m_nav->button(0)->setChecked(true);
         m_pages->setCurrentIndex(0);
+    });
+    connect(download, &DownloadPage::convertRequested, this, [this](const QString &file, bool autoStart) {
+        m_convert->addFileAndConvert(file, autoStart);
+        if (!autoStart) {
+            m_nav->button(0)->setChecked(true);
+            m_pages->setCurrentIndex(0);
+        }
     });
 
     QSettings s;
@@ -60,6 +84,19 @@ void MainWindow::openFiles(const QStringList &files)
     m_convert->addFiles(files);
 }
 
+void MainWindow::showPage(int index)
+{
+    if (QAbstractButton *b = m_nav->button(index)) {
+        b->setChecked(true);
+        m_pages->setCurrentIndex(index);
+    }
+}
+
+void MainWindow::demoTrim()
+{
+    QTimer::singleShot(7000, m_convert, &ConvertPage::openFirstTrim);
+}
+
 QWidget *MainWindow::buildHeader()
 {
     auto *header = new QWidget(this);
@@ -67,7 +104,7 @@ QWidget *MainWindow::buildHeader()
     header->setAttribute(Qt::WA_StyledBackground);
     header->setFixedHeight(112);
     auto *lay = new QHBoxLayout(header);
-    lay->setContentsMargins(18, 8, 18, 0);
+    lay->setContentsMargins(18, 0, 0, 0);
 
     // Логотип и название
     auto *brand = new QHBoxLayout;
@@ -90,6 +127,7 @@ QWidget *MainWindow::buildHeader()
     brandW->setObjectName(QStringLiteral("Brand"));
     brandW->setLayout(brand);
     brandW->setFixedWidth(260);
+    brandW->setContentsMargins(0, 10, 0, 0);
     lay->addWidget(brandW, 0, Qt::AlignTop | Qt::AlignLeft);
     lay->addStretch();
 
@@ -122,14 +160,11 @@ QWidget *MainWindow::buildHeader()
     menuBtn->setStyleSheet(QStringLiteral("QToolButton::menu-indicator{image:none;}"));
     auto *menu = new QMenu(menuBtn);
     menu->addAction(QStringLiteral("О программе"), this, [this] {
-        QMessageBox box(this);
-        box.setWindowTitle(QStringLiteral("О программе"));
-        box.setIconPixmap(QIcon(QStringLiteral(":/logo/logo.svg")).pixmap(96, 96));
-        box.setText(QStringLiteral("<h3 style='color:#E8C266'>Aristocrat Video Converter</h3>"
+        Ui::message(this, QStringLiteral("О программе"),
+                    QStringLiteral("<h3 style='color:#E8C266'>Aristocrat Video Converter</h3>"
                                    "Версия %1<br><br>Конвертер видео и аудио с восстановлением и апскейлом старых записей.<br><br>"
-                                   "Использует FFmpeg (LGPL/GPL) и Real-ESRGAN (BSD-3).")
+                                   "Использует FFmpeg (LGPL/GPL), Real-ESRGAN (BSD-3) и yt-dlp (Unlicense).")
                         .arg(QStringLiteral(APP_VERSION)));
-        box.exec();
     });
     menu->addAction(QStringLiteral("Выход"), this, &QWidget::close);
     menuBtn->setMenu(menu);
@@ -137,19 +172,22 @@ QWidget *MainWindow::buildHeader()
     menuW->setObjectName(QStringLiteral("MenuArea"));
     auto *ml = new QHBoxLayout(menuW);
     ml->setContentsMargins(0, 0, 0, 0);
+    ml->setSpacing(6);
     ml->addStretch();
-    ml->addWidget(menuBtn);
+    ml->addWidget(menuBtn, 0, Qt::AlignTop);
+    ml->addWidget(new WindowButtons(this, true, true, menuW), 0, Qt::AlignTop);
     menuW->setFixedWidth(260);
     lay->addWidget(menuW, 0, Qt::AlignTop | Qt::AlignRight);
+    lay->setContentsMargins(18, 0, 0, 0);
     return header;
 }
 
 void MainWindow::closeEvent(QCloseEvent *e)
 {
-    if (m_convert->isBusy()) {
-        const auto r = QMessageBox::question(this, QStringLiteral("Идёт конвертация"),
-                                             QStringLiteral("Конвертация ещё не закончена. Закрыть программу и прервать её?"));
-        if (r != QMessageBox::Yes) {
+    if (m_convert->isBusy() || m_download->isBusy()) {
+        if (!Ui::ask(this, QStringLiteral("Идёт работа"),
+                     QStringLiteral("Конвертация или загрузка ещё не закончена. Закрыть программу и прервать её?"),
+                     QStringLiteral("Закрыть"), QStringLiteral("Отмена"))) {
             e->ignore();
             return;
         }
@@ -157,4 +195,16 @@ void MainWindow::closeEvent(QCloseEvent *e)
     QSettings s;
     s.setValue("window/geometry", saveGeometry());
     e->accept();
+}
+
+void MainWindow::changeEvent(QEvent *e)
+{
+    if (e->type() == QEvent::WindowStateChange && m_frameLayout) {
+        const bool maxed = isMaximized() || isFullScreen();
+        m_frameLayout->setContentsMargins(maxed ? 0 : 4, maxed ? 0 : 4, maxed ? 0 : 4, maxed ? 0 : 4);
+        centralWidget()->setProperty("maximized", maxed);
+        centralWidget()->style()->unpolish(centralWidget());
+        centralWidget()->style()->polish(centralWidget());
+    }
+    QMainWindow::changeEvent(e);
 }

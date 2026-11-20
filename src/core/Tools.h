@@ -12,6 +12,9 @@ QString ffprobe();
 QString realesrgan();
 QString realesrganModelsDir();
 
+QString ytdlp();
+QString deno();
+
 bool hasFfmpeg();
 bool hasRealesrgan();
 

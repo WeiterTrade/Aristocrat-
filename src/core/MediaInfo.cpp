@@ -10,6 +10,19 @@
 
 QString StreamTrack::label() const
 {
+    if (isDefault)
+        return QStringLiteral("По умолчанию");
+    QStringList parts;
+    parts << QStringLiteral("Дорожка %1").arg(index + 1);
+    if (!language.isEmpty() && language != QLatin1String("und"))
+        parts << language;
+    else if (!title.isEmpty())
+        parts << title;
+    return parts.join(QStringLiteral(" · "));
+}
+
+QString StreamTrack::details() const
+{
     QStringList parts;
     parts << QStringLiteral("#%1").arg(index + 1);
     if (!language.isEmpty() && language != QLatin1String("und"))
@@ -97,6 +110,7 @@ MediaInfo MediaInfo::probe(const QString &path)
             t.channels = s.value("channels").toInt();
             t.language = tags.value("language").toString();
             t.title = tags.value("title").toString();
+            t.isDefault = s.value("disposition").toObject().value("default").toInt() == 1;
             mi.audioTracks << t;
         } else if (type == QLatin1String("subtitle")) {
             StreamTrack t;
@@ -107,6 +121,15 @@ MediaInfo MediaInfo::probe(const QString &path)
             mi.subtitleTracks << t;
         }
     }
+
+    // Ровно одна дорожка «по умолчанию»: отмеченная в файле, иначе первая
+    bool haveDefault = false;
+    for (StreamTrack &t : mi.audioTracks) {
+        if (t.isDefault && !haveDefault) haveDefault = true;
+        else t.isDefault = false;
+    }
+    if (!haveDefault && !mi.audioTracks.isEmpty())
+        mi.audioTracks.first().isDefault = true;
 
     mi.ok = mi.hasVideo || !mi.audioTracks.isEmpty();
     if (!mi.ok)

@@ -135,3 +135,12 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color:
 #SidePanel QLabel { background: transparent; }
 #PlaceholderTitle { color: #E8C266; font-size: 16pt; }
 #Muted { color: #A99F90; }
+
+/* ---------- Свои рамки окон ---------- */
+#WindowFrame { background: #2A1D1F; border: 1px solid #5A4630; }
+#TitleBar { background: #150F11; }
+#TitleBar QLabel { background: transparent; }
+#TitleText { color: #E8C266; font-weight: 600; }
+#DialogBody { background: #1F191B; }
+#MainFrame { background: #2A1D1F; border: 1px solid #5A4630; }
+#MainFrame[maximized="true"] { border: none; }

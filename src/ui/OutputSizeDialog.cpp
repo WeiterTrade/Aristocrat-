@@ -11,7 +11,7 @@
 #include <QVBoxLayout>
 
 OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
-    : QDialog(parent), m_task(task)
+    : FramedDialog(parent, false), m_task(task)
 {
     setWindowTitle(QStringLiteral("Желаемый размер файла"));
     setMinimumWidth(620);
@@ -21,7 +21,7 @@ OutputSizeDialog::OutputSizeDialog(const TaskPtr &task, QWidget *parent)
     copy.customVBitrate = 0;
     m_defaultMb = qMax(1.0, copy.estimatedBytes() / (1024.0 * 1024.0));
 
-    auto *root = new QVBoxLayout(this);
+    auto *root = contentLayout();
     root->setContentsMargins(30, 26, 30, 20);
     auto *grid = new QGridLayout;
     grid->setHorizontalSpacing(16);

@@ -1,7 +1,7 @@
 #pragma once
 #include "core/Task.h"
 
-#include <QDialog>
+#include "Frameless.h"
 #include <QTimer>
 
 class PreviewLabel;
@@ -15,7 +15,7 @@ class QTabWidget;
 class QRadioButton;
 
 // Редактор: Кадрирование / Эффекты / Водяной знак / Субтитры / Аудио.
-class EditDialog : public QDialog
+class EditDialog : public FramedDialog
 {
     Q_OBJECT
 public:

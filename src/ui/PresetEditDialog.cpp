@@ -16,12 +16,12 @@ static void selectData(QComboBox *c, const QVariant &v)
 }
 
 PresetEditDialog::PresetEditDialog(const Preset &p, QWidget *parent)
-    : QDialog(parent), m_base(p)
+    : FramedDialog(parent, false), m_base(p)
 {
     setWindowTitle(QStringLiteral("Настройки формата"));
     setMinimumWidth(460);
 
-    auto *root = new QVBoxLayout(this);
+    auto *root = contentLayout();
     root->setContentsMargins(24, 20, 24, 20);
     auto *form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);

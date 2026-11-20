@@ -8,7 +8,9 @@ struct StreamTrack {
     QString language;
     QString title;
     int channels = 0;
-    QString label() const;
+    bool isDefault = false;
+    QString label() const;        // короткая подпись для списка
+    QString details() const;      // подробности для подсказки
 };
 
 struct MediaInfo {

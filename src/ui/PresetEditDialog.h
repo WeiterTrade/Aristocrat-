@@ -1,13 +1,13 @@
 #pragma once
 #include "core/Preset.h"
 
-#include <QDialog>
+#include "Frameless.h"
 
 class QComboBox;
 class QLineEdit;
 
 // Настройка параметров формата (кодек, разрешение, частота кадров, битрейт).
-class PresetEditDialog : public QDialog
+class PresetEditDialog : public FramedDialog
 {
     Q_OBJECT
 public:

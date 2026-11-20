@@ -30,8 +30,17 @@ int main(int argc, char *argv[])
     MainWindow w;
     w.show();
 
-    // Файлы, переданные при запуске («Открыть с помощью…»)
-    const QStringList files = app.arguments().mid(1);
+    // Файлы, переданные при запуске («Открыть с помощью…»).
+    // Служебные ключи для автопроверки сборки: --page=N (открыть раздел), --demo-trim (окно обрезки).
+    QStringList files;
+    for (const QString &a : app.arguments().mid(1)) {
+        if (a.startsWith(QLatin1String("--page=")))
+            w.showPage(a.mid(7).toInt());
+        else if (a == QLatin1String("--demo-trim"))
+            w.demoTrim();
+        else
+            files << a;
+    }
     if (!files.isEmpty())
         w.openFiles(files);
     return app.exec();

@@ -66,6 +66,12 @@ jobs:
           Expand-Archive esrgan.zip -DestinationPath "$out\tools\realesrgan"
           Remove-Item -Recurse -Force "$out\tools\realesrgan\*.jpg","$out\tools\realesrgan\*.png","$out\tools\realesrgan\*.mp4" -ErrorAction SilentlyContinue
 
+          # yt-dlp (загрузка видео) и Deno (нужен yt-dlp для YouTube). Официальный yt-dlp.exe работает с Windows 8.
+          New-Item -ItemType Directory -Force -Path "$out\tools\deno" | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$out\tools\yt-dlp.exe"
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile deno.zip
+          Expand-Archive deno.zip -DestinationPath "$out\tools\deno"
+
           Copy-Item README.md $out\
           Copy-Item THIRD_PARTY.md $out\
 
@@ -112,7 +118,12 @@ jobs:
           curl -L -o esrgan.zip https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip
           unzip -q esrgan.zip -d AppDir/usr/bin/tools/realesrgan
           rm -f AppDir/usr/bin/tools/realesrgan/*.jpg AppDir/usr/bin/tools/realesrgan/*.png AppDir/usr/bin/tools/realesrgan/*.mp4
-          chmod +x AppDir/usr/bin/tools/ffmpeg AppDir/usr/bin/tools/ffprobe AppDir/usr/bin/tools/realesrgan/realesrgan-ncnn-vulkan
+          curl -L -o AppDir/usr/bin/tools/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+          mkdir -p AppDir/usr/bin/tools/deno
+          curl -L -o deno.zip https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip
+          unzip -q deno.zip -d AppDir/usr/bin/tools/deno
+          chmod +x AppDir/usr/bin/tools/ffmpeg AppDir/usr/bin/tools/ffprobe AppDir/usr/bin/tools/realesrgan/realesrgan-ncnn-vulkan \
+                   AppDir/usr/bin/tools/yt-dlp AppDir/usr/bin/tools/deno/deno
 
       - name: AppImage
         env:
@@ -135,15 +146,21 @@ jobs:
           T=AppDir/usr/bin/tools
           $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=440" \
             -t 8 -vf "interlace" -c:v libx264 -flags +ilme+ildct -c:a aac -shortest "$PWD/Кассета 1994.mp4"
-          xvfb-run -s "-screen 0 1600x960x24" bash -c '
-            ./AristocratVideoConverter-x86_64.AppImage "$PWD/Кассета 1994.mp4" & APP=$!
-            sleep 12
-            if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
-            import -window root screenshot.png
-            kill $APP
-          '
-          convert screenshot.png -resize 1200x -quality 70 shot.jpg
-          echo "SCREENSHOT_BEGIN"; base64 -w0 shot.jpg; echo; echo "SCREENSHOT_END"
+          shot() {   # $1 — имя, остальное — аргументы программы
+            name=$1; shift
+            xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
+              ./AristocratVideoConverter-x86_64.AppImage "$@" & APP=$!
+              sleep 14
+              if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
+              import -window root shot.png
+              kill $APP
+            ' _ "$@"
+            convert shot.png -resize 1200x -quality 70 "$name.jpg"
+            echo "SCREENSHOT_BEGIN $name"; base64 -w0 "$name.jpg"; echo; echo "SCREENSHOT_END"
+          }
+          shot convert "$PWD/Кассета 1994.mp4"
+          shot download --page=1
+          shot trim --demo-trim "$PWD/Кассета 1994.mp4"
 
       - uses: actions/upload-artifact@v4
         with:

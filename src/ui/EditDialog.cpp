@@ -36,7 +36,7 @@ static QFrame *sidePanel(QWidget *parent)
 }
 
 EditDialog::EditDialog(const TaskPtr &task, int initialTab, QWidget *parent)
-    : QDialog(parent), m_task(task), m_opt(task->edit)
+    : FramedDialog(parent, true), m_task(task), m_opt(task->edit)
 {
     setWindowTitle(QFileInfo(task->input).fileName());
     resize(1000, 720);
@@ -45,7 +45,7 @@ EditDialog::EditDialog(const TaskPtr &task, int initialTab, QWidget *parent)
     m_debounce.setInterval(450);
     connect(&m_debounce, &QTimer::timeout, this, [this] { refreshPreviews(false); });
 
-    auto *root = new QVBoxLayout(this);
+    auto *root = contentLayout();
     root->setContentsMargins(0, 0, 0, 14);
 
     m_tabs = new QTabWidget(this);
@@ -473,7 +473,7 @@ QWidget *EditDialog::buildSubtitleTab()
     m_subTrack = new QComboBox(w);
     m_subTrack->addItem(QStringLiteral("Нет"), -1);
     for (const StreamTrack &t : m_task->info.subtitleTracks)
-        m_subTrack->addItem(t.label(), t.index);
+        m_subTrack->addItem(t.details(), t.index);
     m_subTrack->setCurrentIndex(qMax(0, m_subTrack->findData(m_opt.subtitleTrack)));
     lay->addWidget(m_subTrack);
 

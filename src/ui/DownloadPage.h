@@ -1,0 +1,143 @@
+#pragma once
+#include "Frameless.h"
+
+#include <QFrame>
+#include <QHash>
+#include <QImage>
+#include <QProcess>
+#include <QSharedPointer>
+#include <QWidget>
+
+class QLabel;
+class QProgressBar;
+class QPushButton;
+class QToolButton;
+class QComboBox;
+class QCheckBox;
+class QVBoxLayout;
+class QStackedWidget;
+class QListWidget;
+class QRadioButton;
+class QButtonGroup;
+
+// Одна загрузка
+struct DownloadItem {
+    enum Status { Queued, Downloading, Paused, Done, Failed };
+    int id = 0;
+    QString url;
+    QString title;
+    QString site;
+    double duration = 0;
+    QImage thumb;
+    QString thumbUrl;
+    int height = 0;            // 0 = лучшее качество
+    bool audioOnly = false;
+    Status status = Queued;
+    double progress = 0;
+    qint64 total = 0;
+    qint64 done = 0;
+    double speed = 0;          // байт/с
+    int eta = -1;
+    QString filePath;
+    QString error;
+};
+using DownloadPtr = QSharedPointer<DownloadItem>;
+
+// Окно выбора качества после анализа ссылки.
+class AnalyzeDialog : public FramedDialog
+{
+    Q_OBJECT
+public:
+    AnalyzeDialog(const QString &url, const QStringList &baseArgs, QWidget *parent = nullptr);
+    ~AnalyzeDialog() override;
+    DownloadPtr result() const { return m_item; }
+
+private:
+    void onAnalyzed(int code);
+
+    DownloadPtr m_item;
+    QProcess *m_proc;
+    QLabel *m_thumb;
+    QLabel *m_title;
+    QLabel *m_state;
+    QVBoxLayout *m_options;
+    QButtonGroup *m_group;
+    QPushButton *m_ok;
+};
+
+class DownloadCard : public QFrame
+{
+    Q_OBJECT
+public:
+    explicit DownloadCard(const DownloadPtr &item, QWidget *parent = nullptr);
+    void refresh();
+    DownloadPtr item() const { return m_item; }
+
+signals:
+    void pauseResume(const DownloadPtr &item);
+    void removeRequested(const DownloadPtr &item);
+    void convertRequested(const QString &file);
+
+private:
+    DownloadPtr m_item;
+    QLabel *m_thumb;
+    QLabel *m_title;
+    QLabel *m_meta;
+    QProgressBar *m_progress;
+    QLabel *m_state;
+    QToolButton *m_pause;
+    QPushButton *m_open;
+    QPushButton *m_convert;
+};
+
+// Раздел «Загрузить»: ссылки на YouTube, Rutube, VK, Одноклассники, Mail.ru и прямые ссылки на файлы/потоки.
+class DownloadPage : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit DownloadPage(QWidget *parent = nullptr);
+    bool isBusy() const { return m_proc != nullptr; }
+
+signals:
+    void convertRequested(const QString &file, bool autoStart);
+
+private:
+    QWidget *buildSubBar();
+    QWidget *buildBottomBar();
+    void pasteFromClipboard();
+    void enterLinks();
+    void addUrl(const QString &url);
+    void addItem(const DownloadPtr &item);
+    void startNext();
+    void startItem(const DownloadPtr &item);
+    void pauseResume(const DownloadPtr &item);
+    void removeItem(const DownloadPtr &item);
+    void onOutput();
+    void onFinished(int code, QProcess::ExitStatus st);
+    void updateView();
+    void loadThumb(const DownloadPtr &item);
+    QStringList baseArgs() const;
+    QString outputDir() const;
+
+    QList<DownloadPtr> m_items;
+    QHash<int, DownloadCard *> m_cards;
+    int m_nextId = 1;
+    DownloadPtr m_current;
+    QProcess *m_proc = nullptr;
+    QString m_stderr;
+    bool m_pausing = false;
+    QStringList m_pendingUrls;
+
+    QStackedWidget *m_stack;
+    QVBoxLayout *m_cardLayout;
+    QVBoxLayout *m_doneLayout;
+    QPushButton *m_segActive;
+    QPushButton *m_segDone;
+    QCheckBox *m_convertMode;
+    QToolButton *m_fast;
+    QComboBox *m_browser;
+    QComboBox *m_outDir;
+    QPushButton *m_startAll;
+    QPushButton *m_pauseAll;
+    QLabel *m_status;
+};
