@@ -111,10 +111,10 @@ jobs:
       - name: Модули (FFmpeg, Real-ESRGAN)
         run: |
           mkdir -p AppDir/usr/bin/tools/realesrgan
-          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          curl -fL --retry 3 -o ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
           tar -xf ffmpeg.tar.xz
-          cp ffmpeg-*-static/ffmpeg ffmpeg-*-static/ffprobe AppDir/usr/bin/tools/
-          cp ffmpeg-*-static/GPLv3.txt AppDir/usr/bin/tools/FFMPEG-LICENSE.txt || true
+          cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg ffmpeg-master-latest-linux64-gpl/bin/ffprobe AppDir/usr/bin/tools/
+          cp ffmpeg-master-latest-linux64-gpl/LICENSE.txt AppDir/usr/bin/tools/FFMPEG-LICENSE.txt || true
           curl -L -o esrgan.zip https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip
           unzip -q esrgan.zip -d AppDir/usr/bin/tools/realesrgan
           rm -f AppDir/usr/bin/tools/realesrgan/*.jpg AppDir/usr/bin/tools/realesrgan/*.png AppDir/usr/bin/tools/realesrgan/*.mp4
