@@ -362,5 +362,18 @@
  "Открыть папку с расширением": "Open the extension folder",
  "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "The language and theme will change after a restart. Restart the program now?",
  "Тема оформления:": "Theme:",
- "Язык и тема сменятся после перезапуска программы.": "The language and theme will change after restarting the program."
+ "Язык и тема сменятся после перезапуска программы.": "The language and theme will change after restarting the program.",
+ "Браузер Aristocrat": "Aristocrat Browser",
+ "Назад": "Back",
+ "Вперёд": "Forward",
+ "Обновить": "Reload",
+ "Адрес страницы с видео": "Address of the page with the video",
+ "Найдено видео: %1. Нажмите «Скачать» и выберите качество.": "Videos found: %1. Click \"Download\" and choose the quality.",
+ "Откройте страницу и запустите воспроизведение — программа найдёт видео сама. Если видео здесь не показывается, это не мешает загрузке.": "Open the page and start playback — the program will find the video itself. If the video does not play here, the download still works.",
+ "Открыть во встроенном браузере": "Open in the built-in browser",
+ "Сайт не поддерживается напрямую. Откройте страницу во встроенном браузере программы: запустите видео — и программа сама найдёт поток для загрузки.": "This site is not supported directly. Open the page in the program's built-in browser: start the video and the program will find the stream to download.",
+ "Браузер": "Browser",
+ "Встроенный браузер: откройте сайт, запустите видео — и скачайте его кнопкой «Скачать»": "Built-in browser: open a site, start the video and download it with the \"Download\" button",
+ "Видео со страницы добавлено в загрузки: %1": "Video from the page added to downloads: %1",
+ "Эта сборка программы собрана без встроенного браузера.": "This build of the program does not include the built-in browser."
 }

@@ -19,6 +19,8 @@
 #include <QWebEngineCookieStore>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInfo>
 #include <QWebEngineView>
@@ -103,6 +105,22 @@ QWebEngineProfile *BrowserWindow::profile()
             if (l[i].hasSameIdentifier(c)) l.removeAt(i);
     });
     store->loadAllCookies();
+
+    // В сборке для Windows браузер не умеет воспроизводить H.264 (лицензионный кодек). Плееры сайтов
+    // из-за этого могут даже не запрашивать поток. Говорим им, что кодек есть: поток будет запрошен
+    // и перехвачен, а скачает и перекодирует его уже FFmpeg.
+    QWebEngineScript codecs;
+    codecs.setName(QStringLiteral("aristocrat-codecs"));
+    codecs.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    codecs.setWorldId(QWebEngineScript::MainWorld);
+    codecs.setRunsOnSubFrames(true);
+    codecs.setSourceCode(QStringLiteral(
+        "(function(){try{var re=/avc1|avc3|mp4a|h264|aac|mp4|mpegurl|mp2t/i;"
+        "['MediaSource','ManagedMediaSource','WebKitMediaSource'].forEach(function(n){var M=window[n];"
+        "if(M&&M.isTypeSupported){var o=M.isTypeSupported.bind(M);M.isTypeSupported=function(t){return o(t)||re.test(t||'');};}});"
+        "var cp=HTMLMediaElement.prototype.canPlayType;HTMLMediaElement.prototype.canPlayType=function(t){"
+        "var r=cp.call(this,t);return r||(re.test(t||'')?'maybe':'');};}catch(e){}})();"));
+    p->scripts()->insert(codecs);
     p->setUrlRequestInterceptor(sniffer());
     return p;
 }
@@ -242,7 +260,9 @@ void BrowserWindow::updatePanel()
     m_list->setVisible(sorted.size() > 1);
     m_download->setEnabled(any);
     m_found->setText(any ? T("Найдено видео: %1. Нажмите «Скачать» и выберите качество.").arg(sorted.size())
-                         : T("Откройте страницу и запустите воспроизведение — программа найдёт видео сама."));
+                         : T("Откройте страницу и запустите воспроизведение — программа найдёт видео сама. "
+                             "Если видео здесь не показывается, это не мешает загрузке."));
+    m_found->setWordWrap(true);
 }
 
 QStringList BrowserWindow::headersFor(const QUrl &media, const QUrl &page) const

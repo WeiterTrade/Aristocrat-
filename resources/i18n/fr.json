@@ -362,5 +362,18 @@
  "Открыть папку с расширением": "Ouvrir le dossier de l'extension",
  "Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?": "La langue et le thème changeront après redémarrage. Redémarrer le programme maintenant ?",
  "Тема оформления:": "Thème :",
- "Язык и тема сменятся после перезапуска программы.": "La langue et le thème changeront après le redémarrage du programme."
+ "Язык и тема сменятся после перезапуска программы.": "La langue et le thème changeront après le redémarrage du programme.",
+ "Браузер Aristocrat": "Navigateur Aristocrat",
+ "Назад": "Précédent",
+ "Вперёд": "Suivant",
+ "Обновить": "Actualiser",
+ "Адрес страницы с видео": "Adresse de la page avec la vidéo",
+ "Найдено видео: %1. Нажмите «Скачать» и выберите качество.": "Vidéos trouvées : %1. Cliquez sur « Télécharger » et choisissez la qualité.",
+ "Откройте страницу и запустите воспроизведение — программа найдёт видео сама. Если видео здесь не показывается, это не мешает загрузке.": "Ouvrez la page et lancez la lecture — le programme trouvera la vidéo tout seul. Si la vidéo ne se lit pas ici, le téléchargement fonctionne quand même.",
+ "Открыть во встроенном браузере": "Ouvrir dans le navigateur intégré",
+ "Сайт не поддерживается напрямую. Откройте страницу во встроенном браузере программы: запустите видео — и программа сама найдёт поток для загрузки.": "Ce site n'est pas pris en charge directement. Ouvrez la page dans le navigateur intégré : lancez la vidéo et le programme trouvera le flux à télécharger.",
+ "Браузер": "Navigateur",
+ "Встроенный браузер: откройте сайт, запустите видео — и скачайте его кнопкой «Скачать»": "Navigateur intégré : ouvrez un site, lancez la vidéo et téléchargez-la avec le bouton « Télécharger »",
+ "Видео со страницы добавлено в загрузки: %1": "Vidéo de la page ajoutée aux téléchargements : %1",
+ "Эта сборка программы собрана без встроенного браузера.": "Cette version du programme n'inclut pas le navigateur intégré."
 }
