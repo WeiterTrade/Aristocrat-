@@ -106,7 +106,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     srcCol->addWidget(m_srcName);
     srcCol->addWidget(srcBox);
     srcCol->addStretch();
-    row->addLayout(srcCol, 5);
+    row->addLayout(srcCol, 4);
 
     auto *arrow = Ui::iconLabel("arrow", 26, this);
     auto *arrowCol = new QVBoxLayout;
@@ -168,10 +168,10 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     auto *opts = new QHBoxLayout;
     opts->setSpacing(10);
     m_subs = new QComboBox(this);
-    m_subs->setMinimumWidth(120);
+    m_subs->setMinimumWidth(155);
     m_subs->setToolTip(QStringLiteral("Субтитры"));
     m_audio = new QComboBox(this);
-    m_audio->setMinimumWidth(120);
+    m_audio->setMinimumWidth(155);
     m_audio->setToolTip(QStringLiteral("Звуковая дорожка"));
     m_upscale = new QComboBox(this);
     m_upscale->setToolTip(QStringLiteral("Апскейл — увеличение разрешения (для старых кассет)"));
@@ -200,7 +200,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     dstCol->addLayout(dstRow);
     dstCol->addLayout(opts);
     dstCol->addStretch();
-    row->addLayout(dstCol, 6);
+    row->addLayout(dstCol, 7);
 
     // ---- Кнопка действия / прогресс ----
     m_actionStack = new QStackedWidget(this);
