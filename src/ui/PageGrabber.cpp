@@ -49,7 +49,7 @@ QUrl loginUrl(const QUrl &url)
     if (testSite(url))
         return url.resolved(QUrl(QStringLiteral("/Account/Login")));
     if (isAdultEmpire(url))
-        return QUrl(QStringLiteral("https://www.adultempire.com/Account/Login"));
+        return QUrl(QStringLiteral("https://www.adultempire.com/account/loginpage"));
     return {};
 }
 
