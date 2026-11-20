@@ -57,7 +57,7 @@ QPushButton#PrimaryButton {
 QPushButton#PrimaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F7DA8E, stop:1 #D8AA48); }
 QPushButton#PrimaryButton:disabled { background: #3A3033; color: #7A6E68; }
 
-QPushButton#DarkButton { background: #171113; border: 1px solid #33282C; padding: 10px 30px; font-weight: 600; }
+QPushButton#DarkButton { background: #171113; border: 1px solid #33282C; padding: 10px 8px; font-weight: 600; }
 QPushButton#DarkButton:hover { border-color: #E2BC5C; color: #F0D07A; }
 
 QToolButton#IconButton { background: transparent; border: none; padding: 4px; border-radius: 4px; }

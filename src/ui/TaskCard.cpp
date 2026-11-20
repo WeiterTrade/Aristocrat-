@@ -42,7 +42,6 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
 {
     setObjectName(QStringLiteral("TaskCard"));
     setAttribute(Qt::WA_StyledBackground);
-    setMinimumHeight(180);
 
     auto *row = new QHBoxLayout(this);
     row->setContentsMargins(24, 20, 10, 20);
@@ -108,7 +107,11 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     row->addLayout(srcCol, 5);
 
     auto *arrow = Ui::iconLabel("arrow", 26, this);
-    row->addWidget(arrow, 0, Qt::AlignVCenter);
+    auto *arrowCol = new QVBoxLayout;
+    arrowCol->addSpacing(58);
+    arrowCol->addWidget(arrow);
+    arrowCol->addStretch();
+    row->addLayout(arrowCol);
 
     // ---- Результат ----
     auto *dstCol = new QVBoxLayout;
@@ -181,6 +184,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
         c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         c->setMinimumContentsLength(12);
     }
+    m_subs->setMinimumContentsLength(15);
     auto *info = Ui::iconButton("info", QString(), this);
     info->setIcon(Ui::icon("info", true));
     opts->addWidget(m_subs);
@@ -202,6 +206,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_convert->setObjectName(QStringLiteral("DarkButton"));
     m_convert->setCursor(Qt::PointingHandCursor);
     m_convert->setMinimumHeight(48);
+    m_actionStack->setContentsMargins(0, 32, 0, 0);
 
     auto *progressPage = new QWidget(this);
     auto *pl = new QVBoxLayout(progressPage);
@@ -234,7 +239,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_actionStack->addWidget(m_convert);
     m_actionStack->addWidget(progressPage);
     m_actionStack->addWidget(donePage);
-    row->addWidget(m_actionStack, 0, Qt::AlignVCenter);
+    row->addWidget(m_actionStack, 0, Qt::AlignTop);
 
     auto *close = Ui::iconButton("close", QStringLiteral("Убрать из списка"), this, 14);
     row->addWidget(close, 0, Qt::AlignTop);
