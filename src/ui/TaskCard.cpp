@@ -171,7 +171,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_subs->setMinimumWidth(155);
     m_subs->setToolTip(QStringLiteral("Субтитры"));
     m_audio = new QComboBox(this);
-    m_audio->setMinimumWidth(155);
+    m_audio->setMinimumWidth(180);
     m_audio->setToolTip(QStringLiteral("Звуковая дорожка"));
     m_upscale = new QComboBox(this);
     m_upscale->setToolTip(QStringLiteral("Апскейл — увеличение разрешения (для старых кассет)"));
