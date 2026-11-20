@@ -196,12 +196,13 @@ jobs:
           shot() {   # $1 — имя, остальное — аргументы программы
             name=$1; shift
             xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
-              "./Aristocrat Видеоконвертер-x86_64.AppImage" "$@" & APP=$!
+              "./Aristocrat Видеоконвертер-x86_64.AppImage" "$@" > app-shot.log 2>&1 & APP=$!
               sleep 14
               if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
               import -window root shot.png
               kill $APP
             ' _ "$@"
+            echo "--- журнал программы ($name) ---"; tail -15 app-shot.log || true
             convert shot.png -resize 1100x -quality 60 "$name.jpg"
             echo "SCREENSHOT_BEGIN $name"; base64 -w 8000 "$name.jpg"; echo "SCREENSHOT_END"
           }
@@ -281,7 +282,7 @@ jobs:
             sleep 40
             kill $APP
           '
-          grep "GRAB" grab.log
+          grep "GRAB" grab.log || tail -40 grab.log
           grep -q "GRAB OK" grab.log
 
       - name: Расширение для браузера (архивы)
