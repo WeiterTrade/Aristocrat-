@@ -4,6 +4,8 @@
 #include "core/Theme.h"
 
 #include <QCloseEvent>
+#include <QGuiApplication>
+#include <QScreen>
 #include <algorithm>
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -123,7 +125,9 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowFlag(Qt::WindowMinMaxButtonsHint);
     setModal(false);
-    resize(1280, 860);
+    // Размер — по экрану (на маленьких экранах окно не должно выходить за край)
+    const QRect avail = (parent ? parent->screen() : QGuiApplication::primaryScreen())->availableGeometry();
+    resize(qMin(1280, avail.width() - 40), qMin(860, avail.height() - 40));
 
     auto *root = contentLayout();
     root->setContentsMargins(0, 0, 0, 0);

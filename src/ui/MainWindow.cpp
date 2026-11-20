@@ -21,6 +21,8 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QToolButton>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QStyle>
 #include <QTimer>
 #include <QAbstractButton>
@@ -32,8 +34,11 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(QStringLiteral("Aristocrat Видеоконвертер"));
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint);
     setWindowIcon(QIcon(QStringLiteral(":/logo/logo.svg")));
-    setMinimumSize(1100, 680);
-    resize(1480, 880);
+    setMinimumSize(960, 600);
+    {
+        const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+        resize(qMin(1480, avail.width() - 20), qMin(880, avail.height() - 20));
+    }
 
     // Своя рамка: внешний виджет с отступом (за него тянем размер), внутри — всё остальное
     auto *frame = new QWidget(this);
