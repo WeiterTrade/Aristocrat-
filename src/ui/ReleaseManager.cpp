@@ -193,7 +193,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     : FramedDialog(parent, true)
 {
     setWindowTitle(T("Adult Empire Менеджер"));
-    resize(1180, 820);
+    resize(1320, 860);
     QSettings st;
 
     auto *root = contentLayout();
@@ -218,6 +218,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     auto *scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto *page = new QWidget(scroll);
     auto *cols = new QHBoxLayout(page);
     cols->setContentsMargins(0, 0, 8, 0);
@@ -252,7 +253,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     edRow->addWidget(m_edition, 1);
     form->addRow(T("Издание:"), edRow);
     m_plot = new QPlainTextEdit(page);
-    m_plot->setMinimumHeight(120);
+    m_plot->setMinimumHeight(110);
     form->addRow(T("Описание:"), m_plot);
     m_plotOrig = new QPlainTextEdit(page);
     m_plotOrig->setReadOnly(true);
@@ -317,7 +318,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     ng->addWidget(m_newGenre, 1);
     ng->addWidget(addG);
     left->addLayout(ng);
-    cols->addLayout(left, 3);
+    cols->addLayout(left, 5);
 
     // ---- Правая колонка: обложки, состав, сцены ----
     auto *right = new QVBoxLayout;
@@ -327,12 +328,12 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
         auto *cap = new QLabel(caption, page);
         cap->setObjectName(QStringLiteral("Muted"));
         prev = new QLabel(page);
-        prev->setFixedSize(150, 200);
+        prev->setFixedSize(120, 165);
         prev->setAlignment(Qt::AlignCenter);
         prev->setText(T("нет"));
         Ui::themedStyle(prev, QStringLiteral("QLabel{background:#171113;border:1px solid #33282C;border-radius:6px;color:#7D7266;}"));
         urlEdit = edit(page, T("ссылка"));
-        urlEdit->setMaximumWidth(150);
+        urlEdit->setMaximumWidth(120);
         imgs->addWidget(cap, 0, col);
         imgs->addWidget(prev, 1, col);
         imgs->addWidget(urlEdit, 2, col);
@@ -369,7 +370,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
         "QTableWidget{background:#171113;gridline-color:#33282C;border:1px solid #33282C;}"
         "QHeaderView::section{background:#261E21;color:#CFC3A8;border:none;border-bottom:1px solid #33282C;padding:5px;}"));
     right->addWidget(m_scenes, 1);
-    cols->addLayout(right, 2);
+    cols->addLayout(right, 4);
 
     // ---- Низ: папка и видео ----
     auto *bottom = new QGridLayout;

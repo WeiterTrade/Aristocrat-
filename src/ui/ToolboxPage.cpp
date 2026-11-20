@@ -14,6 +14,7 @@
 #include "core/Tools.h"
 
 #include <QComboBox>
+#include <QScrollArea>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
@@ -52,7 +53,18 @@ static QFrame *card(QWidget *parent, const QString &icon, const QString &title, 
 ToolboxPage::ToolboxPage(QWidget *parent)
     : QWidget(parent)
 {
-    auto *root = new QVBoxLayout(this);
+    // Карточек больше, чем помещается на маленьком экране — страница прокручивается
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto *scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto *content = new QWidget(scroll);
+    content->setObjectName(QStringLiteral("ToolboxContent"));
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+    auto *root = new QVBoxLayout(content);
     root->setContentsMargins(40, 30, 40, 30);
     auto *grid = new QGridLayout;
     grid->setSpacing(24);

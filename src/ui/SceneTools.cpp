@@ -196,7 +196,7 @@ void fetchNext()
         });
     }
     s.busy = true;
-    s.timer->start(60000);
+    s.timer->start(25000);   // ошибка сервера (404) не даёт загрузки — ждём недолго
     s.page->download(s.queue.first().url);
 }
 } // namespace
