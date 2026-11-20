@@ -89,6 +89,11 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &in, const QString &name, const QString &dir, bool lossless, const QString &meta) {
                 m_convert->addReleaseVideo(in, name, dir, lossless, meta);
             });
+    connect(download, &DownloadPage::chaptersConvert, this,
+            [this](const QString &in, const QString &name, const QString &dir, const QString &meta) {
+                m_convert->addReleaseVideo(in, name, dir, false, meta);
+                showPage(0);
+            });
     connect(download, &DownloadPage::releaseRequested, this, [toolbox](const QString &file, const QString &page) {
         toolbox->openRelease(page, file);
     });
@@ -189,6 +194,10 @@ void MainWindow::demoChapters(const QString &file, const QString &url)
     showPage(4);
     QTimer::singleShot(1000, this, [this, file, url] {
         auto *d = new ChaptersDialog(file, url, this);
+        connect(d, &ChaptersDialog::convertRequested, this,
+                [this](const QString &in, const QString &name, const QString &dir, const QString &meta) {
+                    m_convert->addReleaseVideo(in, name, dir, false, meta);
+                });
         d->setAttribute(Qt::WA_DeleteOnClose);
         d->show();
     });

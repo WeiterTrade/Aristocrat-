@@ -302,6 +302,13 @@ QStringList singlePass(const ConversionTask &t, const QString &outPath, bool hwA
         // Копия без потерь (DVD → MKV): все видео-, звуковые дорожки и субтитры как есть
         a << "-fflags" << "+genpts" << trimInput(t) << "-i" << t.input << trimDuration(t)
           << "-map" << "0:v:0" << "-map" << "0:a?" << "-map" << "0:s?" << "-c" << "copy";
+        // Субтитры MP4 (mov_text) в MKV не копируются — переводим в SRT, остальное как есть
+        if (t.preset.ext == QLatin1String("mkv"))
+            for (const StreamTrack &s : t.info.subtitleTracks)
+                if (s.codec == QLatin1String("mov_text")) {
+                    a << "-c:s" << "srt";
+                    break;
+                }
         if (!QSettings().value("convert/keepChapters", true).toBool())
             a << "-map_chapters" << "-1";
         a << outPath;

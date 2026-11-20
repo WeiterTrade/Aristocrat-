@@ -16,6 +16,8 @@ namespace Chapters {
 QList<Chapter> read(const QString &file, double *duration = nullptr);   // ffprobe -show_chapters
 QString metadataFile(const QList<Chapter> &list, double duration);     // текст ;FFMETADATA1
 QStringList muxArgs(const QString &input, const QString &metaFile, const QString &output);
+// Переупаковка в MKV как в MKVToolNix: без перекодирования, все дорожки, вложения и главы из файла
+QStringList remuxArgs(const QString &input, const QString &metaFile, const QString &output);
 
 double parseTime(const QString &text, bool *ok = nullptr);   // 01:22:37 / 1:22:37.500 / 22:37
 QString formatTime(double seconds);                           // 01:22:37.000

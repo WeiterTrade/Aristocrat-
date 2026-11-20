@@ -67,6 +67,20 @@ QStringList muxArgs(const QString &input, const QString &metaFile, const QString
             "-c", "copy", output};
 }
 
+QStringList remuxArgs(const QString &input, const QString &metaFile, const QString &output)
+{
+    QStringList a = {"-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-fflags", "+genpts", "-i", input, "-i", metaFile,
+                     "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?", "-map_metadata", "0", "-map_chapters", "1",
+                     "-c", "copy"};
+    // Субтитры MP4 (mov_text) Matroska не принимает как есть — переводим в SRT
+    QProcess p;
+    p.start(Tools::ffprobe(), {"-v", "error", "-select_streams", "s", "-show_entries", "stream=codec_name", "-of", "csv=p=0", input});
+    if (p.waitForFinished(15000) && QString::fromUtf8(p.readAllStandardOutput()).contains(QLatin1String("mov_text")))
+        a << "-c:s" << "srt";
+    a << output;
+    return a;
+}
+
 double parseTime(const QString &text, bool *ok)
 {
     static const QRegularExpression re(QStringLiteral("^\\s*(?:(\\d{1,2}):)?(\\d{1,2}):(\\d{1,2})(?:[.,](\\d{1,3}))?\\s*$"));

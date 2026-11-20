@@ -860,6 +860,7 @@ void DownloadPage::addItem(const DownloadPtr &item)
     connect(card, &DownloadCard::convertRequested, this, [this](const QString &f) { emit convertRequested(f, false); });
     connect(card, &DownloadCard::chaptersRequested, this, [this](const QString &f, const QString &page) {
         ChaptersDialog d(f, page, window());
+        connect(&d, &ChaptersDialog::convertRequested, this, &DownloadPage::chaptersConvert);
         d.exec();
     });
     connect(card, &DownloadCard::releaseRequested, this, &DownloadPage::releaseRequested);

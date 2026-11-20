@@ -162,6 +162,10 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     b4->addStretch();
     connect(openChap, &QPushButton::clicked, this, [this] {
         ChaptersDialog d(QString(), QString(), window());
+        connect(&d, &ChaptersDialog::convertRequested, this,
+                [this](const QString &in, const QString &name, const QString &dir, const QString &meta) {
+                    emit releaseVideo(in, name, dir, false, meta);
+                });
         d.exec();
     });
 

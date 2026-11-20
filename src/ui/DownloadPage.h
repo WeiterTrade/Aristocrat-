@@ -127,6 +127,7 @@ public:
 signals:
     void convertRequested(const QString &file, bool autoStart);
     void releaseRequested(const QString &file, const QString &pageUrl);
+    void chaptersConvert(const QString &input, const QString &name, const QString &dir, const QString &chaptersMeta);
 
 private:
     QWidget *buildSubBar();

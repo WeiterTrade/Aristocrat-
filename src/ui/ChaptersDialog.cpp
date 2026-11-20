@@ -23,6 +23,8 @@
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTextStream>
+#include <QMenu>
+#include <QDateTime>
 #include <QVBoxLayout>
 #include <algorithm>
 
@@ -108,12 +110,27 @@ ChaptersDialog::ChaptersDialog(const QString &file, const QString &pageUrl, QWid
     m_replace = new QCheckBox(T("Заменить исходный файл (иначе рядом будет создана копия с главами)"), this);
     m_replace->setObjectName(QStringLiteral("PlainCheck"));
     auto *close = new QPushButton(T("Закрыть"), this);
-    m_save = Ui::primaryButton(T("Записать главы в видео"), this);
-    m_save->setMinimumWidth(220);
+    // Кнопка с выбором действия: основная часть выполняет, стрелка открывает список
+    m_save = Ui::primaryButton(QString(), this);
+    m_save->setMinimumWidth(250);
+    m_saveMenu = Ui::primaryButton(QStringLiteral("▾"), this);
+    m_saveMenu->setFixedWidth(34);
+    m_saveMenu->setToolTip(T("Выбрать действие"));
+    auto *menu = new QMenu(this);
+    menu->addAction(T("Переупаковать в MKV и добавить сцены (без перекодирования)"), this, [this] { setMode(Remux); });
+    menu->addAction(T("Записать главы в исходный формат"), this, [this] { setMode(WriteInPlace); });
+    menu->addAction(T("Конвертировать с главами (формат из раздела «Конвертировать»)"), this, [this] { setMode(Convert); });
+    connect(m_saveMenu, &QPushButton::clicked, this, [this, menu] {
+        menu->exec(m_saveMenu->mapToGlobal(QPoint(m_saveMenu->width() - menu->sizeHint().width(), m_saveMenu->height())));
+    });
+    auto *split = new QHBoxLayout;
+    split->setSpacing(1);
+    split->addWidget(m_save);
+    split->addWidget(m_saveMenu);
     r4->addWidget(m_replace);
     r4->addStretch();
     r4->addWidget(close);
-    r4->addWidget(m_save);
+    r4->addLayout(split);
     root->addLayout(r4);
 
     connect(pick, &QPushButton::clicked, this, &ChaptersDialog::chooseFile);
@@ -144,6 +161,8 @@ ChaptersDialog::ChaptersDialog(const QString &file, const QString &pageUrl, QWid
     connect(exp, &QPushButton::clicked, this, &ChaptersDialog::exportOgm);
     connect(close, &QPushButton::clicked, this, &QDialog::reject);
     connect(m_save, &QPushButton::clicked, this, &ChaptersDialog::save);
+
+    setMode(QSettings().value(QStringLiteral("chapters/saveMode"), int(Remux)).toInt());
 
 #ifndef HAVE_WEBENGINE
     m_fetch->setEnabled(false);
@@ -181,6 +200,7 @@ void ChaptersDialog::setBusy(bool busy, const QString &text)
     m_fetch->setEnabled(!busy);
     m_translate->setEnabled(!busy);
     m_save->setEnabled(!busy);
+    m_saveMenu->setEnabled(!busy);
     if (!text.isEmpty())
         m_state->setText(text);
 }
@@ -302,6 +322,14 @@ void ChaptersDialog::moveRow(int delta)
     m_table->setCurrentCell(to, m_table->currentColumn());
 }
 
+void ChaptersDialog::setMode(int mode)
+{
+    m_mode = qBound(0, mode, 2);
+    QSettings().setValue(QStringLiteral("chapters/saveMode"), m_mode);
+    m_save->setText(m_mode == Remux ? T("Переупаковать в MKV") : m_mode == WriteInPlace ? T("Записать главы") : T("Конвертировать"));
+    m_replace->setEnabled(m_mode != Convert);
+}
+
 void ChaptersDialog::save()
 {
     const QString file = QDir::fromNativeSeparators(m_file->text());
@@ -317,7 +345,7 @@ void ChaptersDialog::save()
     }
     const QString tmpDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/aristocrat-vc");
     QDir().mkpath(tmpDir);
-    const QString meta = tmpDir + QStringLiteral("/chapters.txt");
+    const QString meta = tmpDir + QStringLiteral("/chapters-%1.txt").arg(QDateTime::currentMSecsSinceEpoch());
     QFile mf(meta);
     if (!mf.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
@@ -325,29 +353,51 @@ void ChaptersDialog::save()
     mf.close();
 
     const QFileInfo fi(file);
-    const QString out = m_replace->isChecked()
-        ? fi.dir().filePath(fi.completeBaseName() + QStringLiteral(".chapters-tmp.") + fi.suffix())
-        : fi.dir().filePath(fi.completeBaseName() + T(" (с главами).") + fi.suffix());
-    setBusy(true, T("Запись глав в видео…"));
+    if (m_mode == Convert) {
+        emit convertRequested(file, fi.completeBaseName(), fi.absolutePath(), meta);
+        m_state->setText(T("Видео добавлено в раздел «Конвертировать» — главы вставятся после конвертации."));
+        return;
+    }
+
+    // Куда писать: при замене — во временный файл, потом на место исходного
+    const bool remux = m_mode == Remux;
+    const QString ext = remux ? QStringLiteral("mkv") : fi.suffix();
+    QString finalPath = fi.dir().filePath(fi.completeBaseName() + QLatin1Char('.') + ext);
+    if (!m_replace->isChecked() && QFileInfo(finalPath) == fi)
+        finalPath = fi.dir().filePath(fi.completeBaseName() + T(" (с главами).") + ext);
+    const QString out = fi.dir().filePath(fi.completeBaseName() + QStringLiteral(".chapters-tmp.") + ext);
+    const bool replace = m_replace->isChecked();
+
+    setBusy(true, remux ? T("Переупаковка в MKV…") : T("Запись глав в видео…"));
     m_proc = new QProcess(this);
-    connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, file, out](int code) {
+    connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, file, out, finalPath, replace, meta](int code) {
         const QString err = QString::fromUtf8(m_proc->readAllStandardError()).trimmed();
         m_proc->deleteLater();
         m_proc = nullptr;
+        QFile::remove(meta);
         if (code != 0) {
             QFile::remove(out);
             setBusy(false, T("Не удалось записать главы: ") + err.section('\n', -1));
             return;
         }
         QString result = out;
-        if (m_replace->isChecked()) {
+        if (QFileInfo(finalPath) == QFileInfo(file)) {
+            // Тот же файл: заменить исходный
             if (QFile::remove(file) && QFile::rename(out, file))
                 result = file;
+        } else {
+            QFile::remove(finalPath);
+            if (QFile::rename(out, finalPath))
+                result = finalPath;
+            if (replace)
+                QFile::remove(file);   // исходный MP4/AVI больше не нужен — остаётся MKV
         }
         setBusy(false, T("Главы записаны: %1").arg(QDir::toNativeSeparators(result)));
+        m_file->setText(QDir::toNativeSeparators(result));
         Ui::showInFolder(result);
     });
-    m_proc->start(Tools::ffmpeg(), Chapters::muxArgs(file, meta, out));
+    m_proc->start(Tools::ffmpeg(), remux ? Chapters::remuxArgs(file, meta, out) : Chapters::muxArgs(file, meta, out));
 }
 
 void ChaptersDialog::importOgm()

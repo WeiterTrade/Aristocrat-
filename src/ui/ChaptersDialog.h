@@ -18,6 +18,13 @@ class ChaptersDialog : public FramedDialog
 public:
     ChaptersDialog(const QString &file = QString(), const QString &pageUrl = QString(), QWidget *parent = nullptr);
 
+    // Способ записи: переупаковать в MKV (как MKVToolNix), записать в исходный формат, конвертировать
+    enum SaveMode { Remux = 0, WriteInPlace = 1, Convert = 2 };
+
+signals:
+    // «Конвертировать»: видео уходит в раздел «Конвертировать», главы вставятся после конвертации
+    void convertRequested(const QString &input, const QString &name, const QString &dir, const QString &chaptersMeta);
+
 private:
     void chooseFile();
     void loadFile(const QString &file);
@@ -42,6 +49,9 @@ private:
     QPushButton *m_fetch;
     QPushButton *m_translate;
     QPushButton *m_save;
+    QPushButton *m_saveMenu;
+    int m_mode = Remux;
+    void setMode(int mode);
     double m_duration = 0;
     QProcess *m_proc = nullptr;
 };

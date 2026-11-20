@@ -389,7 +389,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     bottom->addWidget(m_video, 1, 1);
     bottom->addWidget(pickVideo, 1, 2);
     auto *modeRow = new QHBoxLayout;
-    m_lossless = new QRadioButton(T("Копия без потерь в MKV (быстро)"), this);
+    m_lossless = new QRadioButton(T("Переупаковать в MKV (без перекодирования)"), this);
     m_convert = new QRadioButton(T("Конвертировать в формат из раздела «Конвертировать»"), this);
     (st.value(QStringLiteral("ae/lossless"), true).toBool() ? m_lossless : m_convert)->setChecked(true);
     modeRow->addWidget(m_lossless);
