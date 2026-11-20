@@ -156,10 +156,11 @@ jobs:
               kill $APP
             ' _ "$@"
             convert shot.png -resize 1100x -quality 60 "$name.jpg"
-            echo "SCREENSHOT_BEGIN $name"; base64 -w0 "$name.jpg"; echo; echo "SCREENSHOT_END"
+            echo "SCREENSHOT_BEGIN $name"; base64 -w 8000 "$name.jpg"; echo "SCREENSHOT_END"
           }
           shot trim --demo-trim "$PWD/Кассета 1994.mp4"
           shot convert "$PWD/Кассета 1994.mp4"
+          shot download --page=1
 
       - uses: actions/upload-artifact@v4
         with:
