@@ -185,6 +185,18 @@ jobs:
             -i AppDir/usr/share/icons/hicolor/256x256/apps/aristocrat-video-converter.png
           mv Aristocrat*.AppImage "Aristocrat Видеоконвертер-x86_64.AppImage"
 
+      - name: Отладка глав (gdb)
+        continue-on-error: true
+        env:
+          ARISTOCRAT_LANG: ru
+        run: |
+          sudo apt-get install -y gdb xvfb > /dev/null
+          ./"Aristocrat Видеоконвертер-x86_64.AppImage" --appimage-extract > /dev/null
+          AppDir/usr/bin/tools/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=320x240:rate=25" -t 8 -c:v libx264 t.mp4
+          cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
+          timeout 90 xvfb-run -a -s "-screen 0 1600x960x24" gdb -q -batch -ex "set follow-fork-mode child" -ex run -ex "thread apply all bt 30" \
+            --args bash squashfs-root/AppRun "--demo-chapters=$PWD/t.mp4|http://127.0.0.1:8790/scenes.html" 2>&1 | grep -vE "^\[(New|Thread|Detaching)|^warning" | tail -150 || true
+
       - name: Проверка запуска (скриншот в журнал)
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
@@ -198,7 +210,7 @@ jobs:
             xvfb-run -a -s "-screen 0 1600x960x24" bash -c '
               "./Aristocrat Видеоконвертер-x86_64.AppImage" "$@" > app-shot.log 2>&1 & APP=$!
               sleep ${SHOT_WAIT:-14}
-              if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; exit 1; fi
+              if ! kill -0 $APP 2>/dev/null; then echo "Программа завершилась при запуске"; tail -40 app-shot.log; exit 1; fi
               import -window root shot.png
               kill $APP
             ' _ "$@"
