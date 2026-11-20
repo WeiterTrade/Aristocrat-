@@ -18,7 +18,11 @@ public:
     void demoSettings(int tab);
     void demoBrowser(const QString &url);
     void demoGrab(const QString &url);
+    void demoTheme(const QString &theme);
+    void demoDvd(const QString &path);
     void openSettings(int tab = 0);
+    void applyTheme();
+    void restartApp();
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -30,6 +34,8 @@ private:
     QStackedWidget *m_pages;
     QButtonGroup *m_nav;
     ConvertPage *m_convert;
+    class ToolboxPage *m_toolbox = nullptr;
     DownloadPage *m_download = nullptr;
     QVBoxLayout *m_frameLayout = nullptr;
+    bool m_forceClose = false;
 };

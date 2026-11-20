@@ -68,6 +68,10 @@ qint64 ConversionTask::estimatedBytes() const
     const double dur = effectiveDuration();
     if (dur <= 0)
         return 0;
+    if (preset.vcodec == QLatin1String("copy") && info.duration > 0 && info.size > 0)
+        return qint64(info.size * (dur / info.duration));
+    if (preset.vcodec == QLatin1String("copy") && info.bitrate > 0)
+        return qint64(info.bitrate / 8.0 * dur);
     double kbps = 0;
     if (!preset.isAudioOnly() && info.hasVideo) {
         int v = videoBitrateKbps();

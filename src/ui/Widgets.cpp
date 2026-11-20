@@ -1,7 +1,9 @@
 #include "Widgets.h"
 #include "core/Theme.h"
 
+#include <QApplication>
 #include <QDesktopServices>
+#include <QIconEngine>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -18,61 +20,104 @@
 
 namespace Ui {
 
-// SVG-значок, перекрашенный под текущую тему
-static QIcon themedSvg(const QString &path)
+// Перекрашенный под тему SVG (кэш сбрасывается при смене темы)
+static QHash<QString, QByteArray> &svgCache()
 {
-    static QHash<QString, QIcon> cache;
-    auto it = cache.constFind(path);
-    if (it != cache.constEnd())
+    static QHash<QString, QByteArray> c;
+    return c;
+}
+
+static QByteArray themedSvgData(const QString &path)
+{
+    const QString key = Theme::id() + QLatin1Char('|') + path;
+    auto it = svgCache().constFind(key);
+    if (it != svgCache().constEnd())
         return it.value();
     QFile f(path);
-    QIcon icon;
-    if (f.open(QIODevice::ReadOnly)) {
-        QSvgRenderer r(Theme::map(QString::fromUtf8(f.readAll())).toUtf8());
-        for (int sz : {16, 20, 24, 32, 40, 48, 64, 96, 128, 192}) {
-            QPixmap pm(sz, sz);
-            pm.fill(Qt::transparent);
-            QPainter p(&pm);
-            r.render(&p, QRectF(0, 0, sz, sz));
-            icon.addPixmap(pm);
-        }
-    }
-    cache.insert(path, icon);
-    return icon;
+    QByteArray data;
+    if (f.open(QIODevice::ReadOnly))
+        data = Theme::map(QString::fromUtf8(f.readAll())).toUtf8();
+    svgCache().insert(key, data);
+    return data;
 }
+
+// Значок, который рисуется в цветах ТЕКУЩЕЙ темы при каждой отрисовке —
+// поэтому при смене темы все значки перекрашиваются сами, без перезапуска.
+class ThemedIconEngine : public QIconEngine
+{
+public:
+    ThemedIconEngine(const QString &normal, const QString &active) : m_normal(normal), m_active(active) {}
+    void paint(QPainter *p, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
+    {
+        const bool act = !m_active.isEmpty() && (state == QIcon::On || mode == QIcon::Active);
+        QSvgRenderer r(themedSvgData(act ? m_active : m_normal));
+        if (mode == QIcon::Disabled)
+            p->setOpacity(0.4);
+        r.render(p, QRectF(rect));
+        p->setOpacity(1.0);
+    }
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
+    {
+        QPixmap pm(size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        paint(&p, QRect(QPoint(0, 0), size), mode, state);
+        return pm;
+    }
+    QIconEngine *clone() const override { return new ThemedIconEngine(m_normal, m_active); }
+
+private:
+    QString m_normal, m_active;
+};
 
 QPixmap svgPixmap(const QString &path, const QSize &size)
 {
-    QFile f(path);
     const qreal dpr = 2.0;
     QPixmap pm(size * dpr);
     pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
-    if (f.open(QIODevice::ReadOnly)) {
-        QSvgRenderer r(Theme::map(QString::fromUtf8(f.readAll())).toUtf8());
-        QPainter p(&pm);
-        r.render(&p, QRectF(QPointF(0, 0), QSizeF(size)));
-    }
+    QSvgRenderer r(themedSvgData(path));
+    QPainter p(&pm);
+    r.render(&p, QRectF(QPointF(0, 0), QSizeF(size)));
     return pm;
 }
 
 QIcon icon(const QString &name, bool active)
 {
-    return themedSvg(QStringLiteral(":/icons/%1%2.svg").arg(name, active ? QStringLiteral("-active") : QString()));
+    return QIcon(new ThemedIconEngine(QStringLiteral(":/icons/%1%2.svg").arg(name, active ? QStringLiteral("-active") : QString()), QString()));
 }
 
 QIcon navIcon(const QString &name)
 {
-    QIcon i;
-    const QIcon n = themedSvg(QStringLiteral(":/icons/%1.svg").arg(name));
-    const QIcon a = themedSvg(QStringLiteral(":/icons/%1-active.svg").arg(name));
-    for (int s : {24, 32, 48, 64}) {
-        i.addPixmap(n.pixmap(s, s), QIcon::Normal, QIcon::Off);
-        i.addPixmap(a.pixmap(s, s), QIcon::Normal, QIcon::On);
-        i.addPixmap(a.pixmap(s, s), QIcon::Active, QIcon::Off);
-        i.addPixmap(a.pixmap(s, s), QIcon::Active, QIcon::On);
+    return QIcon(new ThemedIconEngine(QStringLiteral(":/icons/%1.svg").arg(name), QStringLiteral(":/icons/%1-active.svg").arg(name)));
+}
+
+void themedStyle(QWidget *w, const QString &qss)
+{
+    w->setProperty("aristoStyle", qss);
+    Ui::themedStyle(w, qss);
+}
+
+void svgLabel(QLabel *l, const QString &path, const QSize &size)
+{
+    l->setProperty("aristoSvg", path);
+    l->setProperty("aristoSvgSize", size);
+    l->setPixmap(svgPixmap(path, size));
+}
+
+void refreshTheme()
+{
+    svgCache().clear();
+    for (QWidget *w : QApplication::allWidgets()) {
+        const QVariant st = w->property("aristoStyle");
+        if (st.isValid())
+            Ui::themedStyle(w, st.toString());
+        const QVariant svg = w->property("aristoSvg");
+        if (svg.isValid())
+            if (auto *l = qobject_cast<QLabel *>(w))
+                l->setPixmap(svgPixmap(svg.toString(), w->property("aristoSvgSize").toSize()));
+        w->update();
     }
-    return i;
 }
 
 QToolButton *iconButton(const QString &name, const QString &tooltip, QWidget *parent, int size)
@@ -90,7 +135,7 @@ QToolButton *iconButton(const QString &name, const QString &tooltip, QWidget *pa
 QLabel *iconLabel(const QString &name, int size, QWidget *parent)
 {
     auto *l = new QLabel(parent);
-    l->setPixmap(icon(name).pixmap(size, size));
+    svgLabel(l, QStringLiteral(":/icons/%1.svg").arg(name), QSize(size, size));
     l->setFixedSize(size, size);
     return l;
 }

@@ -163,7 +163,7 @@ QWidget *ConvertPage::buildSubBar()
     m_globalFormat->setMinimumWidth(200);
     m_globalFormat->setIcon(Ui::icon("chevron", true));
     m_globalFormat->setLayoutDirection(Qt::RightToLeft);
-    m_globalFormat->setStyleSheet(Theme::map(QStringLiteral("QPushButton{background:#171113;text-align:left;padding:6px 10px;}")));
+    Ui::themedStyle(m_globalFormat, QStringLiteral("QPushButton{background:#171113;text-align:left;padding:6px 10px;}"));
     m_globalFormat->setCursor(Qt::PointingHandCursor);
     connect(m_globalFormat, &QPushButton::clicked, this, [this] {
         auto *popup = new FormatPopup(window());
@@ -198,7 +198,7 @@ QWidget *ConvertPage::buildBottomBar()
     m_statusLine = new QLabel(outer);
     m_statusLine->setObjectName(QStringLiteral("StatusLabel"));
     m_statusLine->setContentsMargins(30, 4, 30, 4);
-    m_statusLine->setStyleSheet(Theme::map(QStringLiteral("background:#1F191B;")));
+    Ui::themedStyle(m_statusLine, QStringLiteral("background:#1F191B;"));
     ol->addWidget(m_statusLine);
 
     auto *bar = new QWidget(outer);
@@ -242,11 +242,10 @@ QWidget *ConvertPage::buildBottomBar()
 
     auto *sep1 = new QFrame(bar);
     sep1->setFrameShape(QFrame::VLine);
-    sep1->setStyleSheet(Theme::map(QStringLiteral("color:#33282C;")));
+    Ui::themedStyle(sep1, QStringLiteral("color:#33282C;"));
     auto *sep2 = new QFrame(bar);
     sep2->setFrameShape(QFrame::VLine);
-    sep2->setStyleSheet(Theme::map(QStringLiteral("color:#33282C;")));
-
+    Ui::themedStyle(sep2, QStringLiteral("color:#33282C;"));
     auto *outLbl = new QLabel(T("Папка:"), bar);
     m_outDir = new QComboBox(bar);
     m_outDir->setEditable(true);
@@ -700,4 +699,28 @@ void ConvertPage::reloadSettings()
     m_outDir->setItemText(0, Settings::outputDir());
     m_outDir->setCurrentIndex(0);
     m_hw->setChecked(Settings::hardwareAccel());
+}
+
+void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless)
+{
+    for (const auto &t : titles) {
+        TaskPtr task = addTask(t.first, t.second);
+        if (lossless) {
+            Preset p;
+            p.id = QStringLiteral("dvd-copy");
+            p.category = QStringLiteral("video");
+            p.group = QStringLiteral("MKV");
+            p.name = T("Копия без потерь");
+            p.badge = QStringLiteral("MKV");
+            p.ext = QStringLiteral("mkv");
+            p.vcodec = QStringLiteral("copy");
+            p.acodec = QStringLiteral("copy");
+            task->preset = p;
+            if (TaskCard *c = m_cards.value(task->id))
+                c->refresh();
+        }
+        m_autoStart.insert(task->id);   // начать сразу после чтения сведений
+    }
+    m_segConverting->setChecked(true);
+    updateView();
 }

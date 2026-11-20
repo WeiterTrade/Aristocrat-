@@ -160,10 +160,10 @@ void FormatPopup::fillPresets(const QList<Preset> &list)
         auto *badge = new QLabel(w);
         badge->setPixmap(Ui::formatBadge(p.badge, 38, cur));
         auto *name = new QLabel(m_tabs->currentIndex() == 0 ? p.title() : T(p.name), w);
-        name->setStyleSheet(Theme::map(cur ? "color:#E8C266;" : "color:#E9E1D2;"));
+        Ui::themedStyle(name, cur ? "color:#E8C266;" : "color:#E9E1D2;");
         name->setMinimumWidth(170);
         auto *info = new QLabel(p.resolutionText() + "\n" + p.codecText(), w);
-        info->setStyleSheet(Theme::map(cur ? "color:#E8C266;" : "color:#A99F90;"));
+        Ui::themedStyle(info, cur ? "color:#E8C266;" : "color:#A99F90;");
         auto *edit = Ui::iconButton(QStringLiteral("edit"), T("Настроить формат"), w);
         edit->setIcon(Ui::icon("edit", true));
         h->addWidget(badge);

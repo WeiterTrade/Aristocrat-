@@ -22,6 +22,7 @@ set(SOURCES
     src/core/I18n.cpp
     src/core/Theme.cpp
     src/core/LocalServer.cpp
+    src/core/Dvd.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp

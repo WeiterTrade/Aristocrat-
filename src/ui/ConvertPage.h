@@ -28,6 +28,7 @@ public:
     bool isBusy() const { return m_engine->isRunning(); }
     void openFirstTrim();
     void reloadSettings();
+    void addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;

@@ -112,10 +112,12 @@ QSlider::groove:horizontal { height: 4px; background: #3A3033; border-radius: 2p
 QSlider::sub-page:horizontal { background: #E2BC5C; border-radius: 2px; }
 QSlider::handle:horizontal { width: 14px; height: 14px; margin: -6px 0; border-radius: 7px; background: #F3DFA8; }
 
-QTabWidget::pane { border: none; border-top: 1px solid #3A2A22; }
-QTabBar::tab { background: transparent; color: #CFC3A8; padding: 10px 26px; border-bottom: 2px solid transparent; }
-QTabBar::tab:selected { color: #E8C266; border-bottom: 2px solid #E2BC5C; }
-QTabBar::tab:hover { color: #F0D99A; }
+QTabWidget::pane { border: none; border-top: 1px solid #3A2A22; top: 0px; }
+QTabBar { background: transparent; qproperty-drawBase: 0; }
+/* Вкладки без заливки: выбранная отмечается только подчёркиванием снизу */
+QTabBar::tab { background: transparent; color: #CFC3A8; padding: 10px 26px; margin: 0px; border: none; border-bottom: 2px solid transparent; }
+QTabBar::tab:selected { background: transparent; color: #E8C266; border-bottom: 2px solid #E2BC5C; margin: 0px; }
+QTabBar::tab:hover { background: transparent; color: #F0D99A; }
 
 QListWidget { background: #1A1416; border: none; outline: none; }
 QListWidget::item { padding: 10px 8px; border-bottom: 1px solid #2A2225; }
@@ -144,7 +146,7 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color:
 
 /* ---------- Свои рамки окон ---------- */
 #WindowFrame { background: #2A1D1F; border: 1px solid #5A4630; }
-#TitleBar { background: #150F11; }
+#TitleBar { background: #150F11; border-bottom: 1px solid #5A4630; }
 #TitleBar QLabel { background: transparent; }
 #TitleText { color: #E8C266; font-weight: 600; }
 #DialogBody { background: #1F191B; }

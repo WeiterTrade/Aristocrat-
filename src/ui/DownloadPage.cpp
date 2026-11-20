@@ -400,7 +400,7 @@ DownloadPage::DownloadPage(QWidget *parent)
     auto *empty = new QWidget(this);
     auto *el = new QVBoxLayout(empty);
     auto *pic = new QToolButton(empty);
-    pic->setIcon(QIcon(Ui::svgPixmap(QStringLiteral(":/icons/download-empty.svg"), QSize(360, 220))));
+    pic->setIcon(Ui::icon(QStringLiteral("download-empty")));
     pic->setIconSize(QSize(360, 220));
     pic->setAutoRaise(true);
     pic->setCursor(Qt::PointingHandCursor);

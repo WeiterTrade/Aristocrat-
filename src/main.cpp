@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QFont>
+#include <QThread>
 #include <QThreadPool>
 
 int main(int argc, char *argv[])
@@ -19,6 +20,9 @@ int main(int argc, char *argv[])
         qputenv("QTWEBENGINE_DISABLE_SANDBOX", "1");
 #endif
     QApplication app(argc, argv);
+    // После перезапуска из настроек ждём, пока предыдущая копия закроется
+    if (app.arguments().contains(QStringLiteral("--restarted")))
+        QThread::msleep(1500);
     QApplication::setOrganizationName(QStringLiteral("Aristocrat"));
     QApplication::setApplicationName(QStringLiteral("Aristocrat Видеоконвертер"));
     QApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
@@ -48,6 +52,12 @@ int main(int argc, char *argv[])
             w.showPage(a.mid(7).toInt());
         else if (a == QLatin1String("--demo-trim"))
             w.demoTrim();
+        else if (a == QLatin1String("--restarted"))
+            continue;
+        else if (a.startsWith(QLatin1String("--demo-dvd=")))
+            w.demoDvd(a.mid(11));
+        else if (a.startsWith(QLatin1String("--demo-theme=")))
+            w.demoTheme(a.mid(13));
         else if (a.startsWith(QLatin1String("--demo-grab=")))
             w.demoGrab(a.mid(12));
         else if (a.startsWith(QLatin1String("--demo-browser=")))

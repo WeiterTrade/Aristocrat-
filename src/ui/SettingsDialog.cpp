@@ -114,7 +114,7 @@ QWidget *SettingsDialog::buildGeneral()
         m_theme->addItem(Theme::name(id), id);
     form->addRow(T("Тема оформления:"), m_theme);
     lay->addLayout(form);
-    auto *note = new QLabel(T("Язык и тема сменятся после перезапуска программы."), w);
+    auto *note = new QLabel(T("Тема меняется сразу. Язык интерфейса сменится после перезапуска программы."), w);
     note->setObjectName(QStringLiteral("Muted"));
     lay->addWidget(note);
     lay->addStretch();
@@ -334,7 +334,7 @@ void SettingsDialog::save()
     s.setValue("general/language", lang);
     const QString theme = m_theme->currentData().toString();
     if (theme != s.value("general/theme", "dark").toString())
-        m_langChanged = true;
+        m_themeChanged = true;
     s.setValue("general/theme", theme);
 
     s.setValue("convert/deleteSource", m_deleteSource->isChecked());

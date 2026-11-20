@@ -9,6 +9,9 @@
 #include "PageGrabber.h"
 #endif
 #include "core/I18n.h"
+#include "core/Theme.h"
+#include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include "PlaceholderPage.h"
 #include "ToolboxPage.h"
@@ -61,6 +64,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_pages = new QStackedWidget(central);
     m_convert = new ConvertPage(m_pages);
     auto *toolbox = new ToolboxPage(m_pages);
+    m_toolbox = toolbox;
     m_pages->addWidget(m_convert);
     auto *download = new DownloadPage(m_pages);
     m_download = download;
@@ -76,6 +80,10 @@ MainWindow::MainWindow(QWidget *parent)
     new FrameResizer(this, frame, 4);
 
     connect(m_nav, &QButtonGroup::idClicked, m_pages, &QStackedWidget::setCurrentIndex);
+    connect(toolbox, &ToolboxPage::dvdRequested, this, [this](const QList<QPair<QString, QString>> &titles, bool lossless) {
+        m_convert->addDvdTitles(titles, lossless);
+        showPage(0);
+    });
     connect(toolbox, &ToolboxPage::restoreRequested, this, [this](const QStringList &files, UpscaleOptions::Mode mode, bool vhs) {
         m_convert->addFilesWithUpscale(files, mode, vhs);
         m_nav->button(0)->setChecked(true);
@@ -153,14 +161,58 @@ void MainWindow::openSettings(int tab)
         return;
     m_convert->reloadSettings();
     m_download->reloadSettings();
+    if (dlg.themeChanged())
+        applyTheme();
     if (dlg.languageChanged()
-        && Ui::ask(this, T("Настройки"), T("Язык и тема сменятся после перезапуска. Перезапустить программу сейчас?"),
-                   T("Перезапустить"), T("Позже"))) {
-        if (!m_convert->isBusy() && !m_download->isBusy()) {
-            QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
-            qApp->quit();
-        }
+        && Ui::ask(this, T("Настройки"), T("Язык интерфейса сменится после перезапуска. Перезапустить программу сейчас?"),
+                   T("Перезапустить"), T("Позже")))
+        restartApp();
+}
+
+void MainWindow::demoDvd(const QString &path)
+{
+    showPage(4);
+    QTimer::singleShot(1500, this, [this, path] { m_toolbox->openDvd(path); });
+}
+
+void MainWindow::demoTheme(const QString &theme)
+{
+    // Автопроверка смены темы на лету
+    QTimer::singleShot(4000, this, [this, theme] {
+        qputenv("ARISTOCRAT_THEME", theme.toUtf8());
+        applyTheme();
+    });
+}
+
+void MainWindow::applyTheme()
+{
+    // Смена темы на лету: новые цвета стилей, значков и картинок без перезапуска
+    Theme::init();
+    QFile qss(QStringLiteral(":/style.qss"));
+    if (qss.open(QIODevice::ReadOnly))
+        qApp->setStyleSheet(Theme::map(QString::fromUtf8(qss.readAll())));
+    Ui::refreshTheme();
+}
+
+void MainWindow::restartApp()
+{
+    if (m_convert->isBusy() || m_download->isBusy()) {
+        if (!Ui::ask(this, T("Перезапуск"), T("Идёт конвертация или загрузка. Прервать её и перезапустить программу?"),
+                     T("Перезапустить"), T("Отмена")))
+            return;
     }
+    QString exe = QCoreApplication::applicationFilePath();
+#ifdef Q_OS_LINUX
+    if (!qEnvironmentVariableIsEmpty("APPIMAGE"))
+        exe = qEnvironmentVariable("APPIMAGE");   // AppImage перезапускаем целиком
+#endif
+    // Новая копия подождёт, пока эта закроется (браузер не любит два экземпляра на одном профиле)
+    if (!QProcess::startDetached(exe, {QStringLiteral("--restarted")}, QFileInfo(exe).absolutePath())) {
+        Ui::message(this, T("Перезапуск"), T("Не удалось перезапустить программу. Закройте и откройте её вручную."));
+        return;
+    }
+    m_forceClose = true;
+    QTimer::singleShot(0, qApp, [] { qApp->exit(0); });
 }
 
 void MainWindow::demoTrim()
@@ -257,6 +309,10 @@ QWidget *MainWindow::buildHeader()
 
 void MainWindow::closeEvent(QCloseEvent *e)
 {
+    if (m_forceClose) {
+        e->accept();
+        return;
+    }
     if (m_convert->isBusy() || m_download->isBusy()) {
         if (!Ui::ask(this, T("Идёт работа"),
                      T("Конвертация или загрузка ещё не закончена. Закрыть программу и прервать её?"),

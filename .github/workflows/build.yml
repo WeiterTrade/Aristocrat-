@@ -210,7 +210,12 @@ jobs:
           shot download --page=1
           ARISTOCRAT_LANG=ru shot settings --demo-settings=0
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=light shot light "$PWD/Кассета 1994.mp4"
-          ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=turquoise shot turquoise --demo-settings=2
+          ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=turquoise shot turquoise --demo-settings=1
+          ARISTOCRAT_LANG=ru shot livetheme --demo-theme=light "$PWD/Кассета 1994.mp4"
+          mkdir -p dvd/VIDEO_TS
+          $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=500" \
+            -t 30 -target pal-dvd -shortest dvd/VIDEO_TS/VTS_01_1.VOB
+          ARISTOCRAT_LANG=ru shot dvd "--demo-dvd=$PWD/dvd"
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера

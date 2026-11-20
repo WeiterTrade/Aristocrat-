@@ -298,6 +298,15 @@ static QStringList containerArgs(const ConversionTask &t)
 QStringList singlePass(const ConversionTask &t, const QString &outPath, bool hwAccel, const QString &tempDir)
 {
     QStringList a = common();
+    if (t.preset.vcodec == QLatin1String("copy")) {
+        // Копия без потерь (DVD → MKV): все видео-, звуковые дорожки и субтитры как есть
+        a << "-fflags" << "+genpts" << trimInput(t) << "-i" << t.input << trimDuration(t)
+          << "-map" << "0:v:0" << "-map" << "0:a?" << "-map" << "0:s?" << "-c" << "copy";
+        if (!QSettings().value("convert/keepChapters", true).toBool())
+            a << "-map_chapters" << "-1";
+        a << outPath;
+        return a;
+    }
     a << trimInput(t) << "-i" << t.input;
 
     const bool video = !t.preset.isAudioOnly() && t.info.hasVideo;
@@ -443,6 +452,19 @@ QStringList previewFrame(const ConversionTask &t, double at, bool withFilters, i
 }
 
 QString progressArgsNote() { return QStringLiteral("-progress pipe:1"); }
+
+bool looksEncrypted(const QString &input, double duration)
+{
+    // Зашифрованный (CSS) DVD читается как «мусор»: декодер сыплет ошибками
+    if (Tools::ffmpeg().isEmpty())
+        return false;
+    QProcess p;
+    p.start(Tools::ffmpeg(), {"-hide_banner", "-nostdin", "-v", "error", "-ss", QString::number(qMax(0.0, duration * 0.3), 'f', 1),
+                              "-i", input, "-t", "15", "-map", "0:v:0", "-f", "null", "-"});
+    if (!p.waitForFinished(60000)) { p.kill(); return false; }
+    const QString err = QString::fromUtf8(p.readAllStandardError());
+    return err.count('\n') > 40;
+}
 
 QRect detectBlackBars(const ConversionTask &t)
 {

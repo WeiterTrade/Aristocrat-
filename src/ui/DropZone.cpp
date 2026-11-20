@@ -18,7 +18,7 @@ DropZone::DropZone(QWidget *parent)
     lay->setSpacing(26);
 
     auto *img = new QLabel(this);
-    img->setPixmap(Ui::icon(QStringLiteral("drop")).pixmap(150, 150));
+    Ui::svgLabel(img, QStringLiteral(":/icons/drop.svg"), QSize(150, 150));
     img->setAlignment(Qt::AlignCenter);
 
     auto *text = new QLabel(T("Добавьте или перетащите сюда файлы, чтобы начать конвертацию"), this);

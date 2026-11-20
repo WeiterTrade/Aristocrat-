@@ -193,8 +193,8 @@ QWidget *EditDialog::buildCropTab()
     for (const B &b : {B{"rotl", "Повернуть влево на 90°", 0}, B{"rotr", "Повернуть вправо на 90°", 1},
                        B{"fliph", "Отразить по горизонтали", 2}, B{"flipv", "Отразить по вертикали", 3}}) {
         auto *btn = Ui::iconButton(b.icon, T(b.tip), w, 26);
-        btn->setStyleSheet(Theme::map(QStringLiteral("QToolButton{background:#3A2F33;border:1px solid #4A3E41;border-radius:4px;padding:8px;}"
-                                                      "QToolButton:hover{border-color:#E2BC5C;}")));
+        Ui::themedStyle(btn, QStringLiteral("QToolButton{background:#3A2F33;border:1px solid #4A3E41;border-radius:4px;padding:8px;}"
+                                            "QToolButton:hover{border-color:#E2BC5C;}"));
         rot->addWidget(btn);
         const int kind = b.kind;
         connect(btn, &QToolButton::clicked, this, [this, kind] {

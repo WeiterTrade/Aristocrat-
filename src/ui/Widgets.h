@@ -14,6 +14,13 @@ namespace Ui {
 QIcon icon(const QString &name, bool active = false);
 QIcon navIcon(const QString &name);
 QPixmap svgPixmap(const QString &path, const QSize &size);   // картинка в цветах темы
+// Стиль виджета в цветах темы (обновляется при смене темы без перезапуска)
+void themedStyle(QWidget *w, const QString &qss);
+// Картинка SVG в QLabel (перерисовывается при смене темы)
+void svgLabel(QLabel *l, const QString &path, const QSize &size);
+// Применить новую тему ко всем окнам
+void refreshTheme();
+
 // Показать файл в папке (Проводник выделит файл); если файла нет — открыть запасную папку
 void showInFolder(const QString &file, const QString &fallbackDir = QString());  // обычная + золотая (для выбранной вкладки)
 QToolButton *iconButton(const QString &name, const QString &tooltip, QWidget *parent = nullptr, int size = 18);

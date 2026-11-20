@@ -13,7 +13,8 @@ class SettingsDialog : public FramedDialog
     Q_OBJECT
 public:
     explicit SettingsDialog(QWidget *parent = nullptr, int tab = 0);
-    bool languageChanged() const { return m_langChanged; }   // язык или тема — нужен перезапуск
+    bool languageChanged() const { return m_langChanged; }   // язык — нужен перезапуск
+    bool themeChanged() const { return m_themeChanged; }
 
 private:
     QWidget *buildGeneral();
@@ -26,6 +27,7 @@ private:
 
     QTabWidget *m_tabs;
     bool m_langChanged = false;
+    bool m_themeChanged = false;
 
     QCheckBox *m_sound;
     QComboBox *m_language;

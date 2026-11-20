@@ -44,4 +44,7 @@ QString progressArgsNote();
 // Вызывать не из потока интерфейса.
 QRect detectBlackBars(const ConversionTask &t);
 
+// Похоже ли видео на зашифрованное (DVD с защитой CSS). Вызывать не из потока интерфейса.
+bool looksEncrypted(const QString &input, double duration);
+
 } // namespace FfmpegCommand

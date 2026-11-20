@@ -149,7 +149,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_dstSize->setObjectName(QStringLiteral("IconButton"));
     m_dstSize->setCursor(Qt::PointingHandCursor);
     m_dstSize->setToolTip(T("Задать желаемый размер файла"));
-    m_dstSize->setStyleSheet(Theme::map(QStringLiteral("QToolButton{color:#CFC3A8;text-decoration:underline;}")));
+    Ui::themedStyle(m_dstSize, QStringLiteral("QToolButton{color:#CFC3A8;text-decoration:underline;}"));
     dstLine->addWidget(m_dstSize);
     dstLine->addStretch();
     m_formatBtn = new QToolButton(dstBox);
@@ -157,7 +157,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_formatBtn->setIcon(Ui::icon("chevron", true));
     m_formatBtn->setIconSize(QSize(18, 18));
     m_formatBtn->setFixedSize(36, 36);
-    m_formatBtn->setStyleSheet(Theme::map(QStringLiteral("QToolButton{background:#171113;border-radius:4px;} QToolButton:hover{background:#3A2B30;}")));
+    Ui::themedStyle(m_formatBtn, QStringLiteral("QToolButton{background:#171113;border-radius:4px;} QToolButton:hover{background:#3A2B30;}"));
     m_formatBtn->setToolTip(T("Выбрать формат"));
     m_formatBtn->setCursor(Qt::PointingHandCursor);
     dstBoxLay->addWidget(dstCap);
