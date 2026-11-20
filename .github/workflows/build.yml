@@ -42,7 +42,15 @@ jobs:
           $out = "dist\AristocratVideoConverter"
           New-Item -ItemType Directory -Force -Path "$out\tools" | Out-Null
           Copy-Item build\AristocratVideoConverter.exe $out\
-          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime "$out\AristocratVideoConverter.exe"
+          # Библиотеки Qt и плагины копируем явно (windeployqt не видит SVG-плагины)
+          $qt = $env:QT_ROOT_DIR
+          foreach ($dll in "Qt5Core","Qt5Gui","Qt5Widgets","Qt5Svg") { Copy-Item "$qt\bin\$dll.dll" $out\ }
+          foreach ($dll in "libgcc_s_seh-1","libstdc++-6","libwinpthread-1") { Copy-Item "$qt\bin\$dll.dll" $out\ }
+          foreach ($p in "platforms\qwindows","styles\qwindowsvistastyle","imageformats\qsvg","imageformats\qjpeg","imageformats\qico","iconengines\qsvgicon") {
+            $dir = Split-Path $p -Parent
+            New-Item -ItemType Directory -Force -Path "$out\$dir" | Out-Null
+            Copy-Item "$qt\plugins\$p.dll" "$out\$dir\"
+          }
 
           # FFmpeg: сборка "essentials" от gyan.dev совместима с Windows 7
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
