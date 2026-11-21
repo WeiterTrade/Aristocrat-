@@ -200,6 +200,56 @@ bool fanartFromVideo(const QString &video, const QString &jpg)
     return false;
 }
 
+QImage trimBlackBorders(const QImage &src)
+{
+    if (src.isNull())
+        return src;
+    const QImage img = src.convertToFormat(QImage::Format_RGB32);
+    const int w = img.width(), h = img.height();
+    // Строка/столбец считается рамкой, если почти все точки тёмные (шум и логотипы не мешают)
+    auto darkRow = [&img, w](int y) {
+        int dark = 0;
+        const QRgb *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+        for (int x = 0; x < w; ++x)
+            dark += qGray(line[x]) < 28;
+        return dark >= w * 0.97;
+    };
+    auto darkCol = [&img, h](int x, int top, int bottom) {
+        int dark = 0;
+        for (int y = top; y <= bottom; ++y)
+            dark += qGray(img.pixel(x, y)) < 28;
+        return dark >= (bottom - top + 1) * 0.97;
+    };
+    int top = 0, bottom = h - 1;
+    while (top < h / 3 && darkRow(top)) ++top;
+    while (bottom > h * 2 / 3 && darkRow(bottom)) --bottom;
+    int left = 0, right = w - 1;
+    while (left < w / 3 && darkCol(left, top, bottom)) ++left;
+    while (right > w * 2 / 3 && darkCol(right, top, bottom)) --right;
+    // Немного внутрь — убрать полупрозрачный край рамки
+    if (top > 0) top += 2;
+    if (left > 0) left += 2;
+    if (bottom < h - 1) bottom -= 2;
+    if (right < w - 1) right -= 2;
+    return img.copy(QRect(QPoint(left, top), QPoint(right, bottom)));
+}
+
+QImage cropTo16x9(const QImage &img)
+{
+    if (img.isNull())
+        return img;
+    const double target = 16.0 / 9.0;
+    const double r = double(img.width()) / img.height();
+    if (qAbs(r - target) < 0.01)
+        return img;
+    if (r > target) {   // шире — режем бока
+        const int w = qRound(img.height() * target);
+        return img.copy((img.width() - w) / 2, 0, w, img.height());
+    }
+    const int h = qRound(img.width() / target);   // выше (4:3) — режем верх и низ поровну
+    return img.copy(0, (img.height() - h) / 2, img.width(), h);
+}
+
 static QString studioKey(const QString &studio)
 {
     QString k = studio.toLower();

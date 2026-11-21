@@ -116,6 +116,12 @@ var bgs=[];
 var html=document.documentElement.innerHTML;var hre=/https?:\/\/[^"'\s<>()]+?\.(?:jpe?g|webp|png)/gi;var hm;
 while((hm=hre.exec(html)))add(hm[0].replace(/&amp;/g,'&'));
 r.images=urls;
+// Кадры сцен (скриншоты) — варианты фан-арта: по порядку на странице, без обложек и фото актрис
+r.shots=[];(function(){var seen={};function okShot(u){return u&&/^https?:/i.test(u)&&/\.(jpe?g|webp)(\?|$)/i.test(u)&&!/\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner/i.test(u);}
+ [].forEach.call(document.querySelectorAll('img, a[href]'),function(e){var inScene=!!e.closest('[class*="scene"],[id*="scene"],[class*="screenshot"],[class*="screen-shot"],[class*="gallery"],[class*="caps"]');
+  var u=e.tagName=='A'?e.href:(e.getAttribute('data-src')||e.currentSrc||e.src);var big=e.tagName=='A'?u:(e.getAttribute('data-original')||e.getAttribute('data-large')||u);
+  if(!(inScene||/caps\d*cdn|screenshot|\/caps\//i.test(u)))return;if(e.tagName=='IMG'){var p=e.closest('a');if(p&&okShot(p.href))big=p.href;}
+  if(okShot(big)&&!seen[big]){seen[big]=1;r.shots.push(big);}});})();
 // Ссылка «Watch Now» — страница просмотра (там плеер и список сцен)
 r.watch='';[].slice.call(document.querySelectorAll('a[href]')).some(function(a){var t=txt(a),h=a.href||'';
   if(!/^https?:/i.test(h)||h.split('#')[0]===location.href.split('#')[0])return false;
@@ -148,7 +154,14 @@ ReleaseFetcher::ReleaseFetcher(QObject *parent)
         emit progress(T("Чтение страницы релиза…"));
         if (QSettings().value(QStringLiteral("sites/adultConfirmed"), false).toBool())
             m_view->page()->runJavaScript(QString::fromUtf8(ageScript()));
-        QTimer::singleShot(3000, this, &ReleaseFetcher::extract);
+        // «Посмотреть ещё скриншоты» у сцен — чтобы кадры были на странице
+        QTimer::singleShot(1500, this, [this] {
+            m_view->page()->runJavaScript(QStringLiteral(
+                "[].slice.call(document.querySelectorAll('a,button,span,div')).filter(function(e){return e.children.length<3&&"
+                "/(view|see|show)\\s+more\\s+screen|more\\s+screenshots|ещё скриншоты|еще скриншоты/i.test((e.innerText||'').trim());})"
+                ".slice(0,4).forEach(function(e){try{e.click();}catch(x){}});"));
+        });
+        QTimer::singleShot(4000, this, &ReleaseFetcher::extract);
     });
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
@@ -549,7 +562,16 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     mkImg(1, T("Задняя обложка"), m_backUrl, m_backPrev);
     mkImg(2, T("Фан-арт"), m_fanartUrl, m_fanartPrev);
     m_fanartUrl->setPlaceholderText(T("пусто — кадр из видео"));
+    auto *pickFan = new QPushButton(T("Выбрать…"), page);
+    pickFan->setMaximumWidth(120);
+    imgs->addWidget(pickFan, 3, 2);
+    connect(pickFan, &QPushButton::clicked, this, &ReleaseManagerDialog::chooseFanart);
     right->addLayout(imgs);
+    m_fanart4k = new QCheckBox(T("Фан-арт в 4K: убрать чёрные рамки и увеличить (Real-ESRGAN)"), page);
+    m_fanart4k->setObjectName(QStringLiteral("PlainCheck"));
+    m_fanart4k->setChecked(QSettings().value(QStringLiteral("ae/fanart4k"), true).toBool());
+    connect(m_fanart4k, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("ae/fanart4k"), on); });
+    right->addWidget(m_fanart4k);
 
     auto *cl = new QLabel(T("Актрисы (снимите отметку с мужчин — программа запомнит их):"), page);
     cl->setObjectName(QStringLiteral("Muted"));
@@ -939,7 +961,12 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     } else if (m_backUrl->text().isEmpty() && !backGuesses(m_frontUrl->text()).isEmpty()) {
         m_backUrl->setText(backGuesses(m_frontUrl->text()).first());
     }
-    m_fanartUrl->setText(d.value("fanart").toString());
+    m_shots.clear();
+    for (const QJsonValue &v : d.value("shots").toArray())
+        if (m_shots.size() < 16)
+            m_shots << v.toString();
+    // По умолчанию — первый кадр сцены; если кадров нет — картинка со страницы
+    m_fanartUrl->setText(!m_shots.isEmpty() ? m_shots.first() : d.value("fanart").toString());
     loadPreview(m_frontPrev, m_frontUrl->text());
     loadPreview(m_backPrev, m_backUrl->text());
     loadPreview(m_fanartPrev, m_fanartUrl->text());
@@ -983,6 +1010,97 @@ void ReleaseManagerDialog::setCastGender(QListWidgetItem *it, int gender, int so
     it->setCheckState(male ? Qt::Unchecked : Qt::Checked);
     it->setData(Qt::UserRole + 4, int(it->checkState()));
     it->setData(Qt::UserRole + 5, source);
+}
+
+void ReleaseManagerDialog::makeFanart(const QImage &src, const QString &file, std::function<void(bool)> done)
+{
+    const QImage img = Release::cropTo16x9(Release::trimBlackBorders(src));
+    auto finish = [file, done](const QImage &out) {
+        const QImage fin = out.width() == 3840 ? out : out.scaled(3840, 2160, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        done(fin.save(file, "JPG", 92));
+    };
+    if (img.isNull()) {
+        done(false);
+        return;
+    }
+    if (!m_fanart4k->isChecked()) {
+        done(img.save(file, "JPG", 92));
+        return;
+    }
+    if (img.width() >= 3840 || Tools::realesrgan().isEmpty()) {
+        finish(img);
+        return;
+    }
+    // Нейросетевое увеличение ×4 (на встроенной графике — несколько секунд)
+    m_state->setText(T("Фан-арт: увеличиваю до 4K нейросетью…"));
+    const QString tmp = QDir::temp().filePath(QStringLiteral("aristocrat-fanart-%1").arg(QDateTime::currentMSecsSinceEpoch()));
+    const QString in = tmp + QStringLiteral("-in.png"), out = tmp + QStringLiteral("-out.png");
+    img.save(in, "PNG");
+    QStringList args = {"-i", in, "-o", out, "-n", "realesrgan-x4plus", "-s", "4", "-f", "png"};
+    const QString models = Tools::realesrganModelsDir();
+    if (!models.isEmpty() && QDir(models).exists())
+        args << "-m" << models;
+    auto *p = new QProcess(this);
+    connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [p, in, out, img, finish] {
+        p->deleteLater();
+        QImage up(out);
+        QFile::remove(in);
+        QFile::remove(out);
+        finish(up.isNull() ? img : up);   // не вышло — обычное увеличение
+    });
+    p->start(Tools::realesrgan(), args);
+}
+
+void ReleaseManagerDialog::chooseFanart()
+{
+    QStringList cands = m_shots;
+    if (!m_fanartUrl->text().trimmed().isEmpty() && !cands.contains(m_fanartUrl->text().trimmed()))
+        cands.prepend(m_fanartUrl->text().trimmed());
+    if (cands.isEmpty()) {
+        m_state->setText(T("На странице релиза нет кадров сцен — фан-арт будет из кадра видео."));
+        return;
+    }
+    FramedDialog d(this, true);
+    d.setWindowTitle(T("Фан-арт: выберите кадр"));
+    d.resize(1000, 640);
+    auto *grid = new QListWidget(&d);
+    grid->setViewMode(QListView::IconMode);
+    grid->setIconSize(QSize(300, 169));
+    grid->setGridSize(QSize(316, 200));
+    grid->setResizeMode(QListView::Adjust);
+    grid->setMovement(QListView::Static);
+    d.contentLayout()->setContentsMargins(16, 12, 16, 12);
+    auto *hint = new QLabel(T("Кадры сцен со страницы релиза. Выбранный кадр будет без чёрных рамок и увеличен до 3840×2160."), &d);
+    hint->setObjectName(QStringLiteral("Muted"));
+    d.contentLayout()->addWidget(hint);
+    d.contentLayout()->addWidget(grid, 1);
+    for (const QString &u : cands) {
+        auto *it = new QListWidgetItem(QString(), grid);
+        it->setData(Qt::UserRole, u);
+        WebFetch::get(QUrl(u), grid, [it](const QByteArray &data) {
+            QImage img;
+            if (img.loadFromData(data)) {
+                it->setIcon(QIcon(QPixmap::fromImage(img.scaled(300, 169, Qt::KeepAspectRatio, Qt::SmoothTransformation))));
+                it->setText(QStringLiteral("%1×%2").arg(img.width()).arg(img.height()));
+            }
+        });
+        if (u == m_fanartUrl->text().trimmed())
+            grid->setCurrentItem(it);
+    }
+    connect(grid, &QListWidget::itemDoubleClicked, &d, &QDialog::accept);
+    auto *btns = new QHBoxLayout;
+    auto *cancel = new QPushButton(T("Отмена"), &d);
+    auto *ok = Ui::primaryButton(T("Выбрать"), &d);
+    btns->addStretch();
+    btns->addWidget(cancel);
+    btns->addWidget(ok);
+    d.contentLayout()->addLayout(btns);
+    connect(cancel, &QPushButton::clicked, &d, &QDialog::reject);
+    connect(ok, &QPushButton::clicked, &d, &QDialog::accept);
+    if (d.exec() != QDialog::Accepted || !grid->currentItem())
+        return;
+    m_fanartUrl->setText(grid->currentItem()->data(Qt::UserRole).toString());
+    loadPreview(m_fanartPrev, m_fanartUrl->text());
 }
 
 void ReleaseManagerDialog::applyStudioCountry(const QString &studio)
@@ -1285,7 +1403,13 @@ void ReleaseManagerDialog::create()
         m_jobs << Job{r.backUrl, QDir(dir).filePath(base + QStringLiteral("-back.jpg")),
                       coverUrls(r.sku, true) + backGuesses(r.frontUrl), false};
     }
-    if (!r.fanartUrl.isEmpty()) m_jobs << Job{r.fanartUrl, QDir(dir).filePath(base + QStringLiteral("-fanart.jpg")), {}, false};
+    if (!r.fanartUrl.isEmpty()) {
+        QStringList alt = m_shots;
+        alt.removeAll(r.fanartUrl);
+        Job j{r.fanartUrl, QDir(dir).filePath(base + QStringLiteral("-fanart.jpg")), alt, false};
+        j.fanart = true;
+        m_jobs << j;
+    }
     const QDir actors(QDir(dir).filePath(QStringLiteral(".actors")));
     if (!r.actresses.isEmpty())
         QDir().mkpath(actors.path());
@@ -1313,9 +1437,12 @@ void ReleaseManagerDialog::create()
         m_jobs << j;
     }
 
-    // Фан-арта нет — кадр из видео
-    if (r.fanartUrl.isEmpty() && !video.isEmpty())
-        Release::fanartFromVideo(video, QDir(dir).filePath(base + QStringLiteral("-fanart.jpg")));
+    // Фан-арта нет — кадр из видео (тоже без рамок и в 4K)
+    if (r.fanartUrl.isEmpty() && !video.isEmpty()) {
+        const QString fan = QDir(dir).filePath(base + QStringLiteral("-fanart.jpg"));
+        if (Release::fanartFromVideo(video, fan))
+            makeFanart(QImage(fan), fan, [](bool) {});
+    }
 
     // Главы
     QString meta;
@@ -1482,6 +1609,25 @@ void ReleaseManagerDialog::runJobs()
         return;
     }
     m_state->setText(T("Скачиваю: %1").arg(QFileInfo(job.file).fileName()));
+    if (job.fanart) {
+        m_state->setText(T("Фан-арт: скачиваю и готовлю в 4K…"));
+        WebFetch::get(QUrl(job.url), this, [this, job](const QByteArray &data) mutable {
+            QImage img;
+            img.loadFromData(data);
+            if (img.width() < 200 || img.height() < 120) {
+                if (!job.fallbacks.isEmpty()) {
+                    job.url = job.fallbacks.takeFirst();
+                    m_jobs.prepend(job);
+                } else {
+                    m_errors << QFileInfo(job.file).fileName();
+                }
+                runJobs();
+                return;
+            }
+            makeFanart(img, job.file, [this](bool) { runJobs(); });
+        });
+        return;
+    }
     auto onData = [this, job, saveOrFallback](const QByteArray &data) {
         if (!saveOrFallback(data)) {
             QStringList rest = job.fallbacks;

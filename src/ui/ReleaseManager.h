@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
+#include <functional>
 
 class QCheckBox;
 class QComboBox;
@@ -75,6 +76,9 @@ private:
     void fetchScenes(const QString &url);
     void setScenes(const QList<Chapter> &scenes);
     void applyStudioCountry(const QString &studio);
+    void chooseFanart();
+    // Фан-арт из кадра: без чёрных рамок, 16:9, увеличение до 3840×2160 (Real-ESRGAN, если есть)
+    void makeFanart(const QImage &src, const QString &file, std::function<void(bool)> done);
     void setCastGender(QListWidgetItem *it, int gender, int source);   // отметка и значок ♀/♂
     void apply(const QJsonObject &d);
     void translate();
@@ -109,6 +113,8 @@ private:
     QLineEdit *m_frontUrl, *m_backUrl, *m_fanartUrl;
     QLabel *m_frontPrev, *m_backPrev, *m_fanartPrev;
     QTableWidget *m_scenes;
+    QStringList m_shots;          // кадры сцен со страницы релиза — варианты фан-арта
+    QCheckBox *m_fanart4k;
     QCheckBox *m_useScenes;
     QLineEdit *m_scenesUrl;
     QPushButton *m_scenesFetch;
@@ -129,6 +135,7 @@ private:
         QString name, libRoot; // актриса и корень медиатеки (поиск фото в своих релизах)
         bool server = false;   // сначала взять фото и анкету с сервера Jellyfin
         bool local = false;    // затем — выбранное раньше или из своей медиатеки
+        bool fanart = false;   // кадр для фан-арта: рамки, 16:9, 4K
     };
     QNetworkAccessManager *m_jnet = nullptr;
     QList<Job> m_jobs;

@@ -2,6 +2,7 @@
 #include "Chapters.h"
 
 #include <QDate>
+#include <QImage>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -57,6 +58,10 @@ bool fanartFromVideo(const QString &video, const QString &jpg);   // кадр и
 QString studioCountry(const QString &studio);
 void rememberStudioCountry(const QString &studio, const QString &country);
 QString countryFromAdjective(const QString &text);   // «an American pornographic film studio» → «США»
+
+// Фан-арт из кадра сцены: убрать чёрные рамки, привести к 16:9 (3840×2160 после увеличения)
+QImage trimBlackBorders(const QImage &img);
+QImage cropTo16x9(const QImage &img);
 
 // Релиз, который ждёт скачивания видео: после загрузки видео переупаковывается в папку релиза
 struct Pending { QString name, dir, chaptersMeta; bool lossless = true; };
