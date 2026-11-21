@@ -261,6 +261,10 @@ jobs:
           (python3 tests/jellyfin_mock.py 8792 "$PWD/jellyfin.log" &) ; sleep 1
           ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 ARISTOCRAT_TEST_AI=http://127.0.0.1:8792/v1 SHOT_WAIT=60 ARISTOCRAT_LANG=ru shot server --demo-server
           echo "--- записано на сервер ---"; cat jellyfin.log || true
+          # Те же анкеты без IAFD — проверка остальных баз (Babepedia, FreeOnes, Boobpedia, Википедия)
+          (python3 tests/jellyfin_mock.py 8793 "$PWD/jellyfin2.log" &) ; sleep 1
+          ARISTOCRAT_TEST_SKIP_IAFD=1 ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8793 SHOT_WAIT=90 ARISTOCRAT_LANG=ru shot server2 --demo-server
+          echo "--- записано без IAFD ---"; cat jellyfin2.log || true
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера

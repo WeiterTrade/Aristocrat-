@@ -88,6 +88,8 @@ void IafdBio::fetch(const QString &name, Callback cb)
     if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_IAFD_ONLY"))
         m_sources = m_sources.mid(0, 1);
     m_index = -1;
+    if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_SKIP_IAFD"))   // автопроверка остальных источников
+        m_index = 0;
     nextSource();
 }
 
@@ -101,6 +103,8 @@ void IafdBio::nextSource()
         return;
     }
     m_stage = m_index == 0 ? 0 : 1;   // у IAFD сначала поиск, у остальных сразу страница
+    if (m_index == 0)
+        m_stage = 0;
     m_timeout.start(25000);
     m_view->load(QUrl(m_sources[m_index].second));
 }
@@ -210,6 +214,7 @@ r.movies=location.hostname.indexOf('iafd')>=0?rows:0;return JSON.stringify(r);})
             QTimer::singleShot(2000, this, [this, serial] { if (serial == m_serial) step(1); });
             return;
         }
+        qInfo("source %s: %s", qPrintable(m_sources[m_index].first), QJsonDocument(o).toJson(QJsonDocument::Compact).left(500).constData());
         // Википедия — только если статья действительно об актрисе фильмов для взрослых (тёзки бывают)
         if (m_sources[m_index].first != QLatin1String("Wikipedia") || o.value("adult").toBool())
             merge(o);
