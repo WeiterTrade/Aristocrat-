@@ -266,6 +266,9 @@ jobs:
           (python3 tests/jellyfin_mock.py 8793 "$PWD/jellyfin2.log" &) ; sleep 1
           ARISTOCRAT_TEST_SKIP_IAFD=1 ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8793 SHOT_WAIT=90 ARISTOCRAT_LANG=ru shot server2 --demo-server
           echo "--- записано без IAFD ---"; cat jellyfin2.log || true
+          # Чистые снимки: раздел «Инструменты» и вкладка «Выгрузить»
+          ARISTOCRAT_LANG=ru shot toolbox --page=4
+          ARISTOCRAT_LANG=ru shot uploadtab --demo-upload
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера
