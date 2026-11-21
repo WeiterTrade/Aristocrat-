@@ -62,7 +62,7 @@ IafdBio::IafdBio(QObject *parent)
         QTimer::singleShot(1500, this, [this, serial] { if (serial == m_serial) step(m_stage); });
     });
     m_timeout.setSingleShot(true);
-    connect(&m_timeout, &QTimer::timeout, this, [this] { done({}); });
+    connect(&m_timeout, &QTimer::timeout, this, [this] { nextSource(); });   // источник не ответил — к следующему
 }
 
 IafdBio::~IafdBio()
@@ -70,25 +70,87 @@ IafdBio::~IafdBio()
     delete m_view;
 }
 
+// Бесплатные источники по порядку: IAFD, Babepedia, FreeOnes, Boobpedia, Википедия.
+// Из каждого берётся то, чего ещё нет; псевдонимы собираются со всех.
 void IafdBio::fetch(const QString &name, Callback cb)
 {
-    ++m_serial;
     m_cb = std::move(cb);
     m_name = name;
-    m_stage = 0;
-    m_attempt = 0;
-    m_timeout.start(40000);
-    m_view->load(QUrl(searchUrl(name)));
+    m_merged = QJsonObject();
+    m_found.clear();
+    const QString under = QString(name).replace(' ', '_');
+    const QString dash = name.toLower().replace(' ', '-');
+    m_sources = {{QStringLiteral("IAFD"), searchUrl(name)},
+                 {QStringLiteral("Babepedia"), QStringLiteral("https://www.babepedia.com/babe/") + under},
+                 {QStringLiteral("FreeOnes"), QStringLiteral("https://www.freeones.com/") + dash + QStringLiteral("/bio")},
+                 {QStringLiteral("Boobpedia"), QStringLiteral("https://www.boobpedia.com/boobs/") + under},
+                 {QStringLiteral("Wikipedia"), QStringLiteral("https://en.wikipedia.org/wiki/") + under}};
+    if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_IAFD_ONLY"))
+        m_sources = m_sources.mid(0, 1);
+    m_index = -1;
+    nextSource();
 }
 
-void IafdBio::done(const QJsonObject &o)
+void IafdBio::nextSource()
+{
+    ++m_serial;
+    ++m_index;
+    m_attempt = 0;
+    if (m_index >= m_sources.size()) {
+        done(m_merged);
+        return;
+    }
+    m_stage = m_index == 0 ? 0 : 1;   // у IAFD сначала поиск, у остальных сразу страница
+    m_timeout.start(25000);
+    m_view->load(QUrl(m_sources[m_index].second));
+}
+
+void IafdBio::done(const QJsonObject &oIn)
 {
     m_timeout.stop();
     ++m_serial;
+    QJsonObject o = oIn;
+    o.insert("sources", QJsonArray::fromStringList(m_found));
+    QStringList aka;
+    for (const QString &a : m_aka)
+        if (!aka.contains(a, Qt::CaseInsensitive))
+            aka << a;
+    o.insert("akaList", QJsonArray::fromStringList(aka));
+    m_aka.clear();
     auto cb = m_cb;
     m_cb = nullptr;
     if (cb)
         cb(o);
+}
+
+void IafdBio::merge(const QJsonObject &in)
+{
+    static const QRegularExpression paren(QStringLiteral("\\s*\\([^)]*\\)"));
+    bool any = false;
+    for (const QString &k : {QStringLiteral("birthday"), QStringLiteral("birthplace"), QStringLiteral("years"), QStringLiteral("height"),
+                             QStringLiteral("nat"), QStringLiteral("eth"), QStringLiteral("hair")}) {
+        QString v = in.value(k).toString().trimmed();
+        if (v.compare(QLatin1String("No data"), Qt::CaseInsensitive) == 0 || v == QLatin1String("-") || v.compare(QLatin1String("Unknown"), Qt::CaseInsensitive) == 0)
+            v.clear();
+        v.remove(paren);
+        v = v.simplified();
+        if (!v.isEmpty() && m_merged.value(k).toString().isEmpty()) {
+            m_merged.insert(k, v);
+            any = true;
+        }
+    }
+    if (in.value("movies").toInt() > m_merged.value("movies").toInt())
+        m_merged.insert("movies", in.value("movies").toInt());
+    for (QString a : in.value("aka").toString().split(QRegularExpression(QStringLiteral("[\\n,;/]|\\s+-\\s+")), Qt::SkipEmptyParts)) {
+        a.remove(paren);
+        a = a.simplified();
+        if (!a.isEmpty() && a.size() < 40 && a.compare(m_name, Qt::CaseInsensitive) != 0 && !a.contains(QLatin1String("No known"), Qt::CaseInsensitive)) {
+            m_aka << a;
+            any = true;
+        }
+    }
+    if (any)
+        m_found << m_sources[m_index].first;
 }
 
 void IafdBio::step(int stage)
@@ -96,7 +158,7 @@ void IafdBio::step(int stage)
     const QString nameJs = QString::fromUtf8(QJsonDocument(QJsonArray{m_name}).toJson(QJsonDocument::Compact)).mid(1).chopped(1);
     const int serial = m_serial;
     if (stage == 0) {
-        // Результаты поиска: ссылка на актрису с точно таким именем (из таблицы актрис, если она есть)
+        // Результаты поиска IAFD: ссылка на актрису с точно таким именем (из таблицы актрис, если она есть)
         static const char *js = R"JS((function(){var n=%1.toLowerCase().replace(/\s+/g,' ').trim();var best='',fem='';
 [].slice.call(document.querySelectorAll('a[href*="person.rme"]')).forEach(function(a){
  var t=(a.textContent||'').toLowerCase().replace(/\s+/g,' ').trim();if(t!==n)return;if(!best)best=a.href;
@@ -111,7 +173,7 @@ return fem||best;})())JS";
                     QTimer::singleShot(2000, this, [this, serial] { if (serial == m_serial) step(0); });
                     return;
                 }
-                done({});
+                nextSource();
                 return;
             }
             m_stage = 1;
@@ -121,47 +183,37 @@ return fem||best;})())JS";
         });
         return;
     }
-    // Страница исполнителя: подписи и значения
+    // Страница с анкетой: подписи («Birthday», «Born:», «Date of Birth»…) и значения рядом с ними
     static const char *js = R"JS((function(){function t(e){return (e&&(e.innerText||e.textContent)||'').trim();}
-var L={birthday:/^(birthday|date of birth|born)$/i,birthplace:/^(birthplace|place of birth)$/i,years:/^years active/i,
- height:/^height$/i,aka:/^(performer aka|aka|also known as)$/i,nat:/^nationality/i,eth:/^ethnicity$/i,hair:/^hair colou?rs?$/i};
-var r={};var els=document.querySelectorAll('p,dt,th,td,div,span,b,strong,h3,h4,h5,label');
-for(var i=0;i<els.length;i++){var e=els[i];if(e.children.length>1)continue;var s=t(e).replace(/:$/,'');if(!s||s.length>30)continue;
- for(var k in L){if(r[k]===undefined&&L[k].test(s)){var v=e.nextElementSibling;var val=v?t(v):'';
-  if(!val&&e.parentElement&&e.parentElement.nextElementSibling)val=t(e.parentElement.nextElementSibling);if(val)r[k]=val;}}}
+var L={birthday:/^(birthday|date of birth|born|birth date|birthdate)$/i,birthplace:/^(birthplace|place of birth|birth place|born in)$/i,
+ years:/^(years active|career|active|career start|years)$/i,height:/^height$/i,aka:/^(performer aka|aka|also known as|aliases|alias|other names)$/i,
+ nat:/^(nationality|country)$/i,eth:/^ethnicity$/i,hair:/^hair( colou?rs?)?$/i};
+var body=document.body?document.body.innerText:'';var r={};r.adult=/pornograph|adult film|adult model|porn ?star|adult entertain/i.test(body);
+var els=document.querySelectorAll('p,dt,th,td,div,span,b,strong,h3,h4,h5,label,li');
+for(var i=0;i<els.length;i++){var e=els[i];if(e.children.length>1)continue;var s=t(e).replace(/:\s*$/,'');if(!s||s.length>30)continue;
+ for(var k in L){if(r[k]!==undefined||!L[k].test(s))continue;var v=e.nextElementSibling;var val=v?t(v):'';
+  if(!val&&e.parentElement){var pt=t(e.parentElement);if(pt.length>s.length+2&&pt.length<300)val=pt.replace(t(e),'').replace(/^[:\s]+/,'');}
+  if(!val&&e.parentElement&&e.parentElement.nextElementSibling)val=t(e.parentElement.nextElementSibling);
+  if(val&&val.length<400)r[k]=val;}}
+// Википедия: точные поля в карточке
+var bd=document.querySelector('.infobox .bday');if(bd)r.birthday=bd.textContent;
+var bp=document.querySelector('.infobox .birthplace');if(bp)r.birthplace=t(bp);
 var rows=0;[].forEach.call(document.querySelectorAll('table'),function(tb){var h=t(tb.querySelector('thead')||tb.rows[0]);
  if(/title/i.test(h)&&/year/i.test(h)){var n=tb.querySelectorAll('tbody tr').length||Math.max(0,tb.rows.length-1);if(n>rows)rows=n;}});
-r.movies=rows;r.page=location.href;r.h1=t(document.querySelector('h1'));return JSON.stringify(r);})())JS";
+r.movies=location.hostname.indexOf('iafd')>=0?rows:0;return JSON.stringify(r);})())JS";
     m_view->page()->runJavaScript(QString::fromUtf8(js), [this, serial](const QVariant &v) {
         if (serial != m_serial)
             return;
-        QJsonObject o = QJsonDocument::fromJson(v.toString().toUtf8()).object();
-        if (o.value("birthday").toString().isEmpty() && o.value("years").toString().isEmpty() && ++m_attempt < 3) {
+        const QJsonObject o = QJsonDocument::fromJson(v.toString().toUtf8()).object();
+        const bool empty = o.value("birthday").toString().isEmpty() && o.value("years").toString().isEmpty() && o.value("aka").toString().isEmpty();
+        if (empty && ++m_attempt < 2) {
             QTimer::singleShot(2000, this, [this, serial] { if (serial == m_serial) step(1); });
             return;
         }
-        // Чистка: «No data», скобки «(33 years old)», псевдонимы построчно
-        static const QRegularExpression paren(QStringLiteral("\\s*\\([^)]*\\)"));
-        for (const QString &k : o.keys()) {
-            if (!o.value(k).isString())
-                continue;
-            QString s = o.value(k).toString().trimmed();
-            if (s.compare(QLatin1String("No data"), Qt::CaseInsensitive) == 0 || s == QLatin1String("-"))
-                s.clear();
-            if (k != QLatin1String("aka"))
-                s.remove(paren);
-            o.insert(k, s.simplified());
-        }
-        QStringList aka;
-        for (QString a : o.value("aka").toString().split(QRegularExpression(QStringLiteral("[\\n,]")), Qt::SkipEmptyParts)) {
-            a.remove(paren);
-            a = a.simplified();
-            if (!a.isEmpty() && a.compare(m_name, Qt::CaseInsensitive) != 0 && !aka.contains(a, Qt::CaseInsensitive)
-                && !a.contains(QLatin1String("No known"), Qt::CaseInsensitive))
-                aka << a;
-        }
-        o.insert("akaList", QJsonArray::fromStringList(aka));
-        done(o);
+        // Википедия — только если статья действительно об актрисе фильмов для взрослых (тёзки бывают)
+        if (m_sources[m_index].first != QLatin1String("Wikipedia") || o.value("adult").toBool())
+            merge(o);
+        nextSource();
     });
 }
 
@@ -235,7 +287,8 @@ QString build(const QJsonObject &b, const QString &ruName, const QString &bornIn
         p1 += QStringLiteral(" Родилась ") + bornIn + QLatin1Char('.');
 
     // 2. Карьера
-    static const QRegularExpression yrs(QStringLiteral("(\\d{4})\\s*[-–]\\s*(\\d{4})"));
+    // «2013-2022», «2023 - present», «2016»
+    static const QRegularExpression yrs(QStringLiteral("((?:19|20)\\d{2})(?:\\s*[-–]\\s*((?:19|20)\\d{2}))?"));
     const auto ym = yrs.match(b.value("years").toString());
     const int start = ym.hasMatch() ? ym.captured(1).toInt() : 0;
     const int end = ym.hasMatch() ? ym.captured(2).toInt() : 0;
@@ -769,7 +822,7 @@ void ServerPage::lookupNext()
             lookupNext();
             return;
         }
-        m_table->item(row, ColStatus)->setText(T("ищу данные на IAFD…"));
+        m_table->item(row, ColStatus)->setText(T("ищу в базах (IAFD, Babepedia, FreeOnes, Boobpedia, Википедия)…"));
         m_state->setText(T("Собираю данные: %1").arg(name));
         if (!m_iafd)
             m_iafd = new IafdBio(this);
@@ -802,12 +855,13 @@ void ServerPage::prepareRow(int row, const QJsonObject &bioIn)
 {
     QJsonObject bio = bioIn;
     const QString name = m_table->item(row, ColName)->text();
-    if (Ai::enabled()) {
-        aiRow(row, bio);
-        return;
-    }
     if (bio.isEmpty() || (bio.value("birthday").toString().isEmpty() && bio.value("years").toString().isEmpty())) {
-        m_table->item(row, ColStatus)->setText(T("нет данных на IAFD — заполните вручную"));
+        // Бесплатные базы ничего не дали — крайний случай: нейросеть, если указан ключ
+        if (Ai::enabled()) {
+            aiRow(row, bio);
+            return;
+        }
+        m_table->item(row, ColStatus)->setText(T("нет данных в базах — заполните вручную"));
         lookupNext();
         return;
     }
@@ -848,7 +902,11 @@ void ServerPage::prepareRow(int row, const QJsonObject &bioIn)
         m_table->item(row, ColBio)->setText(text.section('\n', 0, 0));
         m_table->item(row, ColBio)->setData(Qt::UserRole, text);
         m_table->item(row, ColBio)->setToolTip(text);
-        m_table->item(row, ColStatus)->setText(T("готово к записи"));
+        QStringList srcs;
+        for (const QJsonValue &v : bio.value("sources").toArray())
+            srcs << v.toString();
+        m_table->item(row, ColStatus)->setText(T("готово (%1)").arg(srcs.join(QStringLiteral(", "))));
+        qInfo("bio %s: %s", qPrintable(name), QJsonDocument(bio).toJson(QJsonDocument::Compact).constData());
         m_table->item(row, ColCheck)->setCheckState(Qt::Checked);
         lookupNext();
     };

@@ -191,10 +191,20 @@ int parseLengthMinutes(const QString &text)
 
 QDate parseDate(const QString &text)
 {
-    const QString t = text.simplified().remove(',');
+    // «Nov 17 2026», «November 9, 1992», «Saturday 20th of August 1988», «1988-08-20»
+    QString t = text.simplified().remove(',');
+    static const QRegularExpression iso(QStringLiteral("(\\d{4}-\\d{2}-\\d{2})"));
+    const auto im = iso.match(t);
+    if (im.hasMatch())
+        return QDate::fromString(im.captured(1), Qt::ISODate);
+    t.remove(QRegularExpression(QStringLiteral("\\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b"), QRegularExpression::CaseInsensitiveOption));
+    t.replace(QRegularExpression(QStringLiteral("(\\d)(st|nd|rd|th)\\b")), QStringLiteral("\\1"));
+    t.remove(QRegularExpression(QStringLiteral("\\bof\\b")));
+    t.remove(QRegularExpression(QStringLiteral("\\s*\\(.*$")));
+    t = t.simplified();
     const QLocale c(QLocale::English);
-    for (const QString &f : {QStringLiteral("MMM d yyyy"), QStringLiteral("MMMM d yyyy"), QStringLiteral("MM/dd/yyyy"),
-                             QStringLiteral("yyyy-MM-dd")}) {
+    for (const QString &f : {QStringLiteral("MMM d yyyy"), QStringLiteral("MMMM d yyyy"), QStringLiteral("d MMMM yyyy"),
+                             QStringLiteral("d MMM yyyy"), QStringLiteral("MM/dd/yyyy"), QStringLiteral("yyyy-MM-dd")}) {
         const QDate d = c.toDate(t, f);
         if (d.isValid())
             return d;

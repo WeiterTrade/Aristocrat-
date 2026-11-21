@@ -15,7 +15,7 @@ class QPushButton;
 class QTableWidget;
 class QWebEngineView;
 
-// Данные исполнителя с IAFD: дата и место рождения, псевдонимы, годы, число фильмов
+// Данные исполнителя из бесплатных баз (IAFD, Babepedia, FreeOnes, Boobpedia, Википедия)
 class IafdBio : public QObject
 {
 public:
@@ -27,7 +27,13 @@ public:
 
 private:
     void step(int stage);
+    void nextSource();
+    void merge(const QJsonObject &o);
     void done(const QJsonObject &o);
+    QList<QPair<QString, QString>> m_sources;   // имя источника, адрес
+    QJsonObject m_merged;
+    QStringList m_found, m_aka;
+    int m_index = 0;
     QWebEngineView *m_view;
     QTimer m_timeout;
     Callback m_cb;
