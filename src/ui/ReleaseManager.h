@@ -3,6 +3,7 @@
 #include "core/Release.h"
 
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
@@ -45,6 +46,13 @@ signals:
 private:
     void extract();
     void galleryStep(int step);   // задняя обложка: открыть галерею обложек и пролистать
+    // Кадры для фан-арта: «Больше скриншотов» у первых 4 сцен, по 4 первых кадра
+    void shotsStep(int i);
+    void collectShots(int i, int attempt);
+    void finishShots();
+    QJsonArray m_shotButtons;
+    QStringList m_shotList;
+    bool m_shotsMode = false;
     QWebEngineView *m_view;
     QJsonObject m_data;
     QTimer m_timeout;

@@ -151,17 +151,15 @@ ReleaseFetcher::ReleaseFetcher(QObject *parent)
     connect(m_view, &QWebEngineView::loadFinished, this, [this] {
         if (m_done)
             return;
+        if (m_shotsMode) {   // открыта страница скриншотов сцены
+            const int i = property("shotIndex").toInt();
+            QTimer::singleShot(2000, this, [this, i] { collectShots(i, 0); });
+            return;
+        }
         emit progress(T("Чтение страницы релиза…"));
         if (QSettings().value(QStringLiteral("sites/adultConfirmed"), false).toBool())
             m_view->page()->runJavaScript(QString::fromUtf8(ageScript()));
-        // «Посмотреть ещё скриншоты» у сцен — чтобы кадры были на странице
-        QTimer::singleShot(1500, this, [this] {
-            m_view->page()->runJavaScript(QStringLiteral(
-                "[].slice.call(document.querySelectorAll('a,button,span,div')).filter(function(e){return e.children.length<3&&"
-                "/(view|see|show)\\s+more\\s+screen|more\\s+screenshots|ещё скриншоты|еще скриншоты/i.test((e.innerText||'').trim());})"
-                ".slice(0,4).forEach(function(e){try{e.click();}catch(x){}});"));
-        });
-        QTimer::singleShot(4000, this, &ReleaseFetcher::extract);
+        QTimer::singleShot(3000, this, &ReleaseFetcher::extract);
     });
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
@@ -205,9 +203,8 @@ void ReleaseFetcher::extract()
                 m_data = o;
                 galleryStep(0);
             } else {
-                m_done = true;
-                m_timeout.stop();
-                emit finished(o);
+                m_data = o;
+                shotsStep(-1);
             }
             return;
         }
@@ -289,12 +286,108 @@ void ReleaseFetcher::galleryStep(int step)
                     back = x.toString();
             if (!back.isEmpty())
                 m_data.insert("back", back);
-            m_done = true;
-            m_timeout.stop();
-            emit finished(m_data);
+            // закрыть галерею и перейти к кадрам сцен
+            m_view->page()->runJavaScript(QStringLiteral("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));"));
+            QTimer::singleShot(800, this, [this] { shotsStep(-1); });
         });
         break;
     }
+}
+
+// ---- Кадры сцен для фан-арта ----
+// На странице у каждой сцены есть «Больше скриншотов» (More Screenshots): открывается список кадров сцены,
+// первые кадры — сюжетные. Берём первые 4 кадра у первых 4 сцен.
+
+void ReleaseFetcher::shotsStep(int i)
+{
+    if (m_done)
+        return;
+    m_timeout.start(40000);
+    if (i < 0) {
+        emit progress(T("Собираю кадры сцен для фан-арта…"));
+        m_shotList.clear();
+        static const char *js = R"JS((function(){var re=/more\s+screen\s*shots?|view\s+(all|more)\s+screen|(больше|ещё|еще)\s+скриншот/i;
+var out=[];[].slice.call(document.querySelectorAll('a,button')).forEach(function(e){if(out.length>=4)return;
+ var t=(e.innerText||e.textContent||'').trim();if(!re.test(t)||t.length>40)return;
+ var h=e.tagName=='A'?(e.getAttribute('href')||''):'';var abs=h&&!/^#|^javascript:/i.test(h)?new URL(h,location.href).href:'';
+ out.push({href:abs});});return JSON.stringify(out);})())JS";
+        m_view->page()->runJavaScript(QString::fromUtf8(js), [this](const QVariant &v) {
+            m_shotButtons = QJsonDocument::fromJson(v.toString().toUtf8()).array();
+            if (m_shotButtons.isEmpty()) {
+                finishShots();
+                return;
+            }
+            shotsStep(0);
+        });
+        return;
+    }
+    if (i >= m_shotButtons.size()) {
+        finishShots();
+        return;
+    }
+    setProperty("shotIndex", i);
+    const QString href = m_shotButtons.at(i).toObject().value("href").toString();
+    if (!href.isEmpty()) {   // отдельная страница со скриншотами сцены
+        m_shotsMode = true;
+        m_view->load(QUrl(href));
+        return;
+    }
+    // Окно поверх страницы: нажимаем i-ю кнопку
+    static const char *click = R"JS((function(i){var re=/more\s+screen\s*shots?|view\s+(all|more)\s+screen|(больше|ещё|еще)\s+скриншот/i;
+var b=[].slice.call(document.querySelectorAll('a,button')).filter(function(e){var t=(e.innerText||e.textContent||'').trim();return re.test(t)&&t.length<=40;});
+if(b[i]){b[i].scrollIntoView({block:'center'});b[i].click();return true;}return false;})(%1))JS";
+    m_view->page()->runJavaScript(QString::fromUtf8(click).arg(i), [this, i](const QVariant &) {
+        QTimer::singleShot(2000, this, [this, i] { collectShots(i, 0); });
+    });
+}
+
+void ReleaseFetcher::collectShots(int i, int attempt)
+{
+    if (m_done)
+        return;
+    // Первые 4 крупных кадра: в открывшемся окне (поверх страницы) или на отдельной странице сцены
+    static const char *js = R"JS((function(pageMode){function big(img){var a=img.closest('a');var u=(a&&/\.(jpe?g|webp)(\?|$)/i.test(a.href))?a.href:
+ (img.getAttribute('data-original')||img.getAttribute('data-large')||img.getAttribute('data-src')||img.currentSrc||img.src);return u;}
+function ok(u){return u&&/^https?:/i.test(u)&&!/\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner|\.svg/i.test(u);}
+var scope=null;
+if(!pageMode){var best=0;[].slice.call(document.querySelectorAll('body *')).forEach(function(e){var cs=getComputedStyle(e);
+ if((cs.position=='fixed'||cs.position=='absolute')&&cs.display!='none'&&cs.visibility!='hidden'){var r=e.getBoundingClientRect();
+  if(r.width>window.innerWidth*0.5&&r.height>window.innerHeight*0.5){var n=e.querySelectorAll('img').length;if(n>best){best=n;scope=e;}}}});}
+if(!scope)scope=pageMode?(document.querySelector('main')||document.body):null;if(!scope)return '[]';
+var out=[];[].slice.call(scope.querySelectorAll('img')).forEach(function(img){if(out.length>=4)return;var r=img.getBoundingClientRect();
+ var w=img.naturalWidth||r.width;if(w<200&&r.width<150)return;if(img.closest('header,nav,footer'))return;var u=big(img);if(ok(u)&&out.indexOf(u)<0)out.push(u);});
+return JSON.stringify(out);})(%1))JS";
+    m_view->page()->runJavaScript(QString::fromUtf8(js).arg(m_shotsMode ? "true" : "false"), [this, i, attempt](const QVariant &v) {
+        const QJsonArray got = QJsonDocument::fromJson(v.toString().toUtf8()).array();
+        if (got.isEmpty() && attempt < 2) {   // кадры ещё догружаются
+            QTimer::singleShot(1500, this, [this, i, attempt] { collectShots(i, attempt + 1); });
+            return;
+        }
+        for (const QJsonValue &x : got)
+            if (!m_shotList.contains(x.toString()))
+                m_shotList << x.toString();
+        if (m_shotsMode) {
+            shotsStep(i + 1);
+            return;
+        }
+        // закрыть окно скриншотов
+        m_view->page()->runJavaScript(QStringLiteral(
+            "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));"
+            "[].slice.call(document.querySelectorAll('[class*=\"close\"],[aria-label*=\"lose\"],[data-dismiss]')).forEach(function(e){"
+            "var r=e.getBoundingClientRect();if(r.width>0&&r.height>0){try{e.click();}catch(x){}}});"));
+        QTimer::singleShot(800, this, [this, i] { shotsStep(i + 1); });
+    });
+}
+
+void ReleaseFetcher::finishShots()
+{
+    m_shotsMode = false;
+    // Нашлись кадры из «Больше скриншотов» — они главнее; иначе остаются миниатюры сцен со страницы
+    if (!m_shotList.isEmpty())
+        m_data.insert("shots", QJsonArray::fromStringList(m_shotList));
+    m_done = true;
+    m_timeout.stop();
+    emit finished(m_data);
 }
 
 // ======================= Пол исполнителей (IAFD) =======================
