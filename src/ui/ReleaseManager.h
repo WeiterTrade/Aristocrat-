@@ -16,6 +16,8 @@ class QPlainTextEdit;
 class QPushButton;
 class QRadioButton;
 class QTableWidget;
+class QTabWidget;
+class CloudUploadPage;
 class QWebEngineView;
 
 // Чтение страницы релиза Adult Empire в скрытом окне: название, описание, студия, режиссёр,
@@ -53,6 +55,8 @@ public:
     ReleaseManagerDialog(const QString &pageUrl = QString(), const QString &video = QString(), QWidget *parent = nullptr,
                          const QString &scenesUrl = QString());
 
+    void showUploadTab();
+
 signals:
     // Видео отдаётся в раздел «Конвертировать»: своё имя, своя папка, главы
     void videoRequested(const QString &input, const QString &name, const QString &dir, bool lossless,
@@ -75,6 +79,8 @@ private:
     QString releaseDir() const;
     void setBusy(bool busy, const QString &text = QString());
 
+    QTabWidget *m_tabs;
+    CloudUploadPage *m_upload;
     QLineEdit *m_url;
     QPushButton *m_fetch;
     QLabel *m_state;

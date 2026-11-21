@@ -20,5 +20,6 @@ signals:
 
 public:
     void openDvd(const QString &path);
-    void openRelease(const QString &url = QString(), const QString &video = QString(), const QString &scenesUrl = QString());
+    void openRelease(const QString &url = QString(), const QString &video = QString(), const QString &scenesUrl = QString(),
+                     bool upload = false);
 };

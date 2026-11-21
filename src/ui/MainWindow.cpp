@@ -225,6 +225,12 @@ void MainWindow::demoRelease(const QString &url, const QString &video, const QSt
     QTimer::singleShot(1000, this, [this, url, video, scenes] { m_toolbox->openRelease(url, video, scenes); });
 }
 
+void MainWindow::demoUpload()
+{
+    showPage(4);
+    QTimer::singleShot(1000, this, [this] { m_toolbox->openRelease(QString(), QString(), QString(), true); });
+}
+
 void MainWindow::demoTheme(const QString &theme)
 {
     // Автопроверка смены темы на лету

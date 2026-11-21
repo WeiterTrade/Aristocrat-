@@ -88,6 +88,10 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$out\tools\yt-dlp.exe"
           Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile deno.zip
           Expand-Archive deno.zip -DestinationPath "$out\tools\deno"
+          # rclone — выгрузка релизов в облака
+          Invoke-WebRequest -Uri "https://downloads.rclone.org/rclone-current-windows-amd64.zip" -OutFile rclone.zip
+          Expand-Archive rclone.zip -DestinationPath rclone-x
+          Copy-Item (Get-ChildItem rclone-x -Recurse -Filter rclone.exe | Select-Object -First 1).FullName "$out\tools\rclone.exe"
 
           Copy-Item README.md $out\
           Copy-Item THIRD_PARTY.md $out\
@@ -169,6 +173,8 @@ jobs:
           mkdir -p AppDir/usr/bin/tools/deno
           curl -L -o deno.zip https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip
           unzip -q deno.zip -d AppDir/usr/bin/tools/deno
+          curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
+          unzip -q -j rclone.zip "*/rclone" -d AppDir/usr/bin/tools/ && chmod +x AppDir/usr/bin/tools/rclone
           chmod +x AppDir/usr/bin/tools/ffmpeg AppDir/usr/bin/tools/ffprobe AppDir/usr/bin/tools/realesrgan/realesrgan-ncnn-vulkan \
                    AppDir/usr/bin/tools/yt-dlp AppDir/usr/bin/tools/deno/deno
 
@@ -237,6 +243,10 @@ jobs:
           find "$HOME/Videos" -name "*.nfo" -newer tests/release/5125349.html -exec cat {} \; 2>/dev/null | head -12
           ls -la "$HOME/Videos/Aristocrat Видеоконвертер/"*/*/ 2>/dev/null | head -20
           M=$(find "$HOME/Videos" -name "*.mkv" -path "*Серия*" | head -1); [ -n "$M" ] && $T/ffprobe -v error -show_chapters -of compact "$M" || true
+          # Вкладка «Выгрузить»: последний релиз копируется в папку
+          mkdir -p "$HOME/Облако тест"
+          ARISTOCRAT_TEST_UPLOAD="$HOME/Облако тест" SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot upload --demo-upload
+          echo "--- выгружено ---"; find "$HOME/Облако тест" | sed "s|$HOME/||" | head -20
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера

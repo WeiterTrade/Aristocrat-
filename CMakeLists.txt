@@ -42,6 +42,7 @@ set(SOURCES
     src/ui/DownloadPage.cpp
     src/ui/SettingsDialog.cpp
     src/ui/ChaptersDialog.cpp
+    src/ui/CloudUpload.cpp
 )
 
 set(RESOURCES resources/resources.qrc browser-extension/extension.qrc)

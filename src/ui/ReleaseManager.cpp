@@ -1,5 +1,6 @@
 #include "ReleaseManager.h"
 #include "BrowserWindow.h"
+#include "CloudUpload.h"
 #include "SceneTools.h"
 #include "Widgets.h"
 #include "core/I18n.h"
@@ -34,6 +35,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QTableWidget>
+#include <QTabWidget>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
@@ -294,7 +296,16 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     resize(1320, 860);
     QSettings st;
 
-    auto *root = contentLayout();
+    // Вкладки: «Создать релиз» и «Выгрузить» (в облако или в папку)
+    m_tabs = new QTabWidget(this);
+    m_tabs->setDocumentMode(true);
+    contentLayout()->setContentsMargins(0, 6, 0, 0);
+    contentLayout()->addWidget(m_tabs);
+    auto *createPage = new QWidget(m_tabs);
+    m_upload = new CloudUploadPage(m_tabs);
+    m_tabs->addTab(createPage, T("Создать релиз"));
+    m_tabs->addTab(m_upload, T("Выгрузить"));
+    auto *root = new QVBoxLayout(createPage);
     root->setContentsMargins(20, 14, 20, 14);
     root->setSpacing(8);
 
@@ -595,6 +606,11 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     updateTarget();
     if (!pageUrl.isEmpty())
         QMetaObject::invokeMethod(this, &ReleaseManagerDialog::fetch, Qt::QueuedConnection);
+}
+
+void ReleaseManagerDialog::showUploadTab()
+{
+    m_tabs->setCurrentIndex(1);
 }
 
 void ReleaseManagerDialog::setBusy(bool busy, const QString &text)
@@ -1011,6 +1027,8 @@ void ReleaseManagerDialog::create()
         return;
     }
     m_createdDir = dir;
+    QSettings().setValue(QStringLiteral("ae/lastRelease"), dir);
+    m_upload->setRelease(dir);
     m_errors.clear();
 
     // NFO

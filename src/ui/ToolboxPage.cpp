@@ -173,15 +173,23 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     QVBoxLayout *b5 = nullptr;
     auto *rel = card(this, "folder", T("Adult Empire Менеджер"),
                      T("По ссылке на релиз создаёт папку для медиатеки: NFO с переводом названия и описания, постер, заднюю "
-                       "обложку, фан-арт, фото актрис, видео с нужным именем и главами. Перед созданием всё можно проверить."),
+                       "обложку, фан-арт, фото актрис, видео с нужным именем и главами. Готовый релиз выгружается в облако "
+                       "(Google Диск, Яндекс Диск, Облако Mail.ru, OneDrive) или в любую папку."),
                      b5);
     auto *openRel = Ui::primaryButton(T("Создать релиз…"), rel);
+    auto *upRel = new QPushButton(T("Выгрузить релиз…"), rel);
+    auto *relBtns = new QHBoxLayout;
+    relBtns->addWidget(openRel);
+    relBtns->addWidget(upRel);
+    relBtns->addStretch();
     b5->addSpacing(6);
-    b5->addWidget(openRel);
+    b5->addLayout(relBtns);
+    connect(upRel, &QPushButton::clicked, this, [this] { openRelease(QString(), QString(), QString(), true); });
     b5->addStretch();
     connect(openRel, &QPushButton::clicked, this, [this] { openRelease(); });
 #ifndef HAVE_WEBENGINE
     openRel->setEnabled(false);
+    upRel->setEnabled(false);
 #endif
 
     grid->addWidget(vhs, 0, 0);
@@ -193,18 +201,21 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     root->addStretch();
 }
 
-void ToolboxPage::openRelease(const QString &url, const QString &video, const QString &scenesUrl)
+void ToolboxPage::openRelease(const QString &url, const QString &video, const QString &scenesUrl, bool upload)
 {
 #ifdef HAVE_WEBENGINE
     auto *d = new ReleaseManagerDialog(url, video, window(), scenesUrl);
     d->setAttribute(Qt::WA_DeleteOnClose);
     connect(d, &ReleaseManagerDialog::videoRequested, this, &ToolboxPage::releaseVideo);
     connect(d, &ReleaseManagerDialog::downloadRequested, this, &ToolboxPage::releaseDownload);
+    if (upload)
+        d->showUploadTab();
     d->show();
 #else
     Q_UNUSED(url)
     Q_UNUSED(video)
     Q_UNUSED(scenesUrl)
+    Q_UNUSED(upload)
 #endif
 }
 

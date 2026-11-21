@@ -73,6 +73,12 @@ QProcessEnvironment utf8Env()
     return env;
 }
 
+QString rclone()
+{
+    static QString p = findExecutable(QStringLiteral("rclone"), {QStringLiteral("rclone")});
+    return p;
+}
+
 QString deno()
 {
     static QString p = findExecutable(QStringLiteral("deno"), {QStringLiteral("deno")});
