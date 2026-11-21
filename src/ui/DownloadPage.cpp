@@ -1015,6 +1015,7 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
             m_doneLayout->insertWidget(0, c);
         }
         m_segDone->setText(T("Готово (%1)").arg(m_doneLayout->count() - 1));
+        emit downloadFinished(item->filePath, item->pageUrl);
         if (m_convertMode->isChecked()) {
             emit convertRequested(item->filePath, true);
             m_status->setText(T("«%1» скачано и отправлено на конвертацию").arg(item->title));

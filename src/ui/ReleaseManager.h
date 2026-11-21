@@ -36,7 +36,9 @@ signals:
 
 private:
     void extract();
+    void galleryStep(int step);   // задняя обложка: открыть галерею обложек и пролистать
     QWebEngineView *m_view;
+    QJsonObject m_data;
     QTimer m_timeout;
     int m_tries = 0;
     bool m_done = false;
@@ -48,15 +50,20 @@ class ReleaseManagerDialog : public FramedDialog
 {
     Q_OBJECT
 public:
-    ReleaseManagerDialog(const QString &pageUrl = QString(), const QString &video = QString(), QWidget *parent = nullptr);
+    ReleaseManagerDialog(const QString &pageUrl = QString(), const QString &video = QString(), QWidget *parent = nullptr,
+                         const QString &scenesUrl = QString());
 
 signals:
     // Видео отдаётся в раздел «Конвертировать»: своё имя, своя папка, главы
     void videoRequested(const QString &input, const QString &name, const QString &dir, bool lossless,
                         const QString &chaptersMeta);
+    // Видео нужно скачать: раздел «Загрузить» (вход в аккаунт, выбор качества), потом — в папку релиза
+    void downloadRequested(const QString &pageUrl);
 
 private:
     void fetch();
+    void fetchScenes(const QString &url);
+    void setScenes(const QList<Chapter> &scenes);
     void apply(const QJsonObject &d);
     void translate();
     void loadPreview(QLabel *target, const QString &url);
@@ -84,6 +91,9 @@ private:
     QLabel *m_frontPrev, *m_backPrev, *m_fanartPrev;
     QTableWidget *m_scenes;
     QCheckBox *m_useScenes;
+    QLineEdit *m_scenesUrl;
+    QPushButton *m_scenesFetch;
+    QCheckBox *m_downloadVideo;
 
     QLineEdit *m_base, *m_video;
     QRadioButton *m_lossless, *m_convert;

@@ -7,6 +7,11 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QFileInfo>
+#include <QProcess>
+#include <QSettings>
+#include <QUrl>
+#include "Tools.h"
 
 namespace Release {
 
@@ -195,6 +200,54 @@ QDate parseDate(const QString &text)
             return d;
     }
     return {};
+}
+
+bool fanartFromVideo(const QString &video, const QString &jpg)
+{
+    if (Tools::ffmpeg().isEmpty())
+        return false;
+    for (const char *at : {"600", "5"}) {
+        QProcess p;
+        p.start(Tools::ffmpeg(), {"-hide_banner", "-loglevel", "error", "-y", "-ss", at, "-i", video, "-frames:v", "1", "-q:v", "2", jpg});
+        p.waitForFinished(30000);
+        if (QFileInfo(jpg).size() > 0)
+            return true;
+    }
+    return false;
+}
+
+static QString pendingKey(const QString &url)
+{
+    // Ссылка без параметров и «#…» — так совпадёт и страница сцен, и страница фильма
+    QUrl u(url);
+    u.setQuery(QString());
+    u.setFragment(QString());
+    return QString::fromLatin1(u.toString(QUrl::RemoveScheme | QUrl::StripTrailingSlash).toUtf8().toBase64(QByteArray::Base64UrlEncoding));
+}
+
+void addPending(const QString &pageUrl, const Pending &p)
+{
+    QSettings st;
+    st.beginGroup(QStringLiteral("aePending/") + pendingKey(pageUrl));
+    st.setValue(QStringLiteral("name"), p.name);
+    st.setValue(QStringLiteral("dir"), p.dir);
+    st.setValue(QStringLiteral("meta"), p.chaptersMeta);
+    st.setValue(QStringLiteral("lossless"), p.lossless);
+    st.endGroup();
+}
+
+bool takePending(const QString &pageUrl, Pending *p)
+{
+    QSettings st;
+    const QString g = QStringLiteral("aePending/") + pendingKey(pageUrl);
+    if (!st.contains(g + QStringLiteral("/name")))
+        return false;
+    p->name = st.value(g + QStringLiteral("/name")).toString();
+    p->dir = st.value(g + QStringLiteral("/dir")).toString();
+    p->chaptersMeta = st.value(g + QStringLiteral("/meta")).toString();
+    p->lossless = st.value(g + QStringLiteral("/lossless"), true).toBool();
+    st.remove(g);
+    return true;
 }
 
 } // namespace Release

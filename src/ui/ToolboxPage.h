@@ -16,8 +16,9 @@ signals:
     void dvdRequested(const QList<QPair<QString, QString>> &titles, bool lossless);
     // Менеджер Adult Empire: видео релиза → раздел «Конвертировать»
     void releaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless, const QString &chaptersMeta);
+    void releaseDownload(const QString &pageUrl);
 
 public:
     void openDvd(const QString &path);
-    void openRelease(const QString &url = QString(), const QString &video = QString());
+    void openRelease(const QString &url = QString(), const QString &video = QString(), const QString &scenesUrl = QString());
 };

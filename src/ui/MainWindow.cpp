@@ -16,6 +16,8 @@
 #include "PlaceholderPage.h"
 #include "ToolboxPage.h"
 #include "ChaptersDialog.h"
+#include "core/Release.h"
+#include <QDir>
 #include "Widgets.h"
 
 #include <QApplication>
@@ -89,6 +91,20 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &in, const QString &name, const QString &dir, bool lossless, const QString &meta) {
                 m_convert->addReleaseVideo(in, name, dir, lossless, meta);
             });
+    // Менеджер Adult Empire: видео качается в разделе «Загрузить», затем переупаковывается в папку релиза
+    connect(toolbox, &ToolboxPage::releaseDownload, this, [this, download](const QString &url) {
+        showPage(1);
+        download->grabAndAdd(url, true);
+    });
+    connect(download, &DownloadPage::downloadFinished, this, [this](const QString &file, const QString &page) {
+        Release::Pending p;
+        if (page.isEmpty() || !Release::takePending(page, &p))
+            return;
+        const QString fanart = QDir(p.dir).filePath(p.name + QStringLiteral("-fanart.jpg"));
+        if (!QFileInfo::exists(fanart))
+            Release::fanartFromVideo(file, fanart);
+        m_convert->addReleaseVideo(file, p.name, p.dir, p.lossless, p.chaptersMeta);
+    });
     connect(download, &DownloadPage::chaptersConvert, this,
             [this](const QString &in, const QString &name, const QString &dir, const QString &meta) {
                 m_convert->addReleaseVideo(in, name, dir, false, meta);
@@ -203,10 +219,10 @@ void MainWindow::demoChapters(const QString &file, const QString &url)
     });
 }
 
-void MainWindow::demoRelease(const QString &url, const QString &video)
+void MainWindow::demoRelease(const QString &url, const QString &video, const QString &scenes)
 {
     showPage(4);
-    QTimer::singleShot(1000, this, [this, url, video] { m_toolbox->openRelease(url, video); });
+    QTimer::singleShot(1000, this, [this, url, video, scenes] { m_toolbox->openRelease(url, video, scenes); });
 }
 
 void MainWindow::demoTheme(const QString &theme)

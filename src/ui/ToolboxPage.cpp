@@ -193,16 +193,18 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     root->addStretch();
 }
 
-void ToolboxPage::openRelease(const QString &url, const QString &video)
+void ToolboxPage::openRelease(const QString &url, const QString &video, const QString &scenesUrl)
 {
 #ifdef HAVE_WEBENGINE
-    auto *d = new ReleaseManagerDialog(url, video, window());
+    auto *d = new ReleaseManagerDialog(url, video, window(), scenesUrl);
     d->setAttribute(Qt::WA_DeleteOnClose);
     connect(d, &ReleaseManagerDialog::videoRequested, this, &ToolboxPage::releaseVideo);
+    connect(d, &ReleaseManagerDialog::downloadRequested, this, &ToolboxPage::releaseDownload);
     d->show();
 #else
     Q_UNUSED(url)
     Q_UNUSED(video)
+    Q_UNUSED(scenesUrl)
 #endif
 }
 

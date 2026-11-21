@@ -55,6 +55,12 @@ var ogi=document.querySelector('meta[property="og:image"]');r.ogImage=ogi?ogi.co
 var h1=document.querySelector('h1');
 r.h1=h1?[].map.call(h1.childNodes,function(n){return n.nodeType==3?n.textContent:'';}).join(' ').replace(/\s+/g,' ').trim():'';
 if(!r.h1)r.h1=txt(h1);
+// Название — только начало заголовка одного цвета (красное); синяя приписка «- On Sale! …» уже не название
+r.h1color='';if(h1){var tw=document.createTreeWalker(h1,NodeFilter.SHOW_TEXT);var tn,col=null;
+  while((tn=tw.nextNode())){var tt=tn.textContent;if(!tt.trim()){r.h1color+=tt;continue;}
+    var cc=getComputedStyle(tn.parentElement).color;if(col===null)col=cc;else if(cc!==col)break;
+    if(tn.parentElement.closest('a')&&r.h1color.trim())break;r.h1color+=tt;}
+  r.h1color=r.h1color.replace(/\s+/g,' ').replace(/\s*[-–—]\s*$/,'').trim();}
 r.length=field('Length');r.released=field('Released');r.year=field('Production Year');
 r.sku=field('Empire SKU')||field('SKU');r.studio=field('Studio');r.starring=field('Starring');
 var m=/\(\d{4}\)\s*([0-5]\.\d{1,2})/.exec(body);r.rating=m?m[1]:'';
@@ -96,6 +102,8 @@ var bgs=[];
   for(var k=0;k<e.attributes.length;k++){var v=e.attributes[k].value;if(v&&v.length<600&&/^https?:\/\/.*\.(jpe?g|png|webp)/i.test(v))add(v);}
   if(e.offsetWidth>500){var b=getComputedStyle(e).backgroundImage;var mm=/url\(["']?([^"')]+)["']?\)/.exec(b||'');
     if(mm)bgs.push({u:mm[1],w:e.offsetWidth*e.offsetHeight});}});
+var html=document.documentElement.innerHTML;var hre=/https?:\/\/[^"'\s<>()]+?\.(?:jpe?g|webp|png)/gi;var hm;
+while((hm=hre.exec(html)))add(hm[0].replace(/&amp;/g,'&'));
 r.images=urls;
 var sku=r.sku.replace(/\D/g,'');
 function pick(ok){var best='';urls.forEach(function(u){if(ok(u)&&(!best||(sku&&u.indexOf(sku)>=0&&best.indexOf(sku)<0)))best=u;});return best;}
@@ -160,12 +168,18 @@ void ReleaseFetcher::extract()
         const bool ok = !o.isEmpty() && (!o.value("sku").toString().isEmpty() || !o.value("cast").toArray().isEmpty()
                                          || !o.value("studio").toString().isEmpty());
         if (ok || ++m_tries >= 6) {
-            m_done = true;
-            m_timeout.stop();
-            if (o.isEmpty())
+            if (o.isEmpty()) {
+                m_done = true;
+                m_timeout.stop();
                 emit failed(T("Не удалось прочитать страницу релиза."));
-            else
+            } else if (o.value("back").toString().isEmpty()) {
+                m_data = o;
+                galleryStep(0);
+            } else {
+                m_done = true;
+                m_timeout.stop();
                 emit finished(o);
+            }
             return;
         }
         // Ещё грузится или открыто окно 18+
@@ -173,6 +187,71 @@ void ReleaseFetcher::extract()
             m_view->page()->runJavaScript(QString::fromUtf8(ageScript()));
         QTimer::singleShot(2500, this, &ReleaseFetcher::extract);
     });
+}
+
+// Галерея обложек: как вручную — нажать на постер, затем стрелку «вперёд» (1/2 → 2/2)
+static const char *kOpenCover = R"JS((function(){
+var front=%1;var cands=[].slice.call(document.querySelectorAll('[data-fancybox],[data-lightbox],a[href*="h.jp"],#front-cover,.boxcover,[class*="boxcover"],[class*="cover"] a,[class*="cover"] img'));
+var el=null;cands.some(function(e){var h=e.getAttribute('href')||e.getAttribute('data-src')||'';var im=e.tagName=='IMG'?e:e.querySelector('img');
+  var s=im?(im.currentSrc||im.src||''):'';if((front&&(h.indexOf(front.split('/').pop())>=0||s.indexOf(front.split('/').pop())>=0))||/boxcover|front/i.test(e.className+' '+e.id)){el=e;return true;}return false;});
+if(!el&&cands.length)el=cands[0];if(!el)return 'none';el.scrollIntoView();el.click();return 'clicked';})())JS";
+static const char *kGalleryImages = R"JS((function(){var front=%1;var fname=front?front.split('/').pop().split('?')[0]:'';var lb=[],grp=[];
+[].forEach.call(document.querySelectorAll('img'),function(i){var r=i.getBoundingClientRect();
+  if(r.width<150||r.height<150)return;
+  var p=i,fixed=false;for(var k=0;k<12&&p;k++,p=p.parentElement){if(getComputedStyle(p).position=='fixed'){fixed=true;break;}}
+  if(fixed){var u=i.getAttribute('data-src')||i.currentSrc||i.src;if(u&&lb.indexOf(u)<0)lb.push(u);}});
+var anchors=[].slice.call(document.querySelectorAll('[data-fancybox],[data-lightbox]'));var g=null;
+anchors.forEach(function(a){var h=a.getAttribute('href')||a.getAttribute('data-src')||'';if(g===null&&fname&&h.indexOf(fname)>=0)g=a.getAttribute('data-fancybox')||a.getAttribute('data-lightbox');});
+anchors.forEach(function(a){if(g===null)return;if((a.getAttribute('data-fancybox')||a.getAttribute('data-lightbox'))!==g)return;
+  var h=a.getAttribute('href')||a.getAttribute('data-src');if(h&&/\.(jpe?g|webp|png)/i.test(h)){var u=new URL(h,location.href).href;if(grp.indexOf(u)<0)grp.push(u);}});
+return JSON.stringify({lb:lb,grp:grp});})())JS";
+static const char *kGalleryNext = R"JS((function(){
+var sel='[data-fancybox-next],.fancybox-button--arrow_right,.fancybox-next,.mfp-arrow-right,.lg-next,.slick-next,.pswp__button--arrow--right,.carousel-control-next,[aria-label*="Next" i],[title*="Next" i],[class*="next" i]';
+var bs=[].slice.call(document.querySelectorAll(sel)).filter(function(b){var r=b.getBoundingClientRect();return r.width>0&&r.height>0;});
+if(bs.length)bs[bs.length-1].click();
+document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',keyCode:39,which:39,bubbles:true}));
+return bs.length;})())JS";
+
+void ReleaseFetcher::galleryStep(int step)
+{
+    if (m_done)
+        return;
+    const QString front = m_data.value("front").toString();
+    const QString frontJs = QString::fromUtf8(QJsonDocument(QJsonArray{front}).toJson(QJsonDocument::Compact)).mid(1).chopped(1);
+    const QString frontName = front.section('/', -1).section('?', 0, 0);
+    auto notFront = [frontName](const QString &u) {
+        return !u.isEmpty() && !u.startsWith(QLatin1String("data:")) && u.section('/', -1).section('?', 0, 0) != frontName;
+    };
+    switch (step) {
+    case 0:
+        emit progress(T("Ищу заднюю обложку…"));
+        m_view->page()->runJavaScript(QString::fromUtf8(kOpenCover).arg(frontJs), [this](const QVariant &) {
+            QTimer::singleShot(2000, this, [this] { galleryStep(1); });
+        });
+        break;
+    case 1:   // открыта галерея (1/2) — листаем вперёд
+        m_view->page()->runJavaScript(QString::fromUtf8(kGalleryNext), [this](const QVariant &) {
+            QTimer::singleShot(2000, this, [this] { galleryStep(2); });
+        });
+        break;
+    case 2:   // 2/2 — на экране задняя обложка
+        m_view->page()->runJavaScript(QString::fromUtf8(kGalleryImages).arg(frontJs), [this, notFront](const QVariant &v) {
+            const QJsonObject o = QJsonDocument::fromJson(v.toString().toUtf8()).object();
+            QString back;
+            for (const QJsonValue &x : o.value("lb").toArray())
+                if (back.isEmpty() && notFront(x.toString()))
+                    back = x.toString();
+            for (const QJsonValue &x : o.value("grp").toArray())
+                if (back.isEmpty() && notFront(x.toString()))
+                    back = x.toString();
+            if (!back.isEmpty())
+                m_data.insert("back", back);
+            m_done = true;
+            m_timeout.stop();
+            emit finished(m_data);
+        });
+        break;
+    }
 }
 
 // ======================= Окно менеджера =======================
@@ -189,7 +268,7 @@ static QStringList knownMen()
     return QSettings().value(QStringLiteral("ae/men")).toStringList();
 }
 
-ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString &video, QWidget *parent)
+ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString &video, QWidget *parent, const QString &scenesUrl)
     : FramedDialog(parent, true)
 {
     setWindowTitle(T("Adult Empire Менеджер"));
@@ -360,6 +439,14 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     sl->addWidget(m_useScenes);
     sl->addStretch();
     right->addLayout(sl);
+    // Сцены на Adult Empire видны на отдельной странице — её ссылка вставляется сюда
+    auto *su = new QHBoxLayout;
+    m_scenesUrl = edit(page, T("Ссылка на страницу сцен (если сцены не нашлись на странице релиза)"));
+    m_scenesFetch = new QPushButton(T("Загрузить сцены"), page);
+    su->addWidget(m_scenesUrl, 1);
+    su->addWidget(m_scenesFetch);
+    right->addLayout(su);
+    m_scenesUrl->setText(scenesUrl);
     m_scenes = new QTableWidget(0, 2, page);
     m_scenes->setHorizontalHeaderLabels({T("Начало"), T("Название")});
     m_scenes->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
@@ -388,6 +475,14 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     bottom->addWidget(new QLabel(T("Видео:"), this), 1, 0);
     bottom->addWidget(m_video, 1, 1);
     bottom->addWidget(pickVideo, 1, 2);
+    m_downloadVideo = new QCheckBox(T("Скачать видео с Adult Empire (вход в аккаунт и выбор качества — как в разделе «Загрузить»)"), this);
+    m_downloadVideo->setObjectName(QStringLiteral("PlainCheck"));
+    m_downloadVideo->setChecked(video.isEmpty() && st.value(QStringLiteral("ae/downloadVideo"), true).toBool());
+    bottom->addWidget(m_downloadVideo, 3, 1);
+    connect(m_video, &QLineEdit::textChanged, this, [this](const QString &t) {
+        if (!t.trimmed().isEmpty())
+            m_downloadVideo->setChecked(false);
+    });
     auto *modeRow = new QHBoxLayout;
     m_lossless = new QRadioButton(T("Переупаковать в MKV (без перекодирования)"), this);
     m_convert = new QRadioButton(T("Конвертировать в формат из раздела «Конвертировать»"), this);
@@ -419,6 +514,8 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
 
     // ---- Связи ----
     connect(m_fetch, &QPushButton::clicked, this, &ReleaseManagerDialog::fetch);
+    connect(m_scenesFetch, &QPushButton::clicked, this, [this] { fetchScenes(m_scenesUrl->text().trimmed()); });
+    connect(m_scenesUrl, &QLineEdit::returnPressed, m_scenesFetch, &QPushButton::click);
     connect(m_url, &QLineEdit::returnPressed, this, &ReleaseManagerDialog::fetch);
     connect(close, &QPushButton::clicked, this, &QDialog::reject);
     connect(m_create, &QPushButton::clicked, this, &ReleaseManagerDialog::create);
@@ -485,6 +582,7 @@ void ReleaseManagerDialog::setBusy(bool busy, const QString &text)
 {
     m_fetch->setEnabled(!busy);
     m_create->setEnabled(!busy);
+    m_scenesFetch->setEnabled(!busy);
     if (!text.isEmpty())
         m_state->setText(text);
 }
@@ -512,6 +610,12 @@ void ReleaseManagerDialog::fetch()
 
 static QString cleanTitle(const QJsonObject &d)
 {
+    static const QRegularExpression promo(QStringLiteral("\\s+[-–—]\\s+(On Sale|Sale|Save|Deal|\\d+\\s*% Off|Black Friday|Cyber Monday|Clearance|New Release)\\b.*$"),
+                                          QRegularExpression::CaseInsensitiveOption);
+    QString c = d.value("h1color").toString().simplified();
+    c.remove(promo);
+    if (c.size() > 1)
+        return c;
     QString t = d.value("docTitle").toString();
     t.remove(QRegularExpression(QStringLiteral("\\s*[|\\-–]\\s*Adult\\s*Empire.*$"), QRegularExpression::CaseInsensitiveOption));
     t.remove(QRegularExpression(QStringLiteral("\\s*\\(\\d{4}\\)\\s*$")));
@@ -519,7 +623,7 @@ static QString cleanTitle(const QJsonObject &d)
         t = d.value("h1").toString();
     if (t.trimmed().isEmpty())
         t = d.value("ogTitle").toString();
-    t.remove(QRegularExpression(QStringLiteral("\\s+-\\s+On Sale.*$"), QRegularExpression::CaseInsensitiveOption));
+    t.remove(promo);
     t.remove(QRegularExpression(QStringLiteral("\\s*(Porn Videos?|Porn Movies?|DVD)\\s*$"), QRegularExpression::CaseInsensitiveOption));
     return t.simplified();
 }
@@ -595,20 +699,72 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     loadPreview(m_fanartPrev, m_fanartUrl->text());
 
     // Сцены
-    m_scenes->setRowCount(0);
+    QList<Chapter> scenes;
     for (const QJsonValue &v : d.value("scenes").toArray()) {
         const QJsonObject o = v.toObject();
-        const int r = m_scenes->rowCount();
-        m_scenes->insertRow(r);
-        m_scenes->setItem(r, 0, new QTableWidgetItem(o.value("start").toString()));
-        auto *t = new QTableWidgetItem(o.value("title").toString());
-        t->setData(Qt::UserRole, o.value("title").toString());
-        m_scenes->setItem(r, 1, t);
+        Chapter c;
+        c.start = Chapters::parseTime(o.value("start").toString());
+        c.end = Chapters::parseTime(o.value("end").toString());
+        c.original = o.value("title").toString();
+        scenes << c;
     }
-    m_scenes->sortItems(0);
+    setScenes(scenes);
 
     updateTarget();
     translate();
+}
+
+void ReleaseManagerDialog::setScenes(const QList<Chapter> &scenes)
+{
+    m_scenes->setRowCount(0);
+    for (const Chapter &c : scenes) {
+        const int r = m_scenes->rowCount();
+        m_scenes->insertRow(r);
+        m_scenes->setItem(r, 0, new QTableWidgetItem(Chapters::formatTime(c.start)));
+        auto *t = new QTableWidgetItem(c.title.isEmpty() ? c.original : c.title);
+        t->setData(Qt::UserRole, c.original.isEmpty() ? c.title : c.original);
+        m_scenes->setItem(r, 1, t);
+    }
+    m_scenes->sortItems(0);
+}
+
+void ReleaseManagerDialog::fetchScenes(const QString &url)
+{
+    const QUrl u = QUrl::fromUserInput(url);
+    if (!u.isValid() || u.host().isEmpty()) {
+        m_state->setText(T("Вставьте ссылку на страницу сцен."));
+        return;
+    }
+    setBusy(true, T("Загрузка сцен…"));
+    auto *f = new SceneFetcher(this);
+    connect(f, &SceneFetcher::progress, m_state, &QLabel::setText);
+    connect(f, &SceneFetcher::failed, this, [this, f](const QString &reason) {
+        f->deleteLater();
+        setBusy(false, reason);
+    });
+    connect(f, &SceneFetcher::finished, this, [this, f](const QList<Chapter> &scenes) {
+        f->deleteLater();
+        setScenes(scenes);
+        QStringList src;
+        for (const Chapter &c : scenes)
+            src << c.original;
+        setBusy(true, T("Найдено сцен: %1. Перевожу названия на русский…").arg(scenes.size()));
+        auto *tr = new Translator(this);
+        connect(tr, &Translator::finished, this, [this, tr](const QStringList &out) {
+            tr->deleteLater();
+            for (int r = 0; r < m_scenes->rowCount() && r < out.size(); ++r)
+                m_scenes->item(r, 1)->setText(m_caps->isChecked() ? Chapters::titleCase(out[r]) : out[r]);
+            setBusy(false, T("Сцены загружены. Названия можно исправить прямо в таблице."));
+            if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
+                QTimer::singleShot(1500, this, &ReleaseManagerDialog::create);
+        });
+        connect(tr, &Translator::failed, this, [this, tr](const QString &reason) {
+            tr->deleteLater();
+            setBusy(false, reason);
+        });
+        tr->translate(src);
+    });
+    f->start(u);
 }
 
 void ReleaseManagerDialog::translate()
@@ -635,8 +791,14 @@ void ReleaseManagerDialog::translate()
             m_setName->setText(QStringLiteral("Серия «%1»").arg(series));
             m_useSet->setChecked(true);
         }
-        setBusy(false, T("Готово. Проверьте поля — всё можно исправить перед созданием релиза."));
+        setBusy(false, m_scenes->rowCount() > 0
+                           ? T("Готово. Проверьте поля — всё можно исправить перед созданием релиза.")
+                           : T("Готово. Сцен на этой странице нет — вставьте ссылку на страницу сцен и нажмите «Загрузить сцены»."));
         updateTarget();
+        if (m_scenes->rowCount() == 0 && !m_scenesUrl->text().trimmed().isEmpty()) {
+            fetchScenes(m_scenesUrl->text().trimmed());
+            return;
+        }
         if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
             QTimer::singleShot(1500, this, &ReleaseManagerDialog::create);
     });
@@ -756,7 +918,10 @@ void ReleaseManagerDialog::create()
     if (!r.frontUrl.isEmpty()) files << base + QStringLiteral("-poster.jpg");
     if (!r.backUrl.isEmpty()) files << base + QStringLiteral("-back.jpg");
     if (!r.fanartUrl.isEmpty() || !video.isEmpty()) files << base + QStringLiteral("-fanart.jpg");
-    if (!video.isEmpty()) files << base + QLatin1Char('.') + (m_lossless->isChecked() ? QStringLiteral("mkv") : T("формат из раздела «Конвертировать»"));
+    const bool download = video.isEmpty() && m_downloadVideo->isChecked() && !r.pageUrl.isEmpty();
+    if (!video.isEmpty() || download)
+        files << base + QLatin1Char('.') + (m_lossless->isChecked() ? QStringLiteral("mkv") : T("формат из раздела «Конвертировать»"))
+                     + (download ? T(" — после скачивания") : QString());
     if (!r.actresses.isEmpty()) files << QStringLiteral(".actors/ (%1)").arg(r.actresses.size());
     QString html = T("<b>Папка:</b><br>%1<br><br><b>Файлы:</b><br>%2<br><br>Актрисы: %3<br>Режиссёр: %4")
                        .arg(QDir::toNativeSeparators(dir).toHtmlEscaped(), files.join(QStringLiteral("<br>")).toHtmlEscaped(),
@@ -773,6 +938,8 @@ void ReleaseManagerDialog::create()
     st.setValue(QStringLiteral("ae/edition"), m_edition->text().trimmed());
     st.setValue(QStringLiteral("ae/lossless"), m_lossless->isChecked());
     st.setValue(QStringLiteral("ae/scenes"), m_useScenes->isChecked());
+    if (video.isEmpty())
+        st.setValue(QStringLiteral("ae/downloadVideo"), m_downloadVideo->isChecked());
 
     if (!QDir().mkpath(dir)) {
         m_state->setText(T("Не удалось создать папку: %1").arg(QDir::toNativeSeparators(dir)));
@@ -814,30 +981,25 @@ void ReleaseManagerDialog::create()
             placeholderPhoto().save(file, "JPG", 85);
     }
 
-    // Фан-арта нет — кадр из середины видео
-    if (r.fanartUrl.isEmpty() && !video.isEmpty() && !Tools::ffmpeg().isEmpty()) {
-        QProcess p;
-        const QString fan = QDir(dir).filePath(base + QStringLiteral("-fanart.jpg"));
-        for (const char *at : {"600", "5"}) {
-            QProcess p;
-            p.start(Tools::ffmpeg(), {"-hide_banner", "-loglevel", "error", "-y", "-ss", at, "-i", video, "-frames:v", "1",
-                                      "-q:v", "2", fan});
-            p.waitForFinished(30000);
-            if (QFileInfo(fan).size() > 0)
-                break;
-        }
-    }
+    // Фан-арта нет — кадр из видео
+    if (r.fanartUrl.isEmpty() && !video.isEmpty())
+        Release::fanartFromVideo(video, QDir(dir).filePath(base + QStringLiteral("-fanart.jpg")));
 
     // Главы
     QString meta;
-    if (!video.isEmpty() && m_useScenes->isChecked() && !r.scenes.isEmpty()) {
+    if ((!video.isEmpty() || download) && m_useScenes->isChecked() && !r.scenes.isEmpty()) {
         meta = QDir(QDir::tempPath()).filePath(QStringLiteral("aristocrat-chapters-%1.txt").arg(QDateTime::currentMSecsSinceEpoch()));
         QFile mf(meta);
         if (mf.open(QIODevice::WriteOnly))
             mf.write(Chapters::metadataFile(r.scenes, 0).toUtf8());
     }
-    if (!video.isEmpty())
+    if (!video.isEmpty()) {
         emit videoRequested(video, base, dir, m_lossless->isChecked(), meta);
+    } else if (download) {
+        // После скачивания видео само уйдёт в папку релиза (с главами и кадром для фан-арта)
+        Release::addPending(r.pageUrl, Release::Pending{base, dir, meta, m_lossless->isChecked()});
+        emit downloadRequested(r.pageUrl);
+    }
 
     setBusy(true, T("Скачиваю обложки и фото актрис…"));
     runJobs();
@@ -909,6 +1071,8 @@ void ReleaseManagerDialog::finishCreate()
     QString msg = T("Релиз создан: %1.").arg(QDir::toNativeSeparators(m_createdDir));
     if (!m_video->text().trimmed().isEmpty())
         msg += T(" Видео конвертируется в разделе «Конвертировать» и появится в этой папке.");
+    else if (m_downloadVideo->isChecked())
+        msg += T(" Видео скачивается в разделе «Загрузить» — после загрузки оно само появится в этой папке со сценами.");
     if (!m_errors.isEmpty())
         msg += T(" Не скачались: %1 — ссылку можно исправить и нажать «Создать релиз» ещё раз.").arg(m_errors.join(QStringLiteral(", ")));
     m_state->setText(msg);

@@ -50,4 +50,10 @@ QString genreRu(const QString &english);           // жанр Adult Empire → 
 QString seriesSuggestion(const QString &title);    // «Название 3» → «Название»
 int parseLengthMinutes(const QString &text);       // «2 hrs. 17 mins.» → 137
 QDate parseDate(const QString &text);              // «Nov 17 2026»
+bool fanartFromVideo(const QString &video, const QString &jpg);   // кадр из видео, если фан-арта нет
+
+// Релиз, который ждёт скачивания видео: после загрузки видео переупаковывается в папку релиза
+struct Pending { QString name, dir, chaptersMeta; bool lossless = true; };
+void addPending(const QString &pageUrl, const Pending &p);
+bool takePending(const QString &pageUrl, Pending *p);
 }
