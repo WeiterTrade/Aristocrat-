@@ -25,6 +25,7 @@ set(SOURCES
     src/core/Dvd.cpp
     src/core/Chapters.cpp
     src/core/Release.cpp
+    src/core/Gender.cpp
     src/ui/MainWindow.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp

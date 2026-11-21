@@ -12,12 +12,14 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QListWidgetItem;
 class QPlainTextEdit;
 class QPushButton;
 class QRadioButton;
 class QTableWidget;
 class QTabWidget;
 class CloudUploadPage;
+class IafdChecker;
 class QWebEngineView;
 
 // Чтение страницы релиза Adult Empire в скрытом окне: название, описание, студия, режиссёр,
@@ -68,6 +70,7 @@ private:
     void fetch();
     void fetchScenes(const QString &url);
     void setScenes(const QList<Chapter> &scenes);
+    void setCastGender(QListWidgetItem *it, int gender, int source);   // отметка и значок ♀/♂
     void apply(const QJsonObject &d);
     void translate();
     void loadPreview(QLabel *target, const QString &url);
@@ -92,6 +95,8 @@ private:
     QLineEdit *m_setName;
     QPlainTextEdit *m_setOverview;
     QListWidget *m_genres, *m_cast;
+    QLabel *m_castNote;
+    IafdChecker *m_iafd = nullptr;
     QLineEdit *m_newGenre;
     QLineEdit *m_frontUrl, *m_backUrl, *m_fanartUrl;
     QLabel *m_frontPrev, *m_backPrev, *m_fanartPrev;

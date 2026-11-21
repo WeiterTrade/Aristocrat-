@@ -3,12 +3,14 @@
 #include "CloudUpload.h"
 #include "SceneTools.h"
 #include "Widgets.h"
+#include "core/Gender.h"
 #include "core/I18n.h"
 #include "core/Settings.h"
 #include "core/Theme.h"
 #include "core/Tools.h"
 
 #include <QCheckBox>
+#include <functional>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -275,6 +277,95 @@ void ReleaseFetcher::galleryStep(int step)
     }
 }
 
+// ======================= Пол исполнителей (IAFD) =======================
+// В результатах поиска IAFD актрисы и актёры стоят в разных таблицах — по ним и определяем пол.
+
+class IafdChecker : public QObject
+{
+public:
+    using Callback = std::function<void(const QString &name, Gender::Value v)>;
+    IafdChecker(QObject *parent, Callback cb)
+        : QObject(parent), m_cb(std::move(cb))
+    {
+        m_view = new QWebEngineView;
+        m_view->setAttribute(Qt::WA_DontShowOnScreen);
+        m_view->resize(1200, 900);
+        m_view->show();
+        connect(m_view, &QWebEngineView::loadFinished, this, [this] {
+            const int serial = m_serial;
+            QTimer::singleShot(1500, this, [this, serial] { if (serial == m_serial) check(); });
+        });
+        m_timer.setSingleShot(true);
+        connect(&m_timer, &QTimer::timeout, this, [this] { finish(Gender::Unknown); });
+    }
+    ~IafdChecker() override { delete m_view; }
+    void add(const QString &name)
+    {
+        if (!m_queue.contains(name) && name != m_current)
+            m_queue << name;
+        if (m_current.isEmpty())
+            next();
+    }
+    bool busy() const { return !m_current.isEmpty(); }
+
+private:
+    void next()
+    {
+        m_current.clear();
+        if (m_queue.isEmpty())
+            return;
+        m_current = m_queue.takeFirst();
+        m_attempt = 0;
+        ++m_serial;
+        m_timer.start(20000);
+        m_view->load(QUrl(QStringLiteral("https://www.iafd.com/results.asp?searchtype=comprehensive&searchstring=")
+                          + QString::fromLatin1(QUrl::toPercentEncoding(m_current))));
+    }
+    void check()
+    {
+        const QString nameJs = QString::fromUtf8(QJsonDocument(QJsonArray{m_current}).toJson(QJsonDocument::Compact)).mid(1).chopped(1);
+        static const char *js = R"JS((function(){var n=%1.toLowerCase().replace(/\s+/g,' ').trim();var res='';
+[].slice.call(document.querySelectorAll('a[href*="person.rme"]')).some(function(a){
+ var t=(a.textContent||'').toLowerCase().replace(/\s+/g,' ').trim();if(t!==n)return false;
+ var h=(a.getAttribute('href')||'').toLowerCase();if(/gender=f/.test(h)){res='f';return true;}if(/gender=m/.test(h)){res='m';return true;}
+ for(var e=a;e&&e!==document.body;e=e.parentElement){var id=(e.id||'')+' '+(typeof e.className=='string'?e.className:'');
+  if(/fem|women|actress/i.test(id)){res='f';return true;}if(/(^|[^e])mal|\bmen\b|actor/i.test(id)){res='m';return true;}
+  var p=e.previousElementSibling;for(var k=0;k<4&&p;k++,p=p.previousElementSibling){var pt=(p.textContent||'').trim();
+   if(pt.length<60){if(/female|actress/i.test(pt)){res='f';return true;}if(/\bmale\b|actors?\b/i.test(pt)){res='m';return true;}}}}
+ return false;});
+return res;})())JS";
+        const int serial = m_serial;
+        m_view->page()->runJavaScript(QString::fromUtf8(js).arg(nameJs), [this, serial](const QVariant &v) {
+            if (serial != m_serial)
+                return;
+            const QString r = v.toString();
+            if (r.isEmpty() && ++m_attempt < 3) {   // страница может ещё догружаться (проверка браузера)
+                QTimer::singleShot(2500, this, [this, serial] { if (serial == m_serial) check(); });
+                return;
+            }
+            finish(r == QLatin1String("f") ? Gender::Female : r == QLatin1String("m") ? Gender::Male : Gender::Unknown);
+        });
+    }
+    void finish(Gender::Value v)
+    {
+        m_timer.stop();
+        ++m_serial;
+        const QString name = m_current;
+        m_current.clear();
+        if (!name.isEmpty())
+            m_cb(name, v);
+        next();
+    }
+
+    Callback m_cb;
+    QWebEngineView *m_view;
+    QTimer m_timer;
+    QStringList m_queue;
+    QString m_current;
+    int m_attempt = 0;
+    int m_serial = 0;
+};
+
 // ======================= Окно менеджера =======================
 
 static QLineEdit *edit(QWidget *parent, const QString &placeholder = QString())
@@ -284,10 +375,6 @@ static QLineEdit *edit(QWidget *parent, const QString &placeholder = QString())
     return e;
 }
 
-static QStringList knownMen()
-{
-    return QSettings().value(QStringLiteral("ae/men")).toStringList();
-}
 
 ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString &video, QWidget *parent, const QString &scenesUrl)
     : FramedDialog(parent, true)
@@ -461,6 +548,10 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_cast = new QListWidget(page);
     m_cast->setMinimumHeight(170);
     right->addWidget(m_cast);
+    m_castNote = new QLabel(page);
+    m_castNote->setObjectName(QStringLiteral("Muted"));
+    m_castNote->setWordWrap(true);
+    right->addWidget(m_castNote);
 
     auto *sl = new QHBoxLayout;
     m_useScenes = new QCheckBox(T("Вставить главы (сцены) в видео"), page);
@@ -592,15 +683,15 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
             m_year->setText(t.left(4));
     });
     // Отметки состава запоминаются: снятая — мужчина, поставленная — актриса
-    connect(m_cast, &QListWidget::itemChanged, this, [](QListWidgetItem *it) {
+    connect(m_cast, &QListWidget::itemChanged, this, [this](QListWidgetItem *it) {
         const QString name = it->data(Qt::UserRole).toString();
-        if (name.isEmpty())
-            return;
-        QStringList men = knownMen();
-        men.removeAll(name);
-        if (it->checkState() == Qt::Unchecked && !it->data(Qt::UserRole + 1).toBool())
-            men << name;
-        QSettings().setValue(QStringLiteral("ae/men"), men);
+        const int was = it->data(Qt::UserRole + 4).toInt();
+        if (name.isEmpty() || was == int(it->checkState()) || it->data(Qt::UserRole + 1).toBool())
+            return;   // изменился только текст или это режиссёр
+        // Ручная отметка главнее всего и запоминается навсегда
+        const Gender::Value g = it->checkState() == Qt::Checked ? Gender::Female : Gender::Male;
+        Gender::remember(name, g, Gender::ByUser);
+        setCastGender(it, g, Gender::ByUser);
     });
 
     updateTarget();
@@ -720,7 +811,6 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     m_uid->setText(d.value("sku").toString().remove(QRegularExpression(QStringLiteral("\\D"))));
 
     // Состав: режиссёр отдельно, мужчины (запомненные) без отметки
-    const QStringList men = knownMen();
     QSignalBlocker block(m_cast);
     m_cast->clear();
     QString director;
@@ -741,7 +831,50 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
         it->setData(Qt::UserRole + 1, dir);
         it->setData(Qt::UserRole + 2, c.value("id").toString());
         it->setData(Qt::UserRole + 3, c.value("photo").toString());
-        it->setCheckState(dir || men.contains(name) ? Qt::Unchecked : Qt::Checked);
+        if (dir) {
+            it->setCheckState(Qt::Unchecked);
+            it->setData(Qt::UserRole + 4, int(Qt::Unchecked));
+            continue;
+        }
+        Gender::Source src = Gender::None;
+        Gender::Value g = Gender::known(name, &src);
+        if (g == Gender::Unknown) {
+            g = Gender::byFirstName(name);
+            src = g == Gender::Unknown ? Gender::None : Gender::ByName;
+        }
+        setCastGender(it, g, src);
+    }
+    // Кого не знаем точно — проверяем по базе IAFD в фоне, отметки обновятся сами
+    QStringList toCheck;
+    for (int i = 0; i < m_cast->count(); ++i) {
+        QListWidgetItem *it = m_cast->item(i);
+        const int src = it->data(Qt::UserRole + 5).toInt();
+        if (!it->data(Qt::UserRole + 1).toBool() && src != Gender::ByUser && src != Gender::ByDatabase)
+            toCheck << it->data(Qt::UserRole).toString();
+    }
+    if (!toCheck.isEmpty()) {
+        if (!m_iafd) {
+            m_iafd = new IafdChecker(this, [this](const QString &n, Gender::Value v) {
+                if (v != Gender::Unknown)
+                    Gender::remember(n, v, Gender::ByDatabase);
+                for (int i = 0; i < m_cast->count(); ++i) {
+                    QListWidgetItem *it = m_cast->item(i);
+                    if (it->data(Qt::UserRole).toString() != n)
+                        continue;
+                    if (v != Gender::Unknown && it->data(Qt::UserRole + 5).toInt() != Gender::ByUser) {
+                        QSignalBlocker b(m_cast);
+                        setCastGender(it, v, Gender::ByDatabase);
+                    }
+                }
+                if (!m_iafd->busy())
+                    m_castNote->setText(T("♀ — актриса, ♂ — мужчина (в NFO и папку .actors не попадает). Отметку можно поменять — программа запомнит."));
+            });
+        }
+        m_castNote->setText(T("Проверяю пол исполнителей по базе IAFD…"));
+        for (const QString &n : toCheck)
+            m_iafd->add(n);
+    } else {
+        m_castNote->setText(T("♀ — актриса, ♂ — мужчина (в NFO и папку .actors не попадает). Отметку можно поменять — программа запомнит."));
     }
     m_director->setText(director.isEmpty() ? studio : director);
 
@@ -790,6 +923,29 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
 
     updateTarget();
     translate();
+}
+
+void ReleaseManagerDialog::setCastGender(QListWidgetItem *it, int gender, int source)
+{
+    QSignalBlocker block(m_cast);   // смена текста не должна считаться ручной отметкой
+    const QString name = it->data(Qt::UserRole).toString();
+    const bool male = gender == Gender::Male;
+    const QString mark = male ? QStringLiteral("  ♂") : gender == Gender::Female ? QStringLiteral("  ♀") : QStringLiteral("  ?");
+    QString why;
+    switch (source) {
+    case Gender::ByUser: why = T("отмечено вами"); break;
+    case Gender::ByDatabase: why = T("по базе IAFD"); break;
+    case Gender::ByName: why = T("по имени"); break;
+    default: why = T("пол неизвестен — проверьте"); break;
+    }
+    it->setText(name + mark + QStringLiteral("   (") + why + QLatin1Char(')'));
+    if (male)
+        it->setForeground(Theme::color("#8A7F72"));
+    else
+        it->setData(Qt::ForegroundRole, QVariant());
+    it->setCheckState(male ? Qt::Unchecked : Qt::Checked);
+    it->setData(Qt::UserRole + 4, int(it->checkState()));
+    it->setData(Qt::UserRole + 5, source);
 }
 
 void ReleaseManagerDialog::setScenes(const QList<Chapter> &scenes)
