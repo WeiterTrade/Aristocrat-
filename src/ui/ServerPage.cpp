@@ -11,6 +11,7 @@
 
 #include <QCheckBox>
 #include <functional>
+#include <memory>
 #include <QComboBox>
 #include <QDate>
 #include <QDir>
@@ -617,6 +618,16 @@ ServerPage::ServerPage(QWidget *parent)
     r2->addWidget(pick);
     r2->addWidget(m_load);
     r2->addWidget(scan);
+    auto *imgs = new QPushButton(T("Изображения релиза → сервер"), this);
+    imgs->setToolTip(T("Задняя обложка, постер, фан-арт и фото актрис из папки релиза — Jellyfin сам их не подхватывает"));
+    r2->addWidget(imgs);
+    connect(imgs, &QPushButton::clicked, this, [this] {
+        if (!loggedIn()) {
+            m_state->setText(T("Сначала войдите на сервер."));
+            return;
+        }
+        pushReleaseImages(0);
+    });
     connect(scan, &QPushButton::clicked, this, [this] {
         if (!loggedIn()) {
             m_state->setText(T("Сначала войдите на сервер."));
@@ -1236,6 +1247,124 @@ void ServerPage::keepOffline(int row, bool thenNext)   // фото актрис�
     });
 }
 
+void ServerPage::pushReleaseImages(int attempt)
+{
+    const QString dir = QDir::fromNativeSeparators(m_release->text().trimmed());
+    const QStringList nfos = QDir(dir).entryList({QStringLiteral("*.nfo")}, QDir::Files);
+    if (dir.isEmpty() || nfos.isEmpty()) {
+        m_state->setText(T("В папке релиза нет NFO."));
+        return;
+    }
+    QFile nf(QDir(dir).filePath(nfos.first()));
+    nf.open(QIODevice::ReadOnly);
+    const QString x = QString::fromUtf8(nf.readAll());
+    auto tag = [&x](const QString &t) {
+        const auto m = QRegularExpression(QStringLiteral("<%1>([^<]*)</%1>").arg(t)).match(x);
+        return m.captured(1).trimmed().replace(QStringLiteral("&amp;"), QStringLiteral("&"));
+    };
+    const QString title = tag(QStringLiteral("title")), orig = tag(QStringLiteral("originaltitle"));
+    const QString base = QFileInfo(nfos.first()).completeBaseName();
+    const QStringList actresses = releaseActresses(dir);
+    setBusy(true, T("Ищу фильм на сервере: %1…").arg(title));
+
+    const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
+    QNetworkReply *r = api(QStringLiteral("GET"),
+        QStringLiteral("/Users/%1/Items?IncludeItemTypes=Movie&Recursive=true&Fields=OriginalTitle&EnableImageTypes=Primary,Backdrop,BoxRear&searchTerm=%2")
+            .arg(uid, QString::fromLatin1(QUrl::toPercentEncoding(title.left(60)))));
+    connect(r, &QNetworkReply::finished, this, [this, r, dir, base, title, orig, actresses, attempt] {
+        r->deleteLater();
+        QJsonObject movie;
+        for (const QJsonValue &v : QJsonDocument::fromJson(r->readAll()).object().value("Items").toArray()) {
+            const QJsonObject m = v.toObject();
+            if (m.value("Name").toString().compare(title, Qt::CaseInsensitive) == 0
+                || (!orig.isEmpty() && m.value("OriginalTitle").toString().compare(orig, Qt::CaseInsensitive) == 0)) {
+                movie = m;
+                break;
+            }
+        }
+        if (movie.isEmpty()) {
+            if (attempt >= 5) {
+                setBusy(false, T("Фильм «%1» так и не появился на сервере. Проверьте, что релиз выгружен в папку библиотеки, и нажмите «Изображения релиза → сервер» позже.").arg(title));
+                return;
+            }
+            // Сервер ещё не видит новый релиз — просим пересканировать библиотеку и пробуем снова
+            if (attempt == 0) {
+                QNetworkReply *ref = api(QStringLiteral("POST"), QStringLiteral("/Library/Refresh"));
+                connect(ref, &QNetworkReply::finished, ref, &QObject::deleteLater);
+            }
+            m_state->setText(T("Фильма «%1» пока нет на сервере — обновляю библиотеку, попытка %2 из 5 через минуту…").arg(title).arg(attempt + 1));
+            const int delay = qEnvironmentVariableIsSet("ARISTOCRAT_TEST_SERVER") ? 1000 : 60000;
+            QTimer::singleShot(delay, this, [this, attempt] { pushReleaseImages(attempt + 1); });
+            return;
+        }
+        // Что загрузить: только того, чего на сервере нет
+        const QString id = movie.value("Id").toString();
+        const QJsonObject tags = movie.value("ImageTags").toObject();
+        struct Up { QString path, type, label; };
+        auto ups = std::make_shared<QList<Up>>();
+        const QString back = QDir(dir).filePath(base + QStringLiteral("-back.jpg"));
+        const QString poster = QDir(dir).filePath(base + QStringLiteral("-poster.jpg"));
+        const QString fanart = QDir(dir).filePath(base + QStringLiteral("-fanart.jpg"));
+        if (!tags.contains("BoxRear") && QFileInfo::exists(back))
+            ups->append({back, QStringLiteral("/Items/%1/Images/BoxRear").arg(id), T("задняя обложка")});
+        if (!tags.contains("Primary") && QFileInfo::exists(poster))
+            ups->append({poster, QStringLiteral("/Items/%1/Images/Primary").arg(id), T("постер")});
+        if (movie.value("BackdropImageTags").toArray().isEmpty() && QFileInfo::exists(fanart))
+            ups->append({fanart, QStringLiteral("/Items/%1/Images/Backdrop").arg(id), T("фан-арт")});
+        auto done = std::make_shared<QStringList>();
+        auto people = std::make_shared<QStringList>(actresses);
+        auto step = std::make_shared<std::function<void()>>();
+        *step = [this, ups, done, people, step, dir] {
+            if (!ups->isEmpty()) {
+                const Up u = ups->takeFirst();
+                QFile f(u.path);
+                if (!f.open(QIODevice::ReadOnly)) {
+                    (*step)();
+                    return;
+                }
+                QNetworkReply *p = api(QStringLiteral("POST"), u.path.isEmpty() ? QString() : u.type, f.readAll().toBase64(), "image/jpeg");
+                connect(p, &QNetworkReply::finished, this, [p, done, step, u] {
+                    p->deleteLater();
+                    if (p->error() == QNetworkReply::NoError)
+                        *done << u.label;
+                    (*step)();
+                });
+                return;
+            }
+            if (!people->isEmpty()) {
+                // Фото актрисы — только если на сервере его нет
+                const QString name = people->takeFirst();
+                const QString photo = QDir(dir).filePath(QStringLiteral(".actors/") + Release::actorFile(name) + QStringLiteral(".jpg"));
+                if (QFileInfo(photo).size() < 20000) {   // нет фото или серое «пустое»
+                    (*step)();
+                    return;
+                }
+                Jellyfin::findPerson(m_net, this, name, [this, name, photo, done, step](const QJsonObject &p) {
+                    if (p.isEmpty() || p.value("ImageTags").toObject().contains("Primary")) {
+                        (*step)();
+                        return;
+                    }
+                    QFile f(photo);
+                    f.open(QIODevice::ReadOnly);
+                    QNetworkReply *u = api(QStringLiteral("POST"), QStringLiteral("/Items/%1/Images/Primary").arg(p.value("Id").toString()),
+                                           f.readAll().toBase64(), "image/jpeg");
+                    connect(u, &QNetworkReply::finished, this, [u, name, done, step] {
+                        u->deleteLater();
+                        if (u->error() == QNetworkReply::NoError)
+                            *done << name;
+                        (*step)();
+                    });
+                });
+                return;
+            }
+            setBusy(false, done->isEmpty() ? T("На сервере уже есть все изображения релиза.")
+                                           : T("Загружено на сервер: %1.").arg(done->join(QStringLiteral(", "))));
+        };
+        m_state->setText(T("Загружаю изображения релиза на сервер…"));
+        (*step)();
+    });
+}
+
 void ServerPage::editBio(int row)
 {
     FramedDialog d(this, true);
@@ -1282,6 +1411,8 @@ void ServerPage::writeNext()
 {
     if (m_queue.isEmpty()) {
         setBusy(false, T("Анкеты записаны на сервер."));
+        if (m_source->currentIndex() == 0)   // релиз: заодно изображения, которые Jellyfin сам не берёт
+            QTimer::singleShot(300, this, [this] { pushReleaseImages(0); });
         return;
     }
     const int row = m_queue.takeFirst();

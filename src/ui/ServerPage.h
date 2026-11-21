@@ -87,7 +87,10 @@ private:
     void fillRow(int row, const QString &ruName, const QString &born, const QString &place,
                  const QStringList &aliases, const QString &text, const QString &status);
     void aiSettings();
-    void keepOffline(int row, bool thenNext);   // фото актрисы с сервера → .actors релиза
+    void keepOffline(int row, bool thenNext);
+    // Изображения релиза на сервер: задняя обложка (Box rear), постер и фан-арт, если их нет, и фото актрис из .actors —
+    // Jellyfin сам их не подхватывает
+    void pushReleaseImages(int attempt = 0);   // фото актрисы с сервера → .actors релиза
     void writeAll();
     void writeNext();
     void editBio(int row);
@@ -108,4 +111,5 @@ private:
     IafdBio *m_iafd = nullptr;
     QList<int> m_queue;
     bool m_auto = false;
+    bool m_imagesAfterWrite = false;
 };
