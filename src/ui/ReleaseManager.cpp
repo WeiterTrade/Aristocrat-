@@ -1315,7 +1315,7 @@ void ReleaseManagerDialog::runJobs()
                 return ActressPhotos::score(x) > ActressPhotos::score(y);
             });
             QStringList urls;
-            for (int i = 0; i < good.size() && i < 4; ++i)
+            for (int i = 0; i < good.size() && i < 10; ++i)
                 urls << good[i].url;
             urls << job.fallbacks;
             job.search.clear();
@@ -1384,14 +1384,16 @@ void ReleaseManagerDialog::runJobs()
         return;
     }
     m_state->setText(T("Скачиваю: %1").arg(QFileInfo(job.file).fileName()));
-    WebFetch::get(QUrl(job.url), this, [this, job, saveOrFallback](const QByteArray &data) {
+    auto onData = [this, job, saveOrFallback](const QByteArray &data) {
         if (!saveOrFallback(data)) {
             QStringList rest = job.fallbacks;
             rest.removeAll(job.url);
             rest.removeAll(QString());
             if (!rest.isEmpty()) {
-                const QString next = rest.takeFirst();
-                m_jobs.prepend(Job{next, job.file, rest, job.placeholder});
+                Job again = job;   // тот же файл и те же настройки (фото актрисы — 1000×1500)
+                again.url = rest.takeFirst();
+                again.fallbacks = rest;
+                m_jobs.prepend(again);
             } else if (job.placeholder) {
                 placeholderPhoto().save(job.file, "JPG", 85);   // как «пустое фото» в генераторе NFO
             } else {
@@ -1399,7 +1401,11 @@ void ReleaseManagerDialog::runJobs()
             }
         }
         runJobs();
-    });
+    };
+    if (job.portrait && m_imgSearch)
+        m_imgSearch->fetchImage(QUrl(job.url), onData);
+    else
+        WebFetch::get(QUrl(job.url), this, onData);
 }
 
 void ReleaseManagerDialog::finishCreate()

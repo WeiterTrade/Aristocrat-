@@ -120,8 +120,20 @@ ImageSearch::ImageSearch(QObject *parent)
     m_view->resize(1400, 1000);
     m_view->setPage(new QWebEnginePage(QWebEngineProfile::defaultProfile(), m_view));
     m_view->show();
-    connect(m_view, &QWebEngineView::loadFinished, this, [this] {
+    connect(m_view, &QWebEngineView::loadFinished, this, [this](bool ok) {
         const int serial = m_serial;
+        if (m_imageMode) {
+            if (!ok) {
+                ++m_serial;
+                m_timeout.stop();
+                auto cb = m_imgCb;
+                m_imgCb = nullptr;
+                if (cb) cb({});
+                return;
+            }
+            QTimer::singleShot(300, this, [this, serial] { if (serial == m_serial) grab(0); });
+            return;
+        }
         QTimer::singleShot(1500, this, [this, serial] { if (serial == m_serial) extract(0); });
     });
     m_timeout.setSingleShot(true);
@@ -132,6 +144,11 @@ ImageSearch::ImageSearch(QObject *parent)
             m_cb = nullptr;
             cb({});
         }
+        if (m_imgCb) {
+            auto cb = m_imgCb;
+            m_imgCb = nullptr;
+            cb({});
+        }
     });
 }
 
@@ -140,9 +157,45 @@ ImageSearch::~ImageSearch()
     delete m_view;
 }
 
+void ImageSearch::fetchImage(const QUrl &url, std::function<void(const QByteArray &)> cb)
+{
+    ++m_serial;
+    m_imageMode = true;
+    m_imgCb = std::move(cb);
+    m_timeout.start(15000);
+    m_view->load(url);
+}
+
+void ImageSearch::grab(int attempt)
+{
+    // Открытая картинка — свой же сайт для страницы, поэтому её можно перерисовать и забрать
+    static const char *js = R"JS((function(){var i=document.images[0];if(!i||!i.naturalWidth)return '';
+var c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;c.getContext('2d').drawImage(i,0,0);
+try{return c.toDataURL('image/jpeg',0.95);}catch(e){return 'err';}})())JS";
+    const int serial = m_serial;
+    m_view->page()->runJavaScript(QString::fromUtf8(js), [this, serial, attempt](const QVariant &v) {
+        if (serial != m_serial || !m_imgCb)
+            return;
+        const QString s = v.toString();
+        if (s.isEmpty() && attempt < 6) {
+            QTimer::singleShot(400, this, [this, serial, attempt] { if (serial == m_serial) grab(attempt + 1); });
+            return;
+        }
+        m_timeout.stop();
+        ++m_serial;
+        QByteArray data;
+        if (s.startsWith(QLatin1String("data:image")))
+            data = QByteArray::fromBase64(s.section(',', 1).toLatin1());
+        auto cb = m_imgCb;
+        m_imgCb = nullptr;
+        cb(data);
+    });
+}
+
 void ImageSearch::search(const QString &query, Callback cb)
 {
     ++m_serial;
+    m_imageMode = false;
     m_cb = std::move(cb);
     m_timeout.start(25000);
     // Вертикальные, не меньше 1000×1500, безопасный поиск «умеренный» (откровенное отсеивается)
@@ -307,7 +360,7 @@ void ActressPhotoDialog::choose(int index)
     const QString name = m_names[row];
     const ActressPhotos::Candidate c = m_cands[index];
     m_state->setText(T("Скачиваю фото…"));
-    WebFetch::get(QUrl(c.url), this, [this, name, row](const QByteArray &data) {
+    m_search->fetchImage(QUrl(c.url), [this, name, row](const QByteArray &data) {
         if (ActressPhotos::saveChosen(name, data)) {
             m_state->setText(T("Фото «%1» сохранено (1000×1500).").arg(name));
             refreshLeft(row);

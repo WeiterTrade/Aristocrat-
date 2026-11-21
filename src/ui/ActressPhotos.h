@@ -6,6 +6,7 @@
 #include <QMap>
 #include <QObject>
 #include <QTimer>
+#include <QUrl>
 #include <functional>
 
 class QLabel;
@@ -36,9 +37,14 @@ public:
     explicit ImageSearch(QObject *parent = nullptr);
     ~ImageSearch() override;
     void search(const QString &query, Callback cb);
+    // Скачать картинку, открыв её в скрытом окне: ошибка (403/404) видна сразу, без долгого ожидания
+    void fetchImage(const QUrl &url, std::function<void(const QByteArray &)> cb);
 
 private:
     void extract(int attempt);
+    void grab(int attempt);
+    std::function<void(const QByteArray &)> m_imgCb;
+    bool m_imageMode = false;
     QWebEngineView *m_view;
     QTimer m_timeout;
     Callback m_cb;
