@@ -7,6 +7,11 @@ PERSONS = {
     "p1": {"Id": "p1", "Name": "Andi Avalon", "Type": "Person", "Overview": "", "ImageTags": {}, "Tags": ["Старый тег"]},
     "p2": {"Id": "p2", "Name": "Cory Chase", "Type": "Person", "Overview": "Анкета уже заполнена.", "PremiereDate": "1980-04-10T00:00:00.0000000Z", "ProductionLocations": ["США"], "ImageTags": {"Primary": "x"}},
 }
+MOVIES = {
+    "m1": {"Id": "m1", "Name": "Сногсшибательная Милфа в Тройничке 3", "OriginalTitle": "Stunning MILF Threesomes 3", "Type": "Movie",
+           "ProductionYear": 2026, "ProviderIds": {"custom": "5125349"}, "Overview": "", "Genres": [], "Studios": [], "People": [],
+           "ImageTags": {}, "BackdropImageTags": []},
+}
 LOG = open(sys.argv[2] if len(sys.argv) > 2 else "jellyfin.log", "w", encoding="utf-8")
 
 class H(BaseHTTPRequestHandler):
@@ -36,6 +41,11 @@ class H(BaseHTTPRequestHandler):
                 LOG.write("PHOTO SENT %s\n" % u.path); LOG.flush()
                 return
             return self.send(404)
+        if u.path == "/Users/u1/Items":   # фильмы для пробежки
+            return self.send(200, {"Items": list(MOVIES.values()), "TotalRecordCount": len(MOVIES)})
+        if u.path.startswith("/Users/u1/Items/m"):
+            mid = u.path.rsplit("/", 1)[1]
+            return self.send(200, MOVIES[mid]) if mid in MOVIES else self.send(404)
         if u.path.startswith("/Users/u1/Items/"):
             pid = u.path.rsplit("/", 1)[1]
             return self.send(200, PERSONS[pid]) if pid in PERSONS else self.send(404)
@@ -53,13 +63,13 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/Users/AuthenticateByName":
             return self.send(200, {"AccessToken": "tok", "User": {"Id": "u1", "Name": "test"}})
         if not self.authed(): return self.send(401)
-        if u.path.endswith("/Images/Primary"):
+        if "/Images/" in u.path:
             img = base64.b64decode(data)
             LOG.write("IMAGE %s %d bytes jpeg=%s\n" % (u.path, len(img), img[:2] == b"\xff\xd8")); LOG.flush()
             return self.send(204)
         if u.path.startswith("/Items/"):
             o = json.loads(data)
-            LOG.write("UPDATE %s\n%s\n" % (u.path, json.dumps({k: o.get(k) for k in ("Name", "Overview", "PremiereDate", "ProductionLocations", "Tags")}, ensure_ascii=False, indent=1)))
+            LOG.write("UPDATE %s\n%s\n" % (u.path, json.dumps({k: o.get(k) for k in ("Name", "Overview", "PremiereDate", "ProductionLocations", "Tags", "Genres", "Studios", "People")}, ensure_ascii=False, indent=1)))
             LOG.flush()
             return self.send(204)
         self.send(404)

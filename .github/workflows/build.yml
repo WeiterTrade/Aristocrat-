@@ -259,7 +259,7 @@ jobs:
           echo "--- выгружено ---"; find "$HOME/Облако тест" | sed "s|$HOME/||" | head -20
           # Вкладка «Сервер»: тестовый Jellyfin, анкеты актрис релиза (данные с настоящего IAFD)
           (python3 tests/jellyfin_mock.py 8792 "$PWD/jellyfin.log" &) ; sleep 1
-          ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 ARISTOCRAT_TEST_AI=http://127.0.0.1:8792/v1 SHOT_WAIT=60 ARISTOCRAT_LANG=ru shot server --demo-server
+          ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 ARISTOCRAT_TEST_AI=http://127.0.0.1:8792/v1 ARISTOCRAT_TEST_SCAN=1 ARISTOCRAT_TEST_AE_PAGE="http://127.0.0.1:8791/%1.html" SHOT_WAIT=150 ARISTOCRAT_LANG=ru shot server --demo-server
           echo "--- записано на сервер ---"; cat jellyfin.log || true
           ls -la "$HOME/Videos/Aristocrat Видеоконвертер/"*/*/.actors/ 2>/dev/null | head || true
           # Те же анкеты без IAFD — проверка остальных баз (Babepedia, FreeOnes, Boobpedia, Википедия)

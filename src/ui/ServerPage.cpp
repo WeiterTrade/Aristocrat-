@@ -2,6 +2,7 @@
 #include "ActressPhotos.h"
 #include "BrowserWindow.h"
 #include "SceneTools.h"
+#include "ServerScan.h"
 #include "Widgets.h"
 #include "core/Gender.h"
 #include "core/I18n.h"
@@ -98,7 +99,9 @@ void IafdBio::nextSource()
     ++m_serial;
     ++m_index;
     m_attempt = 0;
-    if (m_index >= m_sources.size()) {
+    const bool complete = !m_merged.value("birthday").toString().isEmpty() && !m_merged.value("years").toString().isEmpty()
+                          && !m_merged.value("birthplace").toString().isEmpty() && !m_aka.isEmpty();
+    if (m_index >= m_sources.size() || complete) {   // всё главное уже есть — остальные базы не нужны
         done(m_merged);
         return;
     }
@@ -477,6 +480,92 @@ static QJsonObject parse(const QString &text)
 }
 } // namespace Ai
 
+// ======================= Сборка анкеты (общая для вкладки и пробежки) =======================
+
+void composeBio(QNetworkAccessManager *net, QObject *ctx, const QString &name, const QJsonObject &dataIn,
+                std::function<void(const QJsonObject &)> cb)
+{
+    QJsonObject data = dataIn;
+    data.insert("name", name);
+    QStringList aka;
+    for (const QJsonValue &v : data.value("akaList").toArray())
+        aka << v.toString();
+    const bool enough = !data.value("birthday").toString().isEmpty() || !data.value("years").toString().isEmpty();
+    if (!enough) {
+        if (!Ai::enabled()) {
+            cb({});
+            return;
+        }
+        // Крайний случай: нейросеть (Википедия в помощь)
+        QNetworkRequest wreq(QUrl(QStringLiteral("https://en.wikipedia.org/api/rest_v1/page/summary/")
+                                  + QString::fromLatin1(QUrl::toPercentEncoding(QString(name).replace(' ', '_')))));
+        wreq.setTransferTimeout(15000);
+        QNetworkReply *w = net->get(wreq);
+        QObject::connect(w, &QNetworkReply::finished, ctx, [w, net, ctx, name, data, aka, cb] {
+            w->deleteLater();
+            const QJsonObject wo = QJsonDocument::fromJson(w->readAll()).object();
+            const QString wiki = wo.value("type").toString() == QLatin1String("standard") ? wo.value("extract").toString() : QString();
+            QJsonObject clean = data;
+            clean.remove("page");
+            Ai::ask(net, ctx, Ai::prompt(name, clean, wiki), [name, aka, cb](const QString &text, const QString &) {
+                const QJsonObject a = Ai::parse(text);
+                if (a.value("bio").toString().trimmed().isEmpty()) {
+                    cb({});
+                    return;
+                }
+                QJsonArray al = a.value("aliases").toArray();
+                if (al.isEmpty())
+                    al = QJsonArray::fromStringList(aka);
+                const QString born = a.value("birth_date").toString().trimmed();
+                cb(QJsonObject{{"ruName", a.value("ru_name").toString().trimmed()},
+                               {"born", QDate::fromString(born, Qt::ISODate).isValid() ? born : QString()},
+                               {"place", a.value("birth_place").toString().trimmed()},
+                               {"aliases", al},
+                               {"text", a.value("bio").toString().trimmed()},
+                               {"via", QStringLiteral("AI")}});
+            });
+        });
+        return;
+    }
+    // Шаблон: русское имя и место рождения через перевод
+    const QString place = data.value("birthplace").toString();
+    QStringList src = {QStringLiteral("The actress %1 smiled.").arg(name)};
+    if (!place.isEmpty())
+        src << QStringLiteral("She was born in %1.").arg(place) << place;
+    auto *tr = new Translator(ctx);
+    auto finish = [data, name, place, aka, cb](const QStringList &out) {
+        QString ru;
+        if (!out.isEmpty()) {
+            static const QRegularExpression re(QStringLiteral("[Аа]ктриса\\s+(.+?)\\s+(улыбнулась|улыбалась|улыбается)"));
+            const auto m = re.match(out[0]);
+            if (m.hasMatch() && !m.captured(1).contains(QRegularExpression(QStringLiteral("[A-Za-z]"))))
+                ru = m.captured(1).trimmed();
+        }
+        if (ru.isEmpty())
+            ru = Bio::transliterate(name);
+        QString bornIn, placeRu;
+        if (out.size() >= 3) {
+            static const QRegularExpression re(QStringLiteral("родилась\\s+((?:в|во)\\s+.+?)\\.?$"), QRegularExpression::CaseInsensitiveOption);
+            bornIn = re.match(out[1]).captured(1).trimmed();
+            placeRu = out[2].trimmed();
+            placeRu.remove(QRegularExpression(QStringLiteral("\\.$")));
+        }
+        const QDate born = Release::parseDate(data.value("birthday").toString());
+        QStringList srcs;
+        for (const QJsonValue &v : data.value("sources").toArray())
+            srcs << v.toString();
+        cb(QJsonObject{{"ruName", ru},
+                       {"born", born.isValid() ? born.toString(Qt::ISODate) : QString()},
+                       {"place", placeRu.isEmpty() ? place : placeRu},
+                       {"aliases", QJsonArray::fromStringList(aka)},
+                       {"text", Bio::build(data, ru, bornIn)},
+                       {"via", srcs.join(QStringLiteral(", "))}});
+    };
+    QObject::connect(tr, &Translator::finished, ctx, [tr, finish](const QStringList &out) { tr->deleteLater(); finish(out); });
+    QObject::connect(tr, &Translator::failed, ctx, [tr, finish](const QString &) { tr->deleteLater(); finish({}); });
+    tr->translate(src);
+}
+
 // ======================= Вкладка «Сервер» =======================
 
 ServerPage::ServerPage(QWidget *parent)
@@ -521,10 +610,21 @@ ServerPage::ServerPage(QWidget *parent)
     m_release->setPlaceholderText(T("Папка релиза"));
     auto *pick = new QPushButton(T("Выбрать…"), this);
     m_load = new QPushButton(T("Найти анкеты"), this);
+    auto *scan = new QPushButton(T("Пробежаться по серверу…"), this);
+    scan->setToolTip(T("Найти на сервере актрис без биографии или фото и фильмы с неполными данными и дописать недостающее"));
     r2->addWidget(m_source);
     r2->addWidget(m_release, 1);
     r2->addWidget(pick);
     r2->addWidget(m_load);
+    r2->addWidget(scan);
+    connect(scan, &QPushButton::clicked, this, [this] {
+        if (!loggedIn()) {
+            m_state->setText(T("Сначала войдите на сервер."));
+            return;
+        }
+        ServerScanDialog d(window());
+        d.exec();
+    });
     root->addLayout(r2);
 
     m_table = new QTableWidget(0, ColCount, this);
@@ -854,6 +954,8 @@ void ServerPage::lookupNext()
         if (m_auto) {
             m_auto = false;
             QTimer::singleShot(500, this, &ServerPage::writeAll);
+            if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_SCAN"))   // автопроверка пробежки
+                QTimer::singleShot(6000, this, [this] { auto *d = new ServerScanDialog(window()); d->setAttribute(Qt::WA_DeleteOnClose); d->show(); });
         }
         return;
     }

@@ -51,6 +51,11 @@ void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, s
 void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void(const QByteArray &)> cb);
 }
 
+// Готовая анкета из собранных данных: по шаблону, а если данных нет — нейросетью (если указан ключ).
+// Результат: ruName, born (ГГГГ-ММ-ДД), place, aliases[], text, via; пустой text — анкету собрать не удалось.
+void composeBio(QNetworkAccessManager *net, QObject *ctx, const QString &name, const QJsonObject &data,
+                std::function<void(const QJsonObject &)> cb);
+
 // Анкета по шаблону (как в образце): русский текст, латинское имя в скобках
 namespace Bio {
 QString monthDate(const QDate &d);                  // «9 ноября 1992»
