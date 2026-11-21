@@ -191,10 +191,16 @@ void ReleaseFetcher::extract()
 
 // Галерея обложек: как вручную — нажать на постер, затем стрелку «вперёд» (1/2 → 2/2)
 static const char *kOpenCover = R"JS((function(){
-var front=%1;var cands=[].slice.call(document.querySelectorAll('[data-fancybox],[data-lightbox],a[href*="h.jp"],#front-cover,.boxcover,[class*="boxcover"],[class*="cover"] a,[class*="cover"] img'));
-var el=null;cands.some(function(e){var h=e.getAttribute('href')||e.getAttribute('data-src')||'';var im=e.tagName=='IMG'?e:e.querySelector('img');
-  var s=im?(im.currentSrc||im.src||''):'';if((front&&(h.indexOf(front.split('/').pop())>=0||s.indexOf(front.split('/').pop())>=0))||/boxcover|front/i.test(e.className+' '+e.id)){el=e;return true;}return false;});
-if(!el&&cands.length)el=cands[0];if(!el)return 'none';el.scrollIntoView();el.click();return 'clicked';})())JS";
+var front=%1;var sku=%2;var fname=front?front.split('/').pop().split('?')[0]:'';var stem=fname.replace(/\.[a-z]+$/i,'').replace(/h$/i,'');
+var el=null;
+// 1) сама картинка постера (по имени файла или номеру SKU)
+[].slice.call(document.images).some(function(i){var s=(i.getAttribute('data-src')||i.currentSrc||i.src||'');var r=i.getBoundingClientRect();
+  if(r.width<80)return false;if((fname&&s.indexOf(fname)>=0)||(stem&&s.indexOf(stem)>=0)||(sku&&s.indexOf(sku)>=0)){el=i.closest('a')||i;return true;}return false;});
+// 2) типичные элементы галереи обложек
+if(!el){var c=document.querySelector('[data-fancybox],[data-lightbox],#front-cover,.boxcover,[class*="boxcover"],[class*="cover"] a');if(c)el=c;}
+if(!el)return 'none';el.scrollIntoView({block:'center'});
+['mousedown','mouseup','click'].forEach(function(t){el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));});
+return 'clicked';})())JS";
 static const char *kGalleryImages = R"JS((function(){var front=%1;var fname=front?front.split('/').pop().split('?')[0]:'';var lb=[],grp=[];
 [].forEach.call(document.querySelectorAll('img'),function(i){var r=i.getBoundingClientRect();
   if(r.width<150||r.height<150)return;
@@ -223,12 +229,15 @@ void ReleaseFetcher::galleryStep(int step)
         return !u.isEmpty() && !u.startsWith(QLatin1String("data:")) && u.section('/', -1).section('?', 0, 0) != frontName;
     };
     switch (step) {
-    case 0:
+    case 0: {
         emit progress(T("Ищу заднюю обложку…"));
-        m_view->page()->runJavaScript(QString::fromUtf8(kOpenCover).arg(frontJs), [this](const QVariant &) {
+        const QString skuJs = QString::fromUtf8(QJsonDocument(QJsonArray{m_data.value("sku").toString().remove(QRegularExpression(QStringLiteral("\\D")))})
+                                                    .toJson(QJsonDocument::Compact)).mid(1).chopped(1);
+        m_view->page()->runJavaScript(QString::fromUtf8(kOpenCover).arg(frontJs, skuJs), [this](const QVariant &) {
             QTimer::singleShot(2000, this, [this] { galleryStep(1); });
         });
         break;
+    }
     case 1:   // открыта галерея (1/2) — листаем вперёд
         m_view->page()->runJavaScript(QString::fromUtf8(kGalleryNext), [this](const QVariant &) {
             QTimer::singleShot(2000, this, [this] { galleryStep(2); });
@@ -720,7 +729,9 @@ void ReleaseManagerDialog::setScenes(const QList<Chapter> &scenes)
     for (const Chapter &c : scenes) {
         const int r = m_scenes->rowCount();
         m_scenes->insertRow(r);
-        m_scenes->setItem(r, 0, new QTableWidgetItem(Chapters::formatTime(c.start)));
+        auto *st = new QTableWidgetItem(Chapters::formatTime(c.start));
+        st->setData(Qt::UserRole, c.end);
+        m_scenes->setItem(r, 0, st);
         auto *t = new QTableWidgetItem(c.title.isEmpty() ? c.original : c.title);
         t->setData(Qt::UserRole, c.original.isEmpty() ? c.title : c.original);
         m_scenes->setItem(r, 1, t);
@@ -889,6 +900,7 @@ ReleaseInfo ReleaseManagerDialog::collect() const
     for (int i = 0; i < m_scenes->rowCount(); ++i) {
         Chapter c;
         c.start = Chapters::parseTime(m_scenes->item(i, 0)->text());
+        c.end = m_scenes->item(i, 0)->data(Qt::UserRole).toDouble();
         c.title = m_scenes->item(i, 1)->text().trimmed();
         r.scenes << c;
     }
