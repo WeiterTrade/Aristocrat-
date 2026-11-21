@@ -67,4 +67,6 @@ private:
     QStringList m_in, m_out;
     QString m_to;
     int m_index = 0;
+    int m_attempt = 0;   // повторы при сбое: другие адреса сервиса
+    bool m_oneByOne = false;
 };

@@ -77,7 +77,7 @@ QString findInLibrary(const QString &name, const QString &baseDir)
 
 QString query(const QString &name)
 {
-    return name + QStringLiteral(" lingerie");
+    return name + QStringLiteral(" порно-актриса");
 }
 
 int score(const Candidate &c)
@@ -138,6 +138,10 @@ ImageSearch::ImageSearch(QObject *parent)
     });
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
+        if (!m_imageMode && m_cb && !m_bing) {   // Яндекс не ответил вовремя — Bing
+            searchBing();
+            return;
+        }
         ++m_serial;
         if (m_cb) {
             auto cb = m_cb;
@@ -197,10 +201,24 @@ void ImageSearch::search(const QString &query, Callback cb)
     ++m_serial;
     m_imageMode = false;
     m_cb = std::move(cb);
+    m_query = query;
+    m_bing = false;
+    m_timeout.start(30000);
+    // Яндекс Картинки: размер ровно 1000×1500
+    const QString url = QStringLiteral("https://yandex.ru/images/search?text=%1&isize=eq&iw=1000&ih=1500")
+                            .arg(QString::fromLatin1(QUrl::toPercentEncoding(query)));
+    m_view->load(QUrl(url));
+}
+
+void ImageSearch::searchBing()
+{
+    // Запасной поиск: Bing, вертикальные от 1000×1500, безопасный поиск «умеренный»
+    m_bing = true;
     m_timeout.start(25000);
-    // Вертикальные, не меньше 1000×1500, безопасный поиск «умеренный» (откровенное отсеивается)
+    QString q = m_query;
+    q.replace(QStringLiteral(" порно-актриса"), QStringLiteral(" lingerie"));
     const QString url = QStringLiteral("https://www.bing.com/images/search?q=%1&qft=%2&adlt=moderate&form=IRFLTR")
-                            .arg(QString::fromLatin1(QUrl::toPercentEncoding(query)),
+                            .arg(QString::fromLatin1(QUrl::toPercentEncoding(q)),
                                  QString::fromLatin1(QUrl::toPercentEncoding(
                                      QStringLiteral("+filterui:aspect-tall+filterui:imagesize-custom_1000_1500"))));
     m_view->load(QUrl(url));
@@ -208,13 +226,20 @@ void ImageSearch::search(const QString &query, Callback cb)
 
 void ImageSearch::extract(int attempt)
 {
-    static const char *js = R"JS((function(){var out=[];
+    // Яндекс: результаты в data-state блока ImagesApp (оригинал, его размер и неразмытая миниатюра)
+    static const char *yandex = R"JS((function(){var out=[];try{var el=document.querySelector('[id^="ImagesApp-"]');
+var st=JSON.parse(el.getAttribute('data-state'));var e=st.initialState.serpList.items.entities;
+Object.keys(e).map(function(k){return e[k];}).sort(function(a,b){return (a.pos||0)-(b.pos||0);}).forEach(function(x){
+ if(!x.origUrl)return;var t=x.imageUnblurred||x.image||'';if(t.indexOf('//')===0)t='https:'+t;
+ out.push({u:x.origUrl,t:t,w:x.origWidth||x.width||0,h:x.origHeight||x.height||0,a:(x.alt||'')});});}catch(err){}
+return JSON.stringify(out);})())JS";
+    static const char *bing = R"JS((function(){var out=[];
 [].forEach.call(document.querySelectorAll('a.iusc'),function(a){try{var m=JSON.parse(a.getAttribute('m')||'{}');
  var li=a.closest('li')||a.parentElement;var info=li?(li.innerText||''):'';var mm=/(\d{3,5})\s*[x×]\s*(\d{3,5})/.exec(info);
  if(m.murl)out.push({u:m.murl,t:m.turl||'',w:mm?+mm[1]:0,h:mm?+mm[2]:0});}catch(e){}});
 return JSON.stringify(out);})())JS";
     const int serial = m_serial;
-    m_view->page()->runJavaScript(QString::fromUtf8(js), [this, serial, attempt](const QVariant &v) {
+    m_view->page()->runJavaScript(QString::fromUtf8(m_bing ? bing : yandex), [this, serial, attempt](const QVariant &v) {
         if (serial != m_serial || !m_cb)
             return;
         QList<ActressPhotos::Candidate> list;
@@ -229,6 +254,11 @@ return JSON.stringify(out);})())JS";
         }
         if (list.isEmpty() && attempt < 3) {
             QTimer::singleShot(1500, this, [this, serial, attempt] { if (serial == m_serial) extract(attempt + 1); });
+            return;
+        }
+        if (list.isEmpty() && !m_bing) {   // Яндекс не ответил (капча и т. п.) — Bing
+            qInfo("image search: Yandex gave nothing (%s), trying Bing", qPrintable(m_view->url().host()));
+            searchBing();
             return;
         }
         m_timeout.stop();
@@ -249,7 +279,7 @@ ActressPhotoDialog::ActressPhotoDialog(const QStringList &names, const QString &
 
     auto *root = contentLayout();
     root->setContentsMargins(18, 12, 18, 12);
-    auto *hint = new QLabel(T("Нужны фото 1000×1500. Ищутся вертикальные снимки в белье, откровенное отсеивает безопасный поиск. "
+    auto *hint = new QLabel(T("Нужны фото 1000×1500. Поиск — Яндекс Картинки (ровно 1000×1500), запасной — Bing. "
                               "Щёлкните по фото — оно будет обрезано до 2:3 и запомнено для всех следующих релизов."), this);
     hint->setObjectName(QStringLiteral("Muted"));
     hint->setWordWrap(true);

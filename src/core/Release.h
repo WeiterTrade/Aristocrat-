@@ -67,4 +67,5 @@ QImage cropTo16x9(const QImage &img);
 struct Pending { QString name, dir, chaptersMeta; bool lossless = true; };
 void addPending(const QString &pageUrl, const Pending &p);
 bool takePending(const QString &pageUrl, Pending *p);
+bool peekPending(const QString &pageUrl, Pending *p);   // не удаляя
 }

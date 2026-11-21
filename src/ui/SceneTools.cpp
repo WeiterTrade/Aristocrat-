@@ -17,6 +17,7 @@
 #include <QDir>
 #include <QFile>
 #include <QPointer>
+#include <QTimer>
 
 // Подтверждение возраста (как в PageGrabber)
 static const char *kAge =
@@ -230,7 +231,31 @@ void Translator::translate(const QStringList &lines, const QString &to)
     m_out.clear();
     m_to = to;
     m_index = 0;
+    m_attempt = 0;
+    m_oneByOne = false;
     next();
+}
+
+// Ответ сервиса: gtx — [[["перевод","оригинал",…],…],…]; dict-chrome-ex — [["перевод","en"],…] или ["перевод",…]
+static bool parseTranslation(const QByteArray &data, QString *out)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isArray() || doc.array().isEmpty())
+        return false;
+    const QJsonArray top = doc.array();
+    QString joined;
+    if (top.at(0).isArray() && top.at(0).toArray().at(0).isArray()) {
+        for (const QJsonValue &p : top.at(0).toArray())
+            joined += p.toArray().at(0).toString();
+    } else if (top.at(0).isArray()) {
+        joined = top.at(0).toArray().at(0).toString();
+    } else if (top.at(0).isString()) {
+        joined = top.at(0).toString();
+    }
+    if (joined.isEmpty())
+        return false;
+    *out = joined;
+    return true;
 }
 
 void Translator::next()
@@ -239,21 +264,50 @@ void Translator::next()
         emit finished(m_out);
         return;
     }
-    const QStringList batch = m_in.mid(m_index, 40);
-    const QByteArray query = "client=gtx&sl=auto&tl=" + QUrl::toPercentEncoding(m_to) + "&dt=t&q="
-                             + QUrl::toPercentEncoding(batch.join('\n'));
-    WebFetch::get(QUrl::fromEncoded("https://translate.googleapis.com/translate_a/single?" + query), this,
-                  [this, batch](const QByteArray &data) {
-        // Ответ: [[["перевод","оригинал",…],…],…]
-        const QJsonDocument doc = QJsonDocument::fromJson(data);
-        if (!doc.isArray()) {
+    // Порция: до 40 строк и примерно 1200 знаков — длинная ссылка сервисом отбрасывается
+    QStringList batch;
+    int chars = 0;
+    for (int i = m_index; i < m_in.size() && batch.size() < (m_oneByOne ? 1 : 40); ++i) {
+        if (!batch.isEmpty() && chars + m_in[i].size() > 1200)
+            break;
+        batch << m_in[i];
+        chars += m_in[i].size() + 1;
+    }
+    // Пустые строки не отправляем
+    bool allEmpty = true;
+    for (const QString &l : batch)
+        allEmpty &= l.trimmed().isEmpty();
+    if (allEmpty) {
+        m_out << batch;
+        m_index += batch.size();
+        next();
+        return;
+    }
+    const QByteArray tl = QUrl::toPercentEncoding(m_to), q = QUrl::toPercentEncoding(batch.join('\n'));
+    static const char *hosts[] = {
+        "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=",
+        "https://translate.google.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=",
+        "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl="};
+    const QByteArray url = QByteArray(hosts[m_attempt % 3]) + tl + "&q=" + q;
+    WebFetch::get(QUrl::fromEncoded(url), this, [this, batch](const QByteArray &data) {
+        QString joined;
+        if (!parseTranslation(data, &joined)) {
+            if (++m_attempt < 6) {   // сбой — повтор через другой адрес
+                qInfo("translate: attempt %d failed (%d bytes), retrying", m_attempt, int(data.size()));
+                QTimer::singleShot(1200 * m_attempt, this, &Translator::next);
+                return;
+            }
             emit failed(T("Сервис перевода недоступен. Проверьте подключение к интернету."));
             return;
         }
-        QString joined;
-        for (const QJsonValue &p : doc.array().at(0).toArray())
-            joined += p.toArray().at(0).toString();
+        m_attempt = 0;
         const QStringList lines = joined.split('\n');
+        if (batch.size() > 1 && lines.size() != batch.size()) {
+            // Сервис склеил или разбил строки — эту и следующие порции переводим по одной строке
+            m_oneByOne = true;
+            next();
+            return;
+        }
         for (int i = 0; i < batch.size(); ++i)
             m_out << (i < lines.size() && !lines[i].trimmed().isEmpty() ? lines[i].trimmed() : batch[i]);
         m_index += batch.size();

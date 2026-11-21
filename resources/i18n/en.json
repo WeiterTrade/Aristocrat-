@@ -429,7 +429,7 @@
  "Новая папка": "New folder",
  "Новое имя (без расширения):": "New name (without extension):",
  "Нужен <b>пароль для внешних приложений</b>, а не обычный пароль почты. Создайте его в Mail.ru: значок профиля → «Пароль и безопасность» → «Пароли для внешних приложений» → добавить, доступ — <b>«Полный доступ к Почте, Облаку и Календарю»</b> (вариант «только Облако» не подходит).": "You need an <b>app password</b>, not your regular email password. Create it in Mail.ru: profile icon → “Password and security” → “Passwords for external applications” → add, access — <b>“Full access to Mail, Cloud and Calendar”</b> (the “Cloud only” option does not work).",
- "Нужны фото 1000×1500. Ищутся вертикальные снимки в белье, откровенное отсеивает безопасный поиск. Щёлкните по фото — оно будет обрезано до 2:3 и запомнено для всех следующих релизов.": "Photos should be 1000×1500. Portrait shots in lingerie are searched; safe search filters out explicit ones. Click a photo — it is cropped to 2:3 and remembered for all future releases.",
+ "Нужны фото 1000×1500. Поиск — Яндекс Картинки (ровно 1000×1500), запасной — Bing. Щёлкните по фото — оно будет обрезано до 2:3 и запомнено для всех следующих релизов.": "Photos must be 1000×1500. Search uses Yandex Images (exactly 1000×1500), with Bing as a fallback. Click a photo — it will be cropped to 2:3 and remembered for all future releases.",
  "О программе": "About",
  "Облако Mail.ru": "Mail.ru Cloud",
  "Облако подключено. Выберите папку и нажмите «Выгрузить в эту папку».": "Cloud connected. Choose a folder and click “Upload to this folder”.",

@@ -429,7 +429,7 @@
  "Новая папка": "Nueva carpeta",
  "Новое имя (без расширения):": "Nuevo nombre (sin extensión):",
  "Нужен <b>пароль для внешних приложений</b>, а не обычный пароль почты. Создайте его в Mail.ru: значок профиля → «Пароль и безопасность» → «Пароли для внешних приложений» → добавить, доступ — <b>«Полный доступ к Почте, Облаку и Календарю»</b> (вариант «только Облако» не подходит).": "Se necesita una <b>contraseña de aplicación</b>, no la contraseña normal del correo. Créela en Mail.ru: icono de perfil → «Contraseña y seguridad» → «Contraseñas para aplicaciones externas» → añadir, acceso — <b>«Acceso completo a Correo, Nube y Calendario»</b> (la opción «solo Nube» no funciona).",
- "Нужны фото 1000×1500. Ищутся вертикальные снимки в белье, откровенное отсеивает безопасный поиск. Щёлкните по фото — оно будет обрезано до 2:3 и запомнено для всех следующих релизов.": "Se necesitan fotos de 1000×1500. Se buscan fotos verticales en lencería; la búsqueda segura filtra las explícitas. Haga clic en una foto: se recorta a 2:3 y se recuerda para todos los lanzamientos.",
+ "Нужны фото 1000×1500. Поиск — Яндекс Картинки (ровно 1000×1500), запасной — Bing. Щёлкните по фото — оно будет обрезано до 2:3 и запомнено для всех следующих релизов.": "Se necesitan fotos de 1000×1500. Se busca en Yandex Imágenes (exactamente 1000×1500); Bing como reserva. Haga clic en una foto: se recortará a 2:3 y se recordará para los siguientes lanzamientos.",
  "О программе": "Acerca de",
  "Облако Mail.ru": "Nube de Mail.ru",
  "Облако подключено. Выберите папку и нажмите «Выгрузить в эту папку».": "Nube conectada. Elija una carpeta y pulse «Subir a esta carpeta».",

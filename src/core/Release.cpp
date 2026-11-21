@@ -328,6 +328,8 @@ static QString pendingKey(const QString &url)
     QUrl u(url);
     u.setQuery(QString());
     u.setFragment(QString());
+    if (u.host().startsWith(QLatin1String("www.")))
+        u.setHost(u.host().mid(4));
     return QString::fromLatin1(u.toString(QUrl::RemoveScheme | QUrl::StripTrailingSlash).toUtf8().toBase64(QByteArray::Base64UrlEncoding));
 }
 
@@ -340,6 +342,19 @@ void addPending(const QString &pageUrl, const Pending &p)
     st.setValue(QStringLiteral("meta"), p.chaptersMeta);
     st.setValue(QStringLiteral("lossless"), p.lossless);
     st.endGroup();
+}
+
+bool peekPending(const QString &pageUrl, Pending *p)
+{
+    QSettings st;
+    const QString g = QStringLiteral("aePending/") + pendingKey(pageUrl);
+    if (!st.contains(g + QStringLiteral("/name")))
+        return false;
+    p->name = st.value(g + QStringLiteral("/name")).toString();
+    p->dir = st.value(g + QStringLiteral("/dir")).toString();
+    p->chaptersMeta = st.value(g + QStringLiteral("/meta")).toString();
+    p->lossless = st.value(g + QStringLiteral("/lossless"), true).toBool();
+    return true;
 }
 
 bool takePending(const QString &pageUrl, Pending *p)

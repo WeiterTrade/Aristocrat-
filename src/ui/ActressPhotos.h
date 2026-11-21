@@ -42,6 +42,9 @@ public:
 
 private:
     void extract(int attempt);
+    void searchBing();
+    QString m_query;
+    bool m_bing = false;
     void grab(int attempt);
     std::function<void(const QByteArray &)> m_imgCb;
     bool m_imageMode = false;

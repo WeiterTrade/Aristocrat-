@@ -6,6 +6,7 @@
 #include "BrowserWindow.h"
 #include "PageGrabber.h"
 #endif
+#include "core/Release.h"
 #include "core/Settings.h"
 #include "core/Task.h"
 #include "core/Tools.h"
@@ -789,6 +790,10 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
                 item->title = safeFileName(gd.pageTitle());
             item->site = Sites::siteName(url);
             item->pageUrl = urlText;
+            // Видео релиза из менеджера Adult Empire: файл сразу называется как релиз
+            Release::Pending rel;
+            if (Release::peekPending(urlText, &rel) && !rel.name.isEmpty())
+                item->title = safeFileName(rel.name);
             if (!gd.thumb().isEmpty())
                 item->thumbUrl = gd.thumb();
             addItem(item);
