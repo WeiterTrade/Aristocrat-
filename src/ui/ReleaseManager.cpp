@@ -382,6 +382,13 @@ return JSON.stringify(out);})(%1))JS";
 void ReleaseFetcher::finishShots()
 {
     m_shotsMode = false;
+    // Обложки в варианты фан-арта не берём
+    const QString front = m_data.value("front").toString(), back = m_data.value("back").toString();
+    QStringList clean;
+    for (const QString &u : m_shotList)
+        if (u != front && u != back && !u.contains(QLatin1String("v=back")) && !u.contains(QLatin1String("/movie/")))
+            clean << u;
+    m_shotList = clean;
     // Нашлись кадры из «Больше скриншотов» — они главнее; иначе остаются миниатюры сцен со страницы
     if (!m_shotList.isEmpty())
         m_data.insert("shots", QJsonArray::fromStringList(m_shotList));
@@ -630,7 +637,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     ng->addWidget(m_newGenre, 1);
     ng->addWidget(addG);
     left->addLayout(ng);
-    cols->addLayout(left, 5);
+    cols->addLayout(left, 1);
 
     // ---- Правая колонка: обложки, состав, сцены ----
     auto *right = new QVBoxLayout;
@@ -640,12 +647,12 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
         auto *cap = new QLabel(caption, page);
         cap->setObjectName(QStringLiteral("Muted"));
         prev = new QLabel(page);
-        prev->setFixedSize(120, 165);
+        prev->setFixedSize(105, 145);
         prev->setAlignment(Qt::AlignCenter);
         prev->setText(T("нет"));
         Ui::themedStyle(prev, QStringLiteral("QLabel{background:#171113;border:1px solid #33282C;border-radius:6px;color:#7D7266;}"));
         urlEdit = edit(page, T("ссылка"));
-        urlEdit->setMaximumWidth(120);
+        urlEdit->setMaximumWidth(105);
         imgs->addWidget(cap, 0, col);
         imgs->addWidget(prev, 1, col);
         imgs->addWidget(urlEdit, 2, col);
@@ -656,11 +663,11 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     mkImg(2, T("Фан-арт"), m_fanartUrl, m_fanartPrev);
     m_fanartUrl->setPlaceholderText(T("пусто — кадр из видео"));
     auto *pickFan = new QPushButton(T("Выбрать…"), page);
-    pickFan->setMaximumWidth(120);
+    pickFan->setMaximumWidth(105);
     imgs->addWidget(pickFan, 3, 2);
     connect(pickFan, &QPushButton::clicked, this, &ReleaseManagerDialog::chooseFanart);
     right->addLayout(imgs);
-    m_fanart4k = new QCheckBox(T("Фан-арт в 4K: убрать чёрные рамки и увеличить (Real-ESRGAN)"), page);
+    m_fanart4k = new QCheckBox(T("Фан-арт в 4K (без рамок, Real-ESRGAN)"), page);
     m_fanart4k->setObjectName(QStringLiteral("PlainCheck"));
     m_fanart4k->setChecked(QSettings().value(QStringLiteral("ae/fanart4k"), true).toBool());
     connect(m_fanart4k, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("ae/fanart4k"), on); });
@@ -724,7 +731,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
         "QTableWidget{background:#171113;gridline-color:#33282C;border:1px solid #33282C;}"
         "QHeaderView::section{background:#261E21;color:#CFC3A8;border:none;border-bottom:1px solid #33282C;padding:5px;}"));
     right->addWidget(m_scenes, 1);
-    cols->addLayout(right, 4);
+    cols->addLayout(right, 1);
 
     // ---- Низ: папка и видео ----
     auto *bottom = new QGridLayout;
