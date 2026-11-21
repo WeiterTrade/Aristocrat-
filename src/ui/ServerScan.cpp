@@ -427,10 +427,15 @@ void ServerScanDialog::doPerson(int row)
                     return;
                 }
                 item.insert("Overview", text);
-                if (!bio.value("born").toString().isEmpty() && item.value("PremiereDate").toString().isEmpty())
+                // Дата и место рождения из той же анкеты, что и текст: иначе остаются даты однофамильца из TMDb
+                // (например, «1943–2017» у актрисы 1985 года рождения). Дату смерти убираем, карточку закрепляем.
+                if (!bio.value("born").toString().isEmpty()) {
                     item.insert("PremiereDate", bio.value("born").toString() + QStringLiteral("T00:00:00.0000000Z"));
-                if (!bio.value("place").toString().isEmpty() && item.value("ProductionLocations").toArray().isEmpty())
+                    item.remove("EndDate");
+                }
+                if (!bio.value("place").toString().isEmpty())
                     item.insert("ProductionLocations", QJsonArray{bio.value("place").toString()});
+                item.insert("LockData", true);
                 QJsonArray tags = item.value("Tags").toArray();
                 for (const QJsonValue &a : bio.value("aliases").toArray()) {
                     bool have = false;

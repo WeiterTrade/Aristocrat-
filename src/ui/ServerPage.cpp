@@ -9,7 +9,13 @@
 #include "core/Release.h"
 #include "Frameless.h"
 
+#include <QBuffer>
 #include <QCheckBox>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QMimeData>
+#include <QPixmap>
+#include <QSignalBlocker>
 #include <functional>
 #include <memory>
 #include <QComboBox>
@@ -366,6 +372,142 @@ QString transliterate(const QString &latin)
 
 } // namespace Bio
 
+
+// ---- Анкета, вставленная вручную (например, из чата) ----
+// Понимает строки-поля («Дата рождения: …», «Место рождения: …», «Псевдонимы: …», «Имя: …», «Дата смерти: …») —
+// они в текст биографии не попадают, — и обычный текст по образцу:
+// «Таисия Шанти (Taissia Shanti), также известная как A, B и C — … Родилась 2 мая 1997 года в Уфе, Россия.»
+namespace Pasted {
+
+struct Card {
+    QString ruName, place, overview;
+    QDate born, died;
+    QStringList aliases;
+    bool hasDied = false;
+};
+
+static QDate ruDate(const QString &textIn)
+{
+    const QString text = textIn.trimmed();
+    static const QStringList months = {"январ", "феврал", "март", "апрел", "ма", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр"};
+    static const QRegularExpression ru(QStringLiteral("(\\d{1,2})\\s+([а-яё]+)\\s+((?:19|20)\\d{2})"), QRegularExpression::CaseInsensitiveOption);
+    const auto m = ru.match(text);
+    if (m.hasMatch()) {
+        const QString w = m.captured(2).toLower();
+        int month = 0;
+        for (int i = 0; i < months.size() && !month; ++i)
+            if (i == 4 ? (w == QStringLiteral("мая") || w == QStringLiteral("май")) : w.startsWith(months[i]))
+                month = i + 1;
+        const QDate d(m.captured(3).toInt(), month, m.captured(1).toInt());
+        if (d.isValid())
+            return d;
+    }
+    static const QRegularExpression dots(QStringLiteral("(\\d{1,2})[./](\\d{1,2})[./]((?:19|20)\\d{2})"));
+    const auto d = dots.match(text);
+    if (d.hasMatch()) {
+        const QDate x(d.captured(3).toInt(), d.captured(2).toInt(), d.captured(1).toInt());
+        if (x.isValid())
+            return x;
+    }
+    const QDate iso = QDate::fromString(text.left(10), Qt::ISODate);
+    if (iso.isValid())
+        return iso;
+    return Release::parseDate(text);
+}
+
+// «Уфе, Россия» → «Уфа, Россия», «Лос-Анджелесе, Калифорнии» → «Лос-Анджелес, Калифорния» (частые случаи; поле можно поправить)
+static QString nominative(const QString &place)
+{
+    static const QStringList femA = {"Москв", "Праг", "Вен", "Риг", "Уф", "Самар", "Варшав", "Анкар", "Гаван", "Женев", "Флорид", "Аризон",
+                                     "Невад", "Небраск", "Алабам", "Оклахом", "Луизиан", "Миннесот", "Монтан", "Индиан", "Айов", "Канад",
+                                     "Кубан", "Венгри", "Казан", "Пенз", "Твер", "Кир", "Ялт", "Одесс", "Полтав", "Гаага", "Сицили", "Барселон",
+                                     "Флоренци", "Верон", "Генуя", "Пермь", "Тул", "Калуг", "Анап", "Чит", "Ухт", "Вологд", "Костром", "Рязан"};
+    QStringList out;
+    for (const QString &partIn : place.split(',')) {
+        QString w = partIn.trimmed();
+        if (w.endsWith(QStringLiteral("ии")))
+            w = w.left(w.size() - 1) + QStringLiteral("я");            // России → Россия, Калифорнии → Калифорния
+        else if (w.endsWith(QLatin1Char('е')) && !w.contains(' ')) {
+            const QString stem = w.left(w.size() - 1);
+            bool fem = false;
+            for (const QString &f : femA)
+                fem |= stem == f;
+            w = fem ? stem + QStringLiteral("а") : stem;                  // Уфе → Уфа, Минске → Минск
+        }
+        if (!w.isEmpty())
+            out << w;
+    }
+    return out.join(QStringLiteral(", "));
+}
+
+static QStringList splitAliases(const QString &s)
+{
+    QStringList out;
+    QString t = s;
+    t.replace(QRegularExpression(QStringLiteral("\\s+и\\s+|\\s+and\\s+|;")), QStringLiteral(","));
+    for (const QString &a : t.split(',', Qt::SkipEmptyParts)) {
+        const QString x = a.trimmed().remove(QRegularExpression(QStringLiteral("^[«\"]|[»\".]$")));
+        if (!x.isEmpty() && x.size() < 60 && !out.contains(x, Qt::CaseInsensitive))
+            out << x;
+    }
+    return out;
+}
+
+static Card parse(const QString &raw)
+{
+    Card c;
+    QStringList body;
+    static const QRegularExpression field(QStringLiteral("^\\s*[*•-]?\\s*\\**\\s*(Имя(?: на русском)?|Русское имя|Дата рождения|Родилась|Место рождения|"
+                                                         "Псевдонимы|Также известна как|Теги|Дата смерти|Умерла|Биография)\\s*\\**\\s*:\\s*\\**\\s*(.*)$"),
+                                          QRegularExpression::CaseInsensitiveOption);
+    for (const QString &line : raw.split('\n')) {
+        const auto m = field.match(line);
+        if (!m.hasMatch()) {
+            body << line;
+            continue;
+        }
+        const QString key = m.captured(1).toLower(), val = m.captured(2).trimmed();
+        if (key.startsWith(QStringLiteral("имя")) || key.startsWith(QStringLiteral("русское")))
+            c.ruName = val;
+        else if (key.startsWith(QStringLiteral("дата рожд")) || key == QStringLiteral("родилась"))
+            c.born = ruDate(val);
+        else if (key.startsWith(QStringLiteral("место")))
+            c.place = val;
+        else if (key.startsWith(QStringLiteral("псевдоним")) || key.startsWith(QStringLiteral("также")) || key == QStringLiteral("теги"))
+            c.aliases = splitAliases(val);
+        else if (key.startsWith(QStringLiteral("дата смерти")) || key == QStringLiteral("умерла")) {
+            c.hasDied = true;
+            c.died = ruDate(val);
+        } else if (key == QStringLiteral("биография") && !val.isEmpty())
+            body << val;
+    }
+    c.overview = body.join('\n').trimmed();
+    c.overview.replace(QRegularExpression(QStringLiteral("\\n{3,}")), QStringLiteral("\n\n"));
+    const QString t = c.overview;
+    // Имя: «Таисия Шанти (Taissia Shanti), …»
+    if (c.ruName.isEmpty()) {
+        static const QRegularExpression nm(QStringLiteral("^\\s*([А-ЯЁ][А-Яа-яЁё\\-]+(?:\\s+[А-ЯЁ][А-Яа-яЁё\\-]+){0,2})\\s*\\("));
+        c.ruName = nm.match(t).captured(1).trimmed();
+    }
+    // Дата и место рождения: «Родилась 2 мая 1997 года в Уфе, Россия.»
+    static const QRegularExpression bornRe(QStringLiteral("[Рр]одилась\\s+(\\d{1,2}\\s+[а-яё]+\\s+(?:19|20)\\d{2}|\\d{1,2}[./]\\d{1,2}[./](?:19|20)\\d{2})"
+                                                          "(?:\\s+года)?(?:\\s*(?:в|во)\\s+([^.\\n]+))?"));
+    const auto b = bornRe.match(t);
+    if (b.hasMatch()) {
+        if (!c.born.isValid())
+            c.born = ruDate(b.captured(1));
+        if (c.place.isEmpty())
+            c.place = nominative(b.captured(2).trimmed());
+    }
+    if (c.aliases.isEmpty()) {
+        static const QRegularExpression aka(QStringLiteral("также\\s+известн\\w*\\s+(?:как|под\\s+именами?)\\s+([^—–\\n]+?)\\s*(?:—|–|\\s-\\s|\\.|$)"));
+        c.aliases = splitAliases(aka.match(t).captured(1));
+    }
+    return c;
+}
+
+} // namespace Pasted
+
 // ======================= Нейросеть (Claude / Qwen) =======================
 
 namespace Ai {
@@ -607,6 +749,7 @@ ServerPage::ServerPage(QWidget *parent)
     m_source = new QComboBox(this);
     m_source->addItem(T("Актрисы релиза"));
     m_source->addItem(T("Все анкеты на сервере без биографии"));
+    m_source->addItem(T("Все актрисы на сервере"));
     m_release = new QLineEdit(this);
     m_release->setPlaceholderText(T("Папка релиза"));
     auto *pick = new QPushButton(T("Выбрать…"), this);
@@ -662,6 +805,11 @@ ServerPage::ServerPage(QWidget *parent)
     m_write = Ui::primaryButton(T("Записать на сервер"), this);
     m_write->setMinimumWidth(200);
     btns->addWidget(m_photos);
+    m_autoBio = new QCheckBox(T("Собирать анкеты из баз автоматически"), this);
+    m_autoBio->setObjectName(QStringLiteral("PlainCheck"));
+    m_autoBio->setChecked(st.value(QStringLiteral("server/autoBio"), false).toBool());
+    connect(m_autoBio, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("server/autoBio"), on); });
+    btns->addWidget(m_autoBio);
     btns->addStretch();
     m_aiState = new QLabel(this);
     m_aiState->setObjectName(QStringLiteral("Muted"));
@@ -684,8 +832,8 @@ ServerPage::ServerPage(QWidget *parent)
     connect(m_write, &QPushButton::clicked, this, &ServerPage::writeAll);
     connect(m_photos, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("server/photos"), on); });
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int row, int col) {
-        if (col == ColBio)
-            editBio(row);
+        if (col != ColCheck)
+            editActress(row);
     });
 
     setRelease(st.value(QStringLiteral("ae/lastRelease")).toString());
@@ -930,7 +1078,7 @@ void ServerPage::loadList()
 
     // Все исполнители без биографии
     setBusy(true, T("Загружаю список исполнителей с сервера…"));
-    QNetworkReply *r = api(QStringLiteral("GET"), QStringLiteral("/Persons?fields=Overview&enableImages=true&limit=5000"));
+    QNetworkReply *r = api(QStringLiteral("GET"), QStringLiteral("/Persons?fields=Overview&enableImages=true&personTypes=Actor&limit=10000"));
     connect(r, &QNetworkReply::finished, this, [this, r, addRow] {
         r->deleteLater();
         if (r->error() != QNetworkReply::NoError) {
@@ -941,7 +1089,7 @@ void ServerPage::loadList()
         for (const QJsonValue &v : QJsonDocument::fromJson(r->readAll()).object().value("Items").toArray()) {
             const QJsonObject p = v.toObject();
             const QString name = p.value("Name").toString();
-            if (name.isEmpty() || !p.value("Overview").toString().trimmed().isEmpty())
+            if (name.isEmpty() || (m_source->currentIndex() == 1 && !p.value("Overview").toString().trimmed().isEmpty()))
                 continue;
             Gender::Source src;
             if (Gender::known(name, &src) == Gender::Male || (src == Gender::None && Gender::byFirstName(name) == Gender::Male)) {
@@ -950,7 +1098,7 @@ void ServerPage::loadList()
             }
             addRow(name, p);
         }
-        m_state->setText(T("Без биографии: %1 (мужчины пропущены: %2). Собираю данные…").arg(m_table->rowCount()).arg(men));
+        m_state->setText(T("Актрис в списке: %1 (мужчины пропущены: %2).").arg(m_table->rowCount()).arg(men));
         lookupNext();
     });
 }
@@ -961,7 +1109,7 @@ void ServerPage::lookupNext()
         int ready = 0;
         for (int r = 0; r < m_table->rowCount(); ++r)
             ready += m_table->item(r, ColCheck)->checkState() == Qt::Checked;
-        setBusy(false, T("Готово: можно записать %1 анкет. Проверьте тексты — двойной щелчок по биографии открывает её целиком.").arg(ready));
+        setBusy(false, T("Двойной щелчок по актрисе — окно анкеты: вставьте биографию и фото и запишите на сервер. Отмечено к записи: %1.").arg(ready));
         if (m_auto) {
             m_auto = false;
             QTimer::singleShot(500, this, &ServerPage::writeAll);
@@ -983,6 +1131,11 @@ void ServerPage::lookupNext()
         if (n->data(Qt::UserRole + 1).toBool()) {
             // Анкета уже есть: фото с сервера — в .actors релиза
             keepOffline(row, true);
+            return;
+        }
+        if (!m_autoBio->isChecked() && !m_auto) {
+            m_table->item(row, ColStatus)->setText(T("нет биографии — двойной щелчок, чтобы заполнить"));
+            lookupNext();
             return;
         }
         m_table->item(row, ColStatus)->setText(T("ищу в базах (IAFD, Babepedia, FreeOnes, Boobpedia, Википедия)…"));
@@ -1393,6 +1546,311 @@ void ServerPage::editBio(int row)
         m_table->item(row, ColCheck)->setCheckState(Qt::Checked);
 }
 
+void ServerPage::editActress(int row)
+{
+    QTableWidgetItem *n = m_table->item(row, ColName);
+    const QString name = n->text();
+    const QString id = n->data(Qt::UserRole).toString();
+    FramedDialog d(this, true);
+    d.setWindowTitle(T("Анкета: %1").arg(name));
+    d.resize(980, 640);
+    auto *body = new QHBoxLayout;
+    d.contentLayout()->setContentsMargins(16, 12, 16, 12);
+    d.contentLayout()->addLayout(body, 1);
+
+    // Слева: фото
+    auto *left = new QVBoxLayout;
+    auto *photo = new QLabel(T("нет фото"), &d);
+    photo->setFixedSize(200, 300);
+    photo->setAlignment(Qt::AlignCenter);
+    photo->setStyleSheet(QStringLiteral("border:1px solid rgba(128,128,128,0.4);"));
+    left->addWidget(photo);
+    auto *pasteImg = new QPushButton(T("Вставить фото"), &d);
+    pasteImg->setToolTip(T("Картинка или ссылка на картинку из буфера обмена"));
+    auto *fileImg = new QPushButton(T("Из файла…"), &d);
+    auto *findImg = new QPushButton(T("Найти в интернете…"), &d);
+    auto *photoState = new QLabel(&d);
+    photoState->setWordWrap(true);
+    photoState->setFixedWidth(200);
+    for (QWidget *w : {static_cast<QWidget *>(pasteImg), static_cast<QWidget *>(fileImg), static_cast<QWidget *>(findImg)})
+        left->addWidget(w);
+    left->addWidget(photoState);
+    left->addStretch();
+    body->addLayout(left);
+
+    // Справа: поля и биография
+    auto *right = new QVBoxLayout;
+    auto *hint = new QLabel(T("Вставьте готовую анкету — дата и место рождения, псевдонимы и русское имя возьмутся из текста "
+                              "(можно и строками «Дата рождения: …», «Место рождения: …», «Псевдонимы: …»). Проверьте поля и нажмите «Записать на сервер»."), &d);
+    hint->setWordWrap(true);
+    right->addWidget(hint);
+    auto *g = new QGridLayout;
+    auto *ru = new QLineEdit(m_table->item(row, ColRuName)->text(), &d);
+    auto *born = new QLineEdit(m_table->item(row, ColBorn)->text(), &d);
+    born->setPlaceholderText(T("ГГГГ-ММ-ДД или «2 мая 1997»"));
+    auto *place = new QLineEdit(m_table->item(row, ColPlace)->text(), &d);
+    place->setPlaceholderText(T("Уфа, Россия"));
+    auto *died = new QLineEdit(m_table->item(row, ColBorn)->data(Qt::UserRole).toString(), &d);
+    died->setPlaceholderText(T("пусто — дата смерти будет удалена с сервера"));
+    auto *tags = new QLineEdit(m_table->item(row, ColTags)->text(), &d);
+    tags->setPlaceholderText(T("псевдонимы через запятую"));
+    int r = 0;
+    for (auto pr : {qMakePair(T("Имя по-русски:"), ru), qMakePair(T("Дата рождения:"), born), qMakePair(T("Место рождения:"), place),
+                    qMakePair(T("Дата смерти:"), died), qMakePair(T("Псевдонимы (теги):"), tags)}) {
+        g->addWidget(new QLabel(pr.first, &d), r, 0);
+        g->addWidget(pr.second, r++, 1);
+    }
+    right->addLayout(g);
+    auto *bioRow = new QHBoxLayout;
+    bioRow->addWidget(new QLabel(T("Биография:"), &d));
+    bioRow->addStretch();
+    auto *pasteText = new QPushButton(T("Вставить из буфера"), &d);
+    bioRow->addWidget(pasteText);
+    right->addLayout(bioRow);
+    auto *edit = new QPlainTextEdit(&d);
+    edit->setPlainText(m_table->item(row, ColBio)->data(Qt::UserRole).toString());
+    right->addWidget(edit, 1);
+    body->addLayout(right, 1);
+
+    auto *btns = new QHBoxLayout;
+    auto *state = new QLabel(&d);
+    state->setWordWrap(true);
+    btns->addWidget(state, 1);
+    auto *cancel = new QPushButton(T("Отмена"), &d);
+    auto *save = new QPushButton(T("Только сохранить"), &d);
+    auto *write = Ui::primaryButton(T("Записать на сервер"), &d);
+    write->setEnabled(!id.isEmpty() && loggedIn());
+    if (id.isEmpty())
+        state->setText(T("Этой актрисы нет на сервере — сначала она должна появиться в библиотеке Jellyfin."));
+    btns->addWidget(cancel);
+    btns->addWidget(save);
+    btns->addWidget(write);
+    d.contentLayout()->addLayout(btns);
+
+    // Фото: выбранное раньше → с сервера
+    auto chosen = std::make_shared<QString>(n->data(Qt::UserRole + 4).toString());
+    auto show = [photo](const QImage &img) {
+        if (img.isNull())
+            return;
+        photo->setPixmap(QPixmap::fromImage(img.scaled(photo->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    };
+    if (!chosen->isEmpty() && QFileInfo::exists(*chosen)) {
+        show(QImage(*chosen));
+        photoState->setText(T("Выбрано — загрузится на сервер."));
+    } else if (!id.isEmpty() && n->data(Qt::UserRole + 2).toBool()) {
+        photoState->setText(T("Фото на сервере уже есть."));
+        Jellyfin::photo(m_net, &d, id, [show](const QByteArray &data) { show(QImage::fromData(data)); });
+    } else if (QFileInfo::exists(ActressPhotos::cacheFile(name))) {
+        show(QImage(ActressPhotos::cacheFile(name)));
+        *chosen = ActressPhotos::cacheFile(name);
+        photoState->setText(T("Найдено раньше — загрузится на сервер."));
+    }
+    auto takePhoto = [name, chosen, show, photoState](const QByteArray &data) {
+        if (!ActressPhotos::saveChosen(name, data)) {
+            photoState->setText(T("Картинка не подошла (нужна вертикальная, от 200×300)."));
+            return;
+        }
+        *chosen = ActressPhotos::cacheFile(name);
+        show(QImage(*chosen));
+        photoState->setText(T("Фото выбрано (1000×1500) — загрузится на сервер."));
+    };
+    connect(pasteImg, &QPushButton::clicked, &d, [&d, takePhoto, photoState] {
+        const QMimeData *md = QGuiApplication::clipboard()->mimeData();
+        if (md && md->hasImage()) {
+            QByteArray buf;
+            QBuffer b(&buf);
+            b.open(QIODevice::WriteOnly);
+            qvariant_cast<QImage>(md->imageData()).save(&b, "PNG");
+            takePhoto(buf);
+            return;
+        }
+        const QString text = md ? md->text().trimmed() : QString();
+        if (QFileInfo::exists(text)) {
+            QFile f(text);
+            if (f.open(QIODevice::ReadOnly))
+                takePhoto(f.readAll());
+            return;
+        }
+        const QUrl url(text);
+        if (!url.isValid() || !url.scheme().startsWith(QLatin1String("http"))) {
+            photoState->setText(T("В буфере нет картинки или ссылки на неё."));
+            return;
+        }
+        photoState->setText(T("загрузка…"));
+        WebFetch::get(url, &d, [takePhoto, photoState](const QByteArray &data) {
+            if (data.isEmpty())
+                photoState->setText(T("Картинка по ссылке не загрузилась."));
+            else
+                takePhoto(data);
+        });
+    });
+    connect(fileImg, &QPushButton::clicked, &d, [&d, takePhoto] {
+        const QString f = QFileDialog::getOpenFileName(&d, T("Фото актрисы"), QString(), T("Изображения (*.jpg *.jpeg *.png *.webp *.bmp)"));
+        QFile file(f);
+        if (!f.isEmpty() && file.open(QIODevice::ReadOnly))
+            takePhoto(file.readAll());
+    });
+    connect(findImg, &QPushButton::clicked, &d, [this, &d, name, chosen, show, photoState] {
+        const QString before = QFileInfo(ActressPhotos::cacheFile(name)).lastModified().toString(Qt::ISODate);
+        ActressPhotoDialog pd({name}, QDir::fromNativeSeparators(QSettings().value(QStringLiteral("ae/baseDir")).toString()), &d);
+        pd.exec();
+        const QString f = ActressPhotos::cacheFile(name);
+        if (QFileInfo::exists(f) && QFileInfo(f).lastModified().toString(Qt::ISODate) != before) {
+            *chosen = f;
+            show(QImage(f));
+            photoState->setText(T("Фото выбрано (1000×1500) — загрузится на сервер."));
+        }
+    });
+
+    // Текст анкеты → поля
+    auto apply = [=](const QString &raw) {
+        const Pasted::Card c = Pasted::parse(raw);
+        edit->setPlainText(c.overview);
+        if (!c.ruName.isEmpty()) ru->setText(c.ruName);
+        if (c.born.isValid()) born->setText(c.born.toString(Qt::ISODate));
+        if (!c.place.isEmpty()) place->setText(c.place);
+        if (!c.aliases.isEmpty()) tags->setText(c.aliases.join(QStringLiteral(", ")));
+        if (c.hasDied) died->setText(c.died.isValid() ? c.died.toString(Qt::ISODate) : QString());
+        QStringList got;
+        if (c.born.isValid()) got << T("дата рождения");
+        if (!c.place.isEmpty()) got << T("место рождения");
+        if (!c.aliases.isEmpty()) got << T("псевдонимы: %1").arg(c.aliases.size());
+        state->setText(got.isEmpty() ? T("Из текста ничего не взято — заполните поля вручную.")
+                                     : T("Из текста взято: %1. Проверьте поля.").arg(got.join(QStringLiteral(", "))));
+    };
+    connect(pasteText, &QPushButton::clicked, &d, [apply] { apply(QGuiApplication::clipboard()->text()); });
+    // Вставка Ctrl+V в пустое поле — сразу разбор
+    connect(edit, &QPlainTextEdit::textChanged, &d, [edit, apply] {
+        static bool busy = false;
+        if (busy)
+            return;
+        const QString t = edit->toPlainText();
+        if (edit->property("wasEmpty").toBool() && t.size() > 80) {
+            busy = true;
+            apply(t);
+            busy = false;
+        }
+        edit->setProperty("wasEmpty", t.trimmed().isEmpty());
+    });
+    edit->setProperty("wasEmpty", edit->toPlainText().trimmed().isEmpty());
+
+    // Что сейчас на сервере (если в таблице пусто)
+    if (!id.isEmpty() && loggedIn()) {
+        const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
+        QNetworkReply *rep = api(QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+        connect(rep, &QNetworkReply::finished, &d, [=] {
+            rep->deleteLater();
+            const QJsonObject it = QJsonDocument::fromJson(rep->readAll()).object();
+            if (it.isEmpty())
+                return;
+            const QSignalBlocker block(edit);
+            if (edit->toPlainText().trimmed().isEmpty()) {
+                edit->setPlainText(it.value("Overview").toString());
+                edit->setProperty("wasEmpty", edit->toPlainText().trimmed().isEmpty());
+            }
+            const QDate pb = QDate::fromString(it.value("PremiereDate").toString().left(10), Qt::ISODate);
+            const QDate pd = QDate::fromString(it.value("EndDate").toString().left(10), Qt::ISODate);
+            if (born->text().isEmpty() && pb.isValid())
+                born->setText(pb.toString(Qt::ISODate));
+            const QJsonArray locs = it.value("ProductionLocations").toArray();
+            if (place->text().isEmpty() && !locs.isEmpty())
+                place->setText(locs.first().toString());
+            if (tags->text().isEmpty()) {
+                QStringList t;
+                for (const QJsonValue &v : it.value("Tags").toArray())
+                    t << v.toString();
+                tags->setText(t.join(QStringLiteral(", ")));
+            }
+            if (pd.isValid())
+                state->setText(T("На сервере стоит дата смерти %1 и рождения %2 — скорее всего, Jellyfin взял их у однофамильца (TMDb). "
+                                 "При записи дата смерти будет удалена, если поле пустое.").arg(pd.toString(Qt::ISODate), pb.toString(Qt::ISODate)));
+        });
+    }
+
+    auto store = [=]() -> bool {
+        const QString b = born->text().trimmed();
+        const QDate bd = b.isEmpty() ? QDate() : Pasted::ruDate(b);
+        if (!b.isEmpty() && !bd.isValid()) {
+            state->setText(T("Не понял дату рождения — напишите как 1997-05-02."));
+            return false;
+        }
+        const QString dd = died->text().trimmed();
+        const QDate dt = dd.isEmpty() ? QDate() : Pasted::ruDate(dd);
+        m_table->item(row, ColRuName)->setText(ru->text().trimmed());
+        m_table->item(row, ColBorn)->setText(bd.isValid() ? bd.toString(Qt::ISODate) : QString());
+        m_table->item(row, ColBorn)->setData(Qt::UserRole, dt.isValid() ? dt.toString(Qt::ISODate) : QString());
+        m_table->item(row, ColPlace)->setText(place->text().trimmed());
+        m_table->item(row, ColTags)->setText(tags->text().trimmed());
+        const QString text = edit->toPlainText().trimmed();
+        m_table->item(row, ColBio)->setData(Qt::UserRole, text);
+        m_table->item(row, ColBio)->setText(text.section('\n', 0, 0));
+        m_table->item(row, ColBio)->setToolTip(text);
+        n->setData(Qt::UserRole + 4, *chosen);
+        m_table->item(row, ColStatus)->setText(T("заполнено вручную"));
+        if (!text.isEmpty() && !id.isEmpty())
+            m_table->item(row, ColCheck)->setCheckState(Qt::Checked);
+        return true;
+    };
+    connect(cancel, &QPushButton::clicked, &d, &QDialog::reject);
+    connect(save, &QPushButton::clicked, &d, [&d, store] { if (store()) d.accept(); });
+    bool writeNow = false;
+    connect(write, &QPushButton::clicked, &d, [&d, store, &writeNow] { if (store()) { writeNow = true; d.accept(); } });
+    if (d.exec() != QDialog::Accepted || !writeNow)
+        return;
+    m_queue = {row};
+    m_single = true;
+    setBusy(true, T("Записываю анкету %1…").arg(name));
+    writeNext();
+}
+
+void ServerPage::searchPhoto(int row)
+{
+    QTableWidgetItem *n = m_table->item(row, ColName);
+    const QString name = n->text(), id = n->data(Qt::UserRole).toString();
+    m_table->item(row, ColStatus)->setText(T("записано, ищу фото…"));
+    if (!m_img)
+        m_img = new ImageSearch(this);
+    m_img->search(ActressPhotos::query(name), [this, row, n, name, id](const QList<ActressPhotos::Candidate> &list) {
+        QList<ActressPhotos::Candidate> good;
+        for (const ActressPhotos::Candidate &c : list)
+            if (ActressPhotos::score(c) > 0)
+                good << c;
+        std::stable_sort(good.begin(), good.end(), [](const ActressPhotos::Candidate &a, const ActressPhotos::Candidate &b) {
+            return ActressPhotos::score(a) > ActressPhotos::score(b);
+        });
+        if (good.isEmpty())
+            qInfo("photo search %s: %d results, none suitable", qPrintable(name), int(list.size()));
+        auto tryOne = std::make_shared<std::function<void(int)>>();
+        *tryOne = [this, row, n, name, id, good, tryOne](int i) {
+            if (i >= good.size() || i >= 10) {
+                m_table->item(row, ColStatus)->setText(T("записано, фото не найдено — выберите в окне анкеты"));
+                writeNext();
+                return;
+            }
+            m_img->fetchImage(QUrl(good[i].url), [this, row, n, name, id, tryOne, i](const QByteArray &data) {
+                if (!ActressPhotos::saveChosen(name, data)) {
+                    (*tryOne)(i + 1);
+                    return;
+                }
+                QFile f(ActressPhotos::cacheFile(name));
+                f.open(QIODevice::ReadOnly);
+                QNetworkReply *p = api(QStringLiteral("POST"), QStringLiteral("/Items/%1/Images/Primary").arg(id), f.readAll().toBase64(), "image/jpeg");
+                connect(p, &QNetworkReply::finished, this, [this, p, row, n] {
+                    p->deleteLater();
+                    if (p->error() == QNetworkReply::NoError) {
+                        m_table->item(row, ColStatus)->setText(T("записано, фото найдено и загружено"));
+                        n->setData(Qt::UserRole + 2, true);
+                    } else {
+                        m_table->item(row, ColStatus)->setText(T("записано, фото не загрузилось: %1").arg(p->errorString()));
+                    }
+                    writeNext();
+                });
+            });
+        };
+        (*tryOne)(0);
+    });
+}
+
 void ServerPage::writeAll()
 {
     m_queue.clear();
@@ -1410,6 +1868,11 @@ void ServerPage::writeAll()
 void ServerPage::writeNext()
 {
     if (m_queue.isEmpty()) {
+        if (m_single) {
+            m_single = false;
+            setBusy(false, T("Анкета записана на сервер."));
+            return;
+        }
         setBusy(false, T("Анкеты записаны на сервер."));
         if (m_source->currentIndex() == 0)   // релиз: заодно изображения, которые Jellyfin сам не берёт
             QTimer::singleShot(300, this, [this] { pushReleaseImages(0); });
@@ -1431,8 +1894,17 @@ void ServerPage::writeNext()
         }
         item.insert("Overview", m_table->item(row, ColBio)->data(Qt::UserRole).toString());
         const QDate born = QDate::fromString(m_table->item(row, ColBorn)->text().trimmed(), Qt::ISODate);
-        if (born.isValid())
+        if (born.isValid()) {
             item.insert("PremiereDate", born.toString(Qt::ISODate) + QStringLiteral("T00:00:00.0000000Z"));
+        }
+        // Дата смерти: только если указана. Иначе убираем — Jellyfin (TMDb) часто ставит даты однофамильца
+        const QDate died = QDate::fromString(m_table->item(row, ColBorn)->data(Qt::UserRole).toString(), Qt::ISODate);
+        if (died.isValid())
+            item.insert("EndDate", died.toString(Qt::ISODate) + QStringLiteral("T00:00:00.0000000Z"));
+        else
+            item.remove("EndDate");
+        // Закрепить карточку, чтобы обновление метаданных её не переписало
+        item.insert("LockData", true);
         const QString place = m_table->item(row, ColPlace)->text().trimmed();
         if (!place.isEmpty())
             item.insert("ProductionLocations", QJsonArray{place});
@@ -1459,14 +1931,21 @@ void ServerPage::writeNext()
             m_table->item(row, ColCheck)->setCheckState(Qt::Unchecked);
             n->setData(Qt::UserRole + 1, true);
             // Фото: только если на сервере его нет
-            QString photo;
-            if (m_photos->isChecked() && !n->data(Qt::UserRole + 2).toBool()) {
+            QString photo = n->data(Qt::UserRole + 4).toString();   // выбранное в окне анкеты — всегда
+            if (!QFileInfo::exists(photo))
+                photo.clear();
+            if (photo.isEmpty() && m_photos->isChecked() && !n->data(Qt::UserRole + 2).toBool()) {
                 const QString name = n->text();
                 const QString rel = QDir::fromNativeSeparators(m_release->text().trimmed());
                 const QString inRelease = QDir(rel).filePath(QStringLiteral(".actors/") + Release::actorFile(name) + QStringLiteral(".jpg"));
-                for (const QString &f : {ActressPhotos::cacheFile(name), inRelease})
-                    if (photo.isEmpty() && QFileInfo(f).size() > 20000)
+                for (const QString &f : {ActressPhotos::cacheFile(name), inRelease,
+                                         ActressPhotos::findInLibrary(name, QDir::fromNativeSeparators(QSettings().value(QStringLiteral("ae/baseDir")).toString()))})
+                    if (photo.isEmpty() && !f.isEmpty() && QFileInfo(f).size() > 20000)
                         photo = f;
+                if (photo.isEmpty()) {   // нигде нет — поиск в интернете (1000×1500)
+                    searchPhoto(row);
+                    return;
+                }
             }
             QFile pf(photo);
             if (photo.isEmpty() || !pf.open(QIODevice::ReadOnly)) {
@@ -1479,6 +1958,9 @@ void ServerPage::writeNext()
                 if (p->error() == QNetworkReply::NoError) {
                     m_table->item(row, ColStatus)->setText(T("записано, фото загружено"));
                     n->setData(Qt::UserRole + 2, true);
+                    n->setData(Qt::UserRole + 4, QString());
+                } else {
+                    m_table->item(row, ColStatus)->setText(T("записано, фото не загрузилось: %1").arg(p->errorString()));
                 }
                 writeNext();
             });

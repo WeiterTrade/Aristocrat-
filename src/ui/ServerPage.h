@@ -13,6 +13,7 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QPushButton;
 class QTableWidget;
+class ImageSearch;
 class QWebEngineView;
 
 // Данные исполнителя из бесплатных баз (IAFD, Babepedia, FreeOnes, Boobpedia, Википедия)
@@ -94,6 +95,8 @@ private:
     void writeAll();
     void writeNext();
     void editBio(int row);
+    void editActress(int row);              // окно анкеты: вставка биографии и фото, запись на сервер
+    void searchPhoto(int row);
     void setBusy(bool busy, const QString &text = QString());
 
     QLineEdit *m_url, *m_user, *m_pass;
@@ -103,6 +106,7 @@ private:
     QLineEdit *m_release;
     QPushButton *m_load, *m_write;
     QCheckBox *m_photos;
+    QCheckBox *m_autoBio;
     QLabel *m_aiState;
     QTableWidget *m_table;
     QLabel *m_state;
@@ -112,4 +116,6 @@ private:
     QList<int> m_queue;
     bool m_auto = false;
     bool m_imagesAfterWrite = false;
+    bool m_single = false;
+    ImageSearch *m_img = nullptr;
 };
