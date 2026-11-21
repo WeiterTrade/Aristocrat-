@@ -1,6 +1,7 @@
 #include "ReleaseManager.h"
 #include "BrowserWindow.h"
 #include "CloudUpload.h"
+#include "ServerPage.h"
 #include "ActressPhotos.h"
 #include "SceneTools.h"
 #include "Widgets.h"
@@ -394,6 +395,8 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_upload = new CloudUploadPage(m_tabs);
     m_tabs->addTab(createPage, T("Создать релиз"));
     m_tabs->addTab(m_upload, T("Выгрузить"));
+    m_server = new ServerPage(m_tabs);
+    m_tabs->addTab(m_server, T("Сервер"));
     auto *root = new QVBoxLayout(createPage);
     root->setContentsMargins(20, 14, 20, 14);
     root->setSpacing(8);
@@ -725,6 +728,11 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
 void ReleaseManagerDialog::showUploadTab()
 {
     m_tabs->setCurrentIndex(1);
+}
+
+void ReleaseManagerDialog::showServerTab()
+{
+    m_tabs->setCurrentIndex(2);
 }
 
 void ReleaseManagerDialog::setBusy(bool busy, const QString &text)
@@ -1208,6 +1216,7 @@ void ReleaseManagerDialog::create()
     m_createdDir = dir;
     QSettings().setValue(QStringLiteral("ae/lastRelease"), dir);
     m_upload->setRelease(dir);
+    m_server->setRelease(dir);
     m_errors.clear();
 
     // NFO

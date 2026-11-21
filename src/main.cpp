@@ -61,6 +61,8 @@ int main(int argc, char *argv[])
         else if (a.startsWith(QLatin1String("--demo-release=")))
             w.demoRelease(a.mid(15).section(QLatin1Char('|'), 0, 0), a.mid(15).section(QLatin1Char('|'), 1, 1),
                           a.mid(15).section(QLatin1Char('|'), 2, 2));
+        else if (a == QLatin1String("--demo-server"))
+            w.demoServer();
         else if (a == QLatin1String("--demo-upload"))
             w.demoUpload();
         else if (a.startsWith(QLatin1String("--demo-theme=")))

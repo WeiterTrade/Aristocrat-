@@ -1,0 +1,51 @@
+# Простой заменитель сервера Jellyfin для автопроверки вкладки «Сервер»
+import json, sys, base64
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+PERSONS = {
+    "p1": {"Id": "p1", "Name": "Andi Avalon", "Type": "Person", "Overview": "", "ImageTags": {}, "Tags": ["Старый тег"]},
+    "p2": {"Id": "p2", "Name": "Cory Chase", "Type": "Person", "Overview": "Анкета уже заполнена.", "ImageTags": {"Primary": "x"}},
+}
+LOG = open(sys.argv[2] if len(sys.argv) > 2 else "jellyfin.log", "w", encoding="utf-8")
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def send(self, code, obj=None):
+        body = json.dumps(obj, ensure_ascii=False).encode() if obj is not None else b""
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def authed(self):
+        return 'Token="tok"' in self.headers.get("Authorization", "")
+    def do_GET(self):
+        u = urlparse(self.path); q = parse_qs(u.query)
+        if not self.authed(): return self.send(401)
+        if u.path == "/Persons":
+            term = q.get("searchTerm", [""])[0].lower()
+            items = [p for p in PERSONS.values() if term in p["Name"].lower()]
+            return self.send(200, {"Items": items, "TotalRecordCount": len(items)})
+        if u.path.startswith("/Users/u1/Items/"):
+            pid = u.path.rsplit("/", 1)[1]
+            return self.send(200, PERSONS[pid]) if pid in PERSONS else self.send(404)
+        self.send(404)
+    def do_POST(self):
+        u = urlparse(self.path)
+        data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if u.path == "/Users/AuthenticateByName":
+            return self.send(200, {"AccessToken": "tok", "User": {"Id": "u1", "Name": "test"}})
+        if not self.authed(): return self.send(401)
+        if u.path.endswith("/Images/Primary"):
+            img = base64.b64decode(data)
+            LOG.write("IMAGE %s %d bytes jpeg=%s\n" % (u.path, len(img), img[:2] == b"\xff\xd8")); LOG.flush()
+            return self.send(204)
+        if u.path.startswith("/Items/"):
+            o = json.loads(data)
+            LOG.write("UPDATE %s\n%s\n" % (u.path, json.dumps({k: o.get(k) for k in ("Name", "Overview", "PremiereDate", "ProductionLocations", "Tags")}, ensure_ascii=False, indent=1)))
+            LOG.flush()
+            return self.send(204)
+        self.send(404)
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()

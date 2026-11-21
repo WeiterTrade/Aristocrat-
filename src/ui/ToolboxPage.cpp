@@ -184,7 +184,7 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     relBtns->addStretch();
     b5->addSpacing(6);
     b5->addLayout(relBtns);
-    connect(upRel, &QPushButton::clicked, this, [this] { openRelease(QString(), QString(), QString(), true); });
+    connect(upRel, &QPushButton::clicked, this, [this] { openRelease(QString(), QString(), QString(), 1); });
     b5->addStretch();
     connect(openRel, &QPushButton::clicked, this, [this] { openRelease(); });
 #ifndef HAVE_WEBENGINE
@@ -201,21 +201,23 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     root->addStretch();
 }
 
-void ToolboxPage::openRelease(const QString &url, const QString &video, const QString &scenesUrl, bool upload)
+void ToolboxPage::openRelease(const QString &url, const QString &video, const QString &scenesUrl, int tab)
 {
 #ifdef HAVE_WEBENGINE
     auto *d = new ReleaseManagerDialog(url, video, window(), scenesUrl);
     d->setAttribute(Qt::WA_DeleteOnClose);
     connect(d, &ReleaseManagerDialog::videoRequested, this, &ToolboxPage::releaseVideo);
     connect(d, &ReleaseManagerDialog::downloadRequested, this, &ToolboxPage::releaseDownload);
-    if (upload)
+    if (tab == 1)
         d->showUploadTab();
+    else if (tab == 2)
+        d->showServerTab();
     d->show();
 #else
     Q_UNUSED(url)
     Q_UNUSED(video)
     Q_UNUSED(scenesUrl)
-    Q_UNUSED(upload)
+    Q_UNUSED(tab)
 #endif
 }
 

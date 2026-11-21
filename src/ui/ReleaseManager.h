@@ -19,6 +19,7 @@ class QRadioButton;
 class QTableWidget;
 class QTabWidget;
 class CloudUploadPage;
+class ServerPage;
 class IafdChecker;
 class ImageSearch;
 class QWebEngineView;
@@ -59,6 +60,7 @@ public:
                          const QString &scenesUrl = QString());
 
     void showUploadTab();
+    void showServerTab();
 
 signals:
     // Видео отдаётся в раздел «Конвертировать»: своё имя, своя папка, главы
@@ -85,6 +87,7 @@ private:
 
     QTabWidget *m_tabs;
     CloudUploadPage *m_upload;
+    ServerPage *m_server;
     QLineEdit *m_url;
     QPushButton *m_fetch;
     QLabel *m_state;

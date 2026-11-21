@@ -248,6 +248,10 @@ jobs:
           mkdir -p "$HOME/Облако тест"
           ARISTOCRAT_TEST_UPLOAD="$HOME/Облако тест" SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot upload --demo-upload
           echo "--- выгружено ---"; find "$HOME/Облако тест" | sed "s|$HOME/||" | head -20
+          # Вкладка «Сервер»: тестовый Jellyfin, анкеты актрис релиза (данные с настоящего IAFD)
+          (python3 tests/jellyfin_mock.py 8792 "$PWD/jellyfin.log" &) ; sleep 1
+          ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 SHOT_WAIT=60 ARISTOCRAT_LANG=ru shot server --demo-server
+          echo "--- записано на сервер ---"; cat jellyfin.log || true
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 
       - name: Проверка связи с расширением браузера
