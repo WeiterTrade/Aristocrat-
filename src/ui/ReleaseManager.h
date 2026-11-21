@@ -20,6 +20,7 @@ class QTableWidget;
 class QTabWidget;
 class CloudUploadPage;
 class IafdChecker;
+class ImageSearch;
 class QWebEngineView;
 
 // Чтение страницы релиза Adult Empire в скрытом окне: название, описание, студия, режиссёр,
@@ -96,6 +97,8 @@ private:
     QPlainTextEdit *m_setOverview;
     QListWidget *m_genres, *m_cast;
     QLabel *m_castNote;
+    QCheckBox *m_autoPhotos;
+    ImageSearch *m_imgSearch = nullptr;
     IafdChecker *m_iafd = nullptr;
     QLineEdit *m_newGenre;
     QLineEdit *m_frontUrl, *m_backUrl, *m_fanartUrl;
@@ -112,7 +115,13 @@ private:
     QPushButton *m_create, *m_openDir;
 
     QString m_studioName, m_directorFound;
-    struct Job { QString url, file; QStringList fallbacks; bool placeholder = false; };
+    struct Job {
+        QString url, file;
+        QStringList fallbacks;
+        bool placeholder = false;
+        QString search;        // найти фото актрисы (1000×1500) по этому имени
+        bool portrait = false; // подогнать под 1000×1500 и запомнить
+    };
     QList<Job> m_jobs;
     QStringList m_errors;
     QString m_createdDir;

@@ -243,6 +243,7 @@ jobs:
           find "$HOME/Videos" -name "*.nfo" -newer tests/release/5125349.html -exec cat {} \; 2>/dev/null | head -12
           ls -la "$HOME/Videos/Aristocrat Видеоконвертер/"*/*/ 2>/dev/null | head -20
           M=$(find "$HOME/Videos" -name "*.mkv" -path "*Серия*" | head -1); [ -n "$M" ] && $T/ffprobe -v error -show_chapters -of compact "$M" || true
+          echo "--- фото актрис ---"; for f in $(find "$HOME/Videos" -path "*/.actors/*.jpg" | tr ' ' '?'); do g=$(echo "$f" | tr '?' ' '); echo "$(basename "$g"): $(stat -c %s "$g") байт, $($T/ffprobe -v error -show_entries stream=width,height -of csv=p=0 "$g")"; done || true
           # Вкладка «Выгрузить»: последний релиз копируется в папку
           mkdir -p "$HOME/Облако тест"
           ARISTOCRAT_TEST_UPLOAD="$HOME/Облако тест" SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot upload --demo-upload

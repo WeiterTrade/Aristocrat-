@@ -1,6 +1,7 @@
 #include "ReleaseManager.h"
 #include "BrowserWindow.h"
 #include "CloudUpload.h"
+#include "ActressPhotos.h"
 #include "SceneTools.h"
 #include "Widgets.h"
 #include "core/Gender.h"
@@ -11,6 +12,7 @@
 
 #include <QCheckBox>
 #include <functional>
+#include <algorithm>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -552,6 +554,27 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_castNote->setObjectName(QStringLiteral("Muted"));
     m_castNote->setWordWrap(true);
     right->addWidget(m_castNote);
+    auto *photoRow = new QHBoxLayout;
+    m_autoPhotos = new QCheckBox(T("Фото актрис 1000×1500 — искать автоматически"), page);
+    m_autoPhotos->setObjectName(QStringLiteral("PlainCheck"));
+    m_autoPhotos->setChecked(st.value(QStringLiteral("ae/autoPhotos"), true).toBool());
+    auto *photosBtn = new QPushButton(T("Фото актрис…"), page);
+    photoRow->addWidget(m_autoPhotos, 1);
+    photoRow->addWidget(photosBtn);
+    right->addLayout(photoRow);
+    connect(m_autoPhotos, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("ae/autoPhotos"), on); });
+    connect(photosBtn, &QPushButton::clicked, this, [this] {
+        QStringList names;
+        for (int i = 0; i < m_cast->count(); ++i)
+            if (m_cast->item(i)->checkState() == Qt::Checked)
+                names << m_cast->item(i)->data(Qt::UserRole).toString();
+        if (names.isEmpty()) {
+            m_state->setText(T("Отметьте актрис в списке."));
+            return;
+        }
+        ActressPhotoDialog d(names, QDir::fromNativeSeparators(m_base->text().trimmed()), this);
+        d.exec();
+    });
 
     auto *sl = new QHBoxLayout;
     m_useScenes = new QCheckBox(T("Вставить главы (сцены) в видео"), page);
@@ -1206,22 +1229,43 @@ void ReleaseManagerDialog::create()
     const QDir actors(QDir(dir).filePath(QStringLiteral(".actors")));
     if (!r.actresses.isEmpty())
         QDir().mkpath(actors.path());
-    for (const ReleasePerson &p : r.cast) {
-        if (!r.actresses.contains(p.name))
-            continue;
-        const QString file = actors.filePath(Release::actorFile(p.name) + QStringLiteral(".jpg"));
-        if (QFileInfo::exists(file))
-            continue;
-        const QString guess = p.id.isEmpty() ? QString() : QStringLiteral("https://imgs1cdn.adultempire.com/actors/%1h.jpg").arg(p.id);
-        m_jobs << Job{p.photo.isEmpty() ? guess : p.photo, file, p.photo.isEmpty() ? QStringList() : QStringList{guess}, true};
-    }
-    // Актрисы, добавленные вручную (нет в составе со страницы)
+    // Фото актрис: выбранное раньше → своя медиатека → поиск 1000×1500 → фото с сайта → «пустое»
+    const QString baseDir = QDir::fromNativeSeparators(m_base->text().trimmed());
     for (const QString &a : r.actresses) {
-        bool found = false;
-        for (const ReleasePerson &p : r.cast) found |= p.name == a;
         const QString file = actors.filePath(Release::actorFile(a) + QStringLiteral(".jpg"));
-        if (!found && !QFileInfo::exists(file))
+        if (QFileInfo(file).size() > 20000)
+            continue;   // уже есть настоящее фото
+        QString ready = ActressPhotos::cacheFile(a);
+        if (!QFileInfo::exists(ready))
+            ready = ActressPhotos::findInLibrary(a, baseDir);
+        if (!ready.isEmpty() && QFileInfo::exists(ready)) {
+            QImage img(ready);
+            QFile::remove(file);
+            if (img.width() == 1000 && img.height() == 1500)
+                QFile::copy(ready, file);
+            else
+                ActressPhotos::fitPortrait(img).save(file, "JPG", 92);
+            continue;
+        }
+        QStringList site;
+        for (const ReleasePerson &p : r.cast) {
+            if (p.name != a)
+                continue;
+            if (!p.photo.isEmpty())
+                site << p.photo;
+            if (!p.id.isEmpty())
+                site << QStringLiteral("https://imgs1cdn.adultempire.com/actors/%1h.jpg").arg(p.id);
+        }
+        if (m_autoPhotos->isChecked()) {
+            Job j{QString(), file, site, true};
+            j.search = a;
+            j.portrait = true;
+            m_jobs << j;
+        } else if (!site.isEmpty()) {
+            m_jobs << Job{site.first(), file, site.mid(1), true};
+        } else {
             placeholderPhoto().save(file, "JPG", 85);
+        }
     }
 
     // Фан-арта нет — кадр из видео
@@ -1256,7 +1300,36 @@ void ReleaseManagerDialog::runJobs()
         finishCreate();
         return;
     }
-    const Job job = m_jobs.takeFirst();
+    Job job = m_jobs.takeFirst();
+    if (!job.search.isEmpty()) {
+        // Ищем фото актрисы, лучшие варианты — по очереди, затем фото с сайта
+        m_state->setText(T("Ищу фото: %1…").arg(job.search));
+        if (!m_imgSearch)
+            m_imgSearch = new ImageSearch(this);
+        m_imgSearch->search(ActressPhotos::query(job.search), [this, job](const QList<ActressPhotos::Candidate> &list) mutable {
+            QList<ActressPhotos::Candidate> good;
+            for (const ActressPhotos::Candidate &c : list)
+                if (ActressPhotos::score(c) > 0)
+                    good << c;
+            std::stable_sort(good.begin(), good.end(), [](const ActressPhotos::Candidate &x, const ActressPhotos::Candidate &y) {
+                return ActressPhotos::score(x) > ActressPhotos::score(y);
+            });
+            QStringList urls;
+            for (int i = 0; i < good.size() && i < 4; ++i)
+                urls << good[i].url;
+            urls << job.fallbacks;
+            job.search.clear();
+            if (urls.isEmpty()) {
+                placeholderPhoto().save(job.file, "JPG", 85);
+            } else {
+                job.url = urls.takeFirst();
+                job.fallbacks = urls;
+                m_jobs.prepend(job);
+            }
+            runJobs();
+        });
+        return;
+    }
     auto saveOrFallback = [job](const QByteArray &data) {
         QImage img;
         if (!data.isEmpty())
@@ -1272,9 +1345,25 @@ void ReleaseManagerDialog::runJobs()
                 p.start(Tools::ffmpeg(), {"-hide_banner", "-loglevel", "error", "-y", "-i", tmp, "-q:v", "2", job.file});
                 p.waitForFinished(30000);
                 QFile::remove(tmp);
-                if (QFileInfo(job.file).size() > 0)
+                if (QFileInfo(job.file).size() > 0) {
+                    if (job.portrait) {
+                        const QImage conv(job.file);
+                        if (conv.width() < 300 || conv.height() < 400)
+                            return false;
+                        ActressPhotos::fitPortrait(conv).save(job.file, "JPG", 92);
+                    }
                     return true;
+                }
             }
+        }
+        if (!img.isNull() && job.portrait) {
+            // Фото актрисы: 1000×1500, и запоминаем для следующих релизов
+            if (img.width() < 300 || img.height() < 400)
+                return false;   // превьюшка — ищем дальше
+            const QImage fit = ActressPhotos::fitPortrait(img);
+            if (img.height() >= 1200)
+                fit.save(ActressPhotos::cacheFile(QFileInfo(job.file).completeBaseName().replace('_', ' ')), "JPG", 92);
+            return fit.save(job.file, "JPG", 92);
         }
         if (!img.isNull()) {
             if (img.hasAlphaChannel()) {
