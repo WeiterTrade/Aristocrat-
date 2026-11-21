@@ -105,6 +105,11 @@ var bgs=[];
 var html=document.documentElement.innerHTML;var hre=/https?:\/\/[^"'\s<>()]+?\.(?:jpe?g|webp|png)/gi;var hm;
 while((hm=hre.exec(html)))add(hm[0].replace(/&amp;/g,'&'));
 r.images=urls;
+// Ссылка «Watch Now» — страница просмотра (там плеер и список сцен)
+r.watch='';[].slice.call(document.querySelectorAll('a[href]')).some(function(a){var t=txt(a),h=a.href||'';
+  if(!/^https?:/i.test(h)||h.split('#')[0]===location.href.split('#')[0])return false;
+  if(/watch\s*now|stream\s*now|watch\s*movie|play\s*now/i.test(t)||/\/(vod|streaming|watch)\b|viewpart|[?&]watch/i.test(h)){
+    if(/category|pornstar|studio|login|account|cart|unlimited/i.test(h))return false;r.watch=h;return true;}return false;});
 var sku=r.sku.replace(/\D/g,'');
 function pick(ok){var best='';urls.forEach(function(u){if(ok(u)&&(!best||(sku&&u.indexOf(sku)>=0&&best.indexOf(sku)<0)))best=u;});return best;}
 r.back=pick(function(u){return /\d+bh\.(jpe?g|webp)/i.test(u);});
@@ -718,6 +723,8 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
         scenes << c;
     }
     setScenes(scenes);
+    if (m_scenesUrl->text().trimmed().isEmpty() && !d.value("watch").toString().isEmpty())
+        m_scenesUrl->setText(d.value("watch").toString());
 
     updateTarget();
     translate();
@@ -1009,8 +1016,10 @@ void ReleaseManagerDialog::create()
         emit videoRequested(video, base, dir, m_lossless->isChecked(), meta);
     } else if (download) {
         // После скачивания видео само уйдёт в папку релиза (с главами и кадром для фан-арта)
-        Release::addPending(r.pageUrl, Release::Pending{base, dir, meta, m_lossless->isChecked()});
-        emit downloadRequested(r.pageUrl);
+        // Плеер — на странице просмотра (сцен), на странице релиза видео нет
+        const QString dl = m_scenesUrl->text().trimmed().isEmpty() ? r.pageUrl : m_scenesUrl->text().trimmed();
+        Release::addPending(dl, Release::Pending{base, dir, meta, m_lossless->isChecked()});
+        emit downloadRequested(dl);
     }
 
     setBusy(true, T("Скачиваю обложки и фото актрис…"));

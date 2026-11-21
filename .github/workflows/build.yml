@@ -232,7 +232,7 @@ jobs:
           (cd tests/release && $OLDPWD/$T/ffmpeg -hide_banner -loglevel error -f lavfi -i "color=c=0x8a1f3c:s=600x850" -frames:v 1 -y 5125349h.jpg \
             && $OLDPWD/$T/ffmpeg -hide_banner -loglevel error -f lavfi -i "color=c=0x1f5a8a:s=600x850" -frames:v 1 -y gallery-2-large.jpg \
             && (python3 -m http.server 8791 >/dev/null 2>&1 &)); sleep 1
-          ARISTOCRAT_TEST_AUTOCREATE=1 SHOT_WAIT=55 ARISTOCRAT_LANG=ru shot release "--demo-release=http://127.0.0.1:8791/5125349.html|$PWD/Кассета 1994.mp4|http://127.0.0.1:8791/5125349-scenes.html"
+          ARISTOCRAT_TEST_AUTOCREATE=1 SHOT_WAIT=55 ARISTOCRAT_LANG=ru shot release "--demo-release=http://127.0.0.1:8791/5125349.html|$PWD/Кассета 1994.mp4"
           echo "--- созданные файлы ---"; find "$HOME/Videos" -path "*Stunning*" -o -path "*Сногсш*" -o -path "*Серия*" 2>/dev/null | head -30
           find "$HOME/Videos" -name "*.nfo" -newer tests/release/5125349.html -exec cat {} \; 2>/dev/null | head -12
           ls -la "$HOME/Videos/Aristocrat Видеоконвертер/"*/*/ 2>/dev/null | head -20
