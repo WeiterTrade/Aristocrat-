@@ -36,6 +36,14 @@ static const char *kScenes =
     ".filter(function(s){return s&&!re.test(s)&&!/^\\+?\\s*\\d+\\s*more$/i.test(s)&&s.length>2;});"
     "if(lines.length){title=lines[0];break;}}"
     "var key=m[1]+'|'+m[2];if(seen[key])continue;seen[key]=1;out.push({start:m[1],end:m[2],title:title});}"
+    // Adult Empire: у кнопки «More Screenshots» начало и конец сцены в секундах — ShowMoreScreens2017(id,start,end,sceneID,url)
+    "if(!out.length){var f=function(x){x=+x;var h=Math.floor(x/3600),mi=Math.floor(x%3600/60),se=x%60;"
+    "return h+':'+(mi<10?'0':'')+mi+':'+(se<10?'0':'')+se;};var sids={};"
+    "[].slice.call(document.querySelectorAll('[onclick*=\"ShowMoreScreens\"]')).forEach(function(e){"
+    "var a=/ShowMoreScreens\\w*\\(\\s*\\d+\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/.exec(e.getAttribute('onclick')||'');"
+    "if(!a||sids[a[3]])return;sids[a[3]]=1;var t='';var an=document.querySelector('a[name=\"scene_'+a[3]+'\"]');"
+    "if(an){var r=an.nextElementSibling;var h=r&&r.querySelector('h3,h2,h4');if(h)t=h.textContent.trim().replace(/\\s+/g,' ');}"
+    "out.push({start:f(a[1]),end:f(a[2]),title:t});});}"
     "return JSON.stringify(out);})()";
 
 const char *sceneScript() { return kScenes; }

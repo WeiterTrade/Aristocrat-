@@ -117,7 +117,7 @@ var html=document.documentElement.innerHTML;var hre=/https?:\/\/[^"'\s<>()]+?\.(
 while((hm=hre.exec(html)))add(hm[0].replace(/&amp;/g,'&'));
 r.images=urls;
 // Кадры сцен (скриншоты) — варианты фан-арта: по порядку на странице, без обложек и фото актрис
-r.shots=[];(function(){var seen={};function okShot(u){return u&&/^https?:/i.test(u)&&/\.(jpe?g|webp)(\?|$)/i.test(u)&&!/\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner/i.test(u);}
+r.shots=[];(function(){var seen={};function okShot(u){return u&&/^https?:/i.test(u)&&(/\.(jpe?g|webp)(\?|$)/i.test(u)||/\/frame\/\d+/i.test(u))&&!/blank_/i.test(u)&&!/\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner/i.test(u);}
  [].forEach.call(document.querySelectorAll('img, a[href]'),function(e){var inScene=!!e.closest('[class*="scene"],[id*="scene"],[class*="screenshot"],[class*="screen-shot"],[class*="gallery"],[class*="caps"]');
   var u=e.tagName=='A'?e.href:(e.getAttribute('data-src')||e.currentSrc||e.src);var big=e.tagName=='A'?u:(e.getAttribute('data-original')||e.getAttribute('data-large')||u);
   if(!(inScene||/caps\d*cdn|screenshot|\/caps\//i.test(u)))return;if(e.tagName=='IMG'){var p=e.closest('a');if(p&&okShot(p.href))big=p.href;}
@@ -127,6 +127,9 @@ r.watch='';[].slice.call(document.querySelectorAll('a[href]')).some(function(a){
   if(!/^https?:/i.test(h)||h.split('#')[0]===location.href.split('#')[0])return false;
   if(/watch\s*now|stream\s*now|watch\s*movie|play\s*now/i.test(t)||/\/(vod|streaming|watch)\b|viewpart|[?&]watch/i.test(h)){
     if(/category|pornstar|studio|login|account|cart|unlimited/i.test(h))return false;r.watch=h;return true;}return false;});
+// Adult Empire: страница видео (…-porn-videos.html) указана в кнопке «More Screenshots»
+(function(){var e=document.querySelector('[onclick*="ShowMoreScreens"]');var m=e&&/'([^']+porn-videos[^']*)'/.exec(e.getAttribute('onclick')||'');
+ if(m)r.watch=new URL(m[1],location.href).href;})();
 var sku=r.sku.replace(/\D/g,'');
 function pick(ok){var best='';urls.forEach(function(u){if(ok(u)&&(!best||(sku&&u.indexOf(sku)>=0&&best.indexOf(sku)<0)))best=u;});return best;}
 r.back=pick(function(u){return /\d+bh\.(jpe?g|webp)/i.test(u);});
@@ -135,7 +138,7 @@ if(!r.front)r.front=r.ogImage;
 bgs.sort(function(a,b){return b.w-a.w;});
 var big=[].slice.call(document.images).filter(function(i){return i.naturalWidth>=1000&&i.naturalWidth>i.naturalHeight*1.3;})
   .sort(function(a,b){return b.naturalWidth-a.naturalWidth;});
-r.fanart=bgs.length?bgs[0].u:(big.length?(big[0].currentSrc||big[0].src):'');
+r.fanart=bgs.length?bgs[0].u:(big.length?(big[0].currentSrc||big[0].src):'');if(/blank_/i.test(r.fanart))r.fanart='';
 try{r.scenes=JSON.parse(%1);}catch(e){r.scenes=[];}
 return JSON.stringify(r);})())JS").arg(QString::fromUtf8(sceneScript()));
 }
@@ -306,6 +309,36 @@ void ReleaseFetcher::shotsStep(int i)
     if (i < 0) {
         emit progress(T("Собираю кадры сцен для фан-арта…"));
         m_shotList.clear();
+        static const char *ae = R"JS((function(){var out=[];var calls=[].slice.call(document.querySelectorAll('[onclick*="ShowMoreScreens"]'));var seen={};
+calls.forEach(function(e){var a=/ShowMoreScreens\w*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(e.getAttribute('onclick')||'');
+ if(!a||seen[a[4]]||Object.keys(seen).length>=4)return;seen[a[4]]=1;
+ try{var x=new XMLHttpRequest();x.open('GET','/Item/LoadSceneScreenshots?item='+a[1]+'&start='+a[2]+'&end='+a[3]+'&sceneID='+a[4],false);x.send();
+  var re=/href="(https?:\/\/[^"]+\/frame\/\d+\?[^"]*)"/g,m,n=0,got={};
+  while((m=re.exec(x.responseText))&&n<4){var u=m[1].replace(/&amp;/g,'&');if(!got[u]){got[u]=1;out.push(u);n++;}}}catch(err){}});
+if(!out.length)[].slice.call(document.querySelectorAll('a.screen[href*="/frame/"]')).forEach(function(a){if(out.indexOf(a.href)<0)out.push(a.href);});
+return JSON.stringify(out);})())JS";
+        m_view->page()->runJavaScript(QString::fromUtf8(ae), [this](const QVariant &v) {
+            const QJsonArray got = QJsonDocument::fromJson(v.toString().toUtf8()).array();
+            if (!got.isEmpty()) {
+                for (const QJsonValue &x : got)
+                    m_shotList << x.toString();
+                finishShots();
+                return;
+            }
+            shotsByButtons();
+        });
+        return;
+    }
+    if (i >= m_shotButtons.size()) {
+        finishShots();
+        return;
+    }
+    shotsOpen(i);
+}
+
+void ReleaseFetcher::shotsByButtons()
+{
+    {
         static const char *js = R"JS((function(){var re=/more\s+screen\s*shots?|view\s+(all|more)\s+screen|(больше|ещё|еще)\s+скриншот/i;
 var out=[];[].slice.call(document.querySelectorAll('a,button')).forEach(function(e){if(out.length>=4)return;
  var t=(e.innerText||e.textContent||'').trim();if(!re.test(t)||t.length>40)return;
@@ -319,12 +352,12 @@ var out=[];[].slice.call(document.querySelectorAll('a,button')).forEach(function
             }
             shotsStep(0);
         });
-        return;
     }
-    if (i >= m_shotButtons.size()) {
-        finishShots();
-        return;
-    }
+}
+
+void ReleaseFetcher::shotsOpen(int i)
+{
+    {
     setProperty("shotIndex", i);
     const QString href = m_shotButtons.at(i).toObject().value("href").toString();
     if (!href.isEmpty()) {   // отдельная страница со скриншотами сцены
@@ -346,9 +379,9 @@ void ReleaseFetcher::collectShots(int i, int attempt)
     if (m_done)
         return;
     // Первые 4 крупных кадра: в открывшемся окне (поверх страницы) или на отдельной странице сцены
-    static const char *js = R"JS((function(pageMode){function big(img){var a=img.closest('a');var u=(a&&/\.(jpe?g|webp)(\?|$)/i.test(a.href))?a.href:
+    static const char *js = R"JS((function(pageMode){function big(img){var a=img.closest('a');var u=(a&&(/\.(jpe?g|webp)(\?|$)/i.test(a.href)||/\/frame\/\d+/i.test(a.href)))?a.href:
  (img.getAttribute('data-original')||img.getAttribute('data-large')||img.getAttribute('data-src')||img.currentSrc||img.src);return u;}
-function ok(u){return u&&/^https?:/i.test(u)&&!/\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner|\.svg/i.test(u);}
+function ok(u){return u&&/^https?:/i.test(u)&&!/blank_|\/movie\/|\d+b?h\.(jpe?g|webp)|actors?\/|logo|icon|sprite|avatar|banner|\.svg/i.test(u);}
 var scope=null;
 if(!pageMode){var best=0;[].slice.call(document.querySelectorAll('body *')).forEach(function(e){var cs=getComputedStyle(e);
  if((cs.position=='fixed'||cs.position=='absolute')&&cs.display!='none'&&cs.visibility!='hidden'){var r=e.getBoundingClientRect();

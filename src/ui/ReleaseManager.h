@@ -48,6 +48,8 @@ private:
     void galleryStep(int step);   // задняя обложка: открыть галерею обложек и пролистать
     // Кадры для фан-арта: «Больше скриншотов» у первых 4 сцен, по 4 первых кадра
     void shotsStep(int i);
+    void shotsByButtons();
+    void shotsOpen(int i);
     void collectShots(int i, int attempt);
     void finishShots();
     QJsonArray m_shotButtons;

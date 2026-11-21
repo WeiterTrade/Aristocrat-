@@ -490,6 +490,7 @@
  "Переупаковать в MKV (без перекодирования)": "Remux to MKV (no re-encoding)",
  "Переупаковать в MKV и добавить сцены (без перекодирования)": "Remux to MKV and add scenes (no re-encoding)",
  "Переупаковка в MKV…": "Remuxing to MKV…",
+ "Перехожу на страницу видео релиза…": "Opening the release's video page…",
  "По ссылке на релиз создаёт папку для медиатеки: NFO с переводом названия и описания, постер, заднюю обложку, фан-арт, фото актрис, видео с нужным именем и главами. Готовый релиз выгружается в облако (Google Диск, Яндекс Диск, Облако Mail.ru, OneDrive) или в любую папку.": "Creates a media library folder from a release link: NFO with translated title and description, poster, back cover, fanart, actress photos, and the video with the right name and chapters. The finished release can be uploaded to a cloud (Google Drive, Yandex Disk, Mail.ru Cloud, OneDrive) or to any folder.",
  "По ссылке на релиз создаёт папку для медиатеки: NFO с переводом названия и описания, постер, заднюю обложку, фан-арт, фото актрис, видео с нужным именем и главами. Перед созданием всё можно проверить.": "Creates a media library folder from a release link: NFO with translated title and description, poster, back cover, fanart, actress photos, and the video with the right name and chapters. Everything can be checked before creating.",
  "По умолчанию": "Default",

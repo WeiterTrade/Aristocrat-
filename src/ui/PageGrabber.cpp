@@ -181,6 +181,7 @@ void PageGrabber::start(const QUrl &page, const QString &user, const QString &pa
 void PageGrabber::openVideoPage()
 {
     m_step = Step::VideoPage;
+    m_vodTried = false;
     m_pokes = 0;
     emit progress(T("Открываю страницу с видео…"));
     m_timeout.start(45000);
@@ -258,6 +259,29 @@ void PageGrabber::poke()
             if (r.toString() == QLatin1String("clicked"))
                 emit progress(T("Возраст 18+ подтверждён. Поиск видео…"));
         });
+    }
+    // Adult Empire: у релиза (DVD, …-porn-movies.html) видео на отдельной странице …-porn-videos.html —
+    // её адрес есть в кнопках «More Screenshots». Переходим туда один раз.
+    if (!m_vodTried && m_pokes >= 2 && Sites::isAdultEmpire(m_target)) {
+        static const char *vodJs = R"JS((function(){var e=document.querySelector('[onclick*="ShowMoreScreens"]');
+var m=e&&/'([^']+porn-videos[^']*)'/.exec(e.getAttribute('onclick')||'');var h=m?m[1]:'';
+if(!h)[].slice.call(document.querySelectorAll('a[href*="-porn-videos.html"]')).some(function(a){
+ var p=a.pathname||'';if(/^\/\d+\/[^\/]+-porn-videos\.html$/.test(p)){h=a.href;return true;}return false;});
+return h?new URL(h,location.href).href:'';})())JS";
+        m_view->page()->runJavaScript(QString::fromUtf8(vodJs),
+            [this](const QVariant &r) {
+                const QUrl vod(r.toString());
+                if (m_step != Step::VideoPage || m_vodTried || !vod.isValid() || vod.isEmpty())
+                    return;
+                m_vodTried = true;
+                if (vod.path() == m_view->url().path())
+                    return;
+                emit progress(T("Перехожу на страницу видео релиза…"));
+                m_target = Sites::videoPageUrl(vod);
+                m_pokes = 0;
+                m_timeout.start(45000);
+                m_view->load(m_target);
+            });
     }
     m_view->page()->runJavaScript(QString::fromUtf8(kPlayScript));
     if (m_pokes == 3)

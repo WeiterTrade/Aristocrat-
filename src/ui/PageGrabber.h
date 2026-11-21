@@ -58,6 +58,7 @@ private:
     QString m_user, m_pass;
     int m_loginTries = 0;
     int m_pokes = 0;
+    bool m_vodTried = false;
     struct Found { QUrl url; QString kind; QUrl page; };
     QList<Found> m_found;
 };
