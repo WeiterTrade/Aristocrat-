@@ -12,6 +12,7 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QNetworkAccessManager;
 class QListWidgetItem;
 class QPlainTextEdit;
 class QPushButton;
@@ -124,7 +125,11 @@ private:
         bool placeholder = false;
         QString search;        // найти фото актрисы (1000×1500) по этому имени
         bool portrait = false; // подогнать под 1000×1500 и запомнить
+        QString name, libRoot; // актриса и корень медиатеки (для .bio)
+        bool server = false;   // сначала взять фото и анкету с сервера Jellyfin
+        bool local = false;    // затем — выбранное раньше или из своей медиатеки
     };
+    QNetworkAccessManager *m_jnet = nullptr;
     QList<Job> m_jobs;
     QStringList m_errors;
     QString m_createdDir;

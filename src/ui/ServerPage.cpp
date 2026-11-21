@@ -615,11 +615,6 @@ void ServerPage::setBusy(bool busy, const QString &text)
         m_state->setText(text);
 }
 
-bool ServerPage::loggedIn() const
-{
-    return !QSettings().value(QStringLiteral("server/token")).toString().isEmpty();
-}
-
 void ServerPage::updateLogin()
 {
     const bool in = loggedIn();
@@ -630,7 +625,9 @@ void ServerPage::updateLogin()
                                  "программа хранит только ключ доступа."));
 }
 
-QByteArray ServerPage::authHeader() const
+namespace Jellyfin {
+
+static QByteArray authHeader()
 {
     QSettings st;
     QString dev = st.value(QStringLiteral("server/deviceId")).toString();
@@ -646,7 +643,12 @@ QByteArray ServerPage::authHeader() const
     return h.toUtf8();
 }
 
-QNetworkReply *ServerPage::api(const QString &method, const QString &path, const QByteArray &body, const QByteArray &type)
+bool loggedIn()
+{
+    return !QSettings().value(QStringLiteral("server/token")).toString().isEmpty();
+}
+
+QNetworkReply *request(QNetworkAccessManager *net, const QString &method, const QString &path, const QByteArray &body, const QByteArray &type)
 {
     QString base = QSettings().value(QStringLiteral("server/url")).toString().trimmed();
     while (base.endsWith('/'))
@@ -660,8 +662,94 @@ QNetworkReply *ServerPage::api(const QString &method, const QString &path, const
     req.setHeader(QNetworkRequest::ContentTypeHeader, QString::fromLatin1(type));
     req.setTransferTimeout(30000);
     if (method == QLatin1String("GET"))
-        return m_net->get(req);
-    return m_net->sendCustomRequest(req, method.toLatin1(), body);
+        return net->get(req);
+    return net->sendCustomRequest(req, method.toLatin1(), body);
+}
+
+void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(const QJsonObject &)> cb)
+{
+    if (!loggedIn()) {
+        cb({});
+        return;
+    }
+    QNetworkReply *r = request(net, QStringLiteral("GET"),
+                               QStringLiteral("/Persons?fields=Overview,PremiereDate,ProductionLocations,EndDate&enableImages=true&searchTerm=")
+                                   + QString::fromLatin1(QUrl::toPercentEncoding(name)));
+    QObject::connect(r, &QNetworkReply::finished, ctx, [r, name, cb] {
+        r->deleteLater();
+        for (const QJsonValue &v : QJsonDocument::fromJson(r->readAll()).object().value("Items").toArray())
+            if (v.toObject().value("Name").toString().compare(name, Qt::CaseInsensitive) == 0) {
+                cb(v.toObject());
+                return;
+            }
+        cb({});
+    });
+}
+
+void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void(const QByteArray &)> cb)
+{
+    // Оригинал без пережатия — как скачивает Adult Soft
+    QNetworkReply *r = request(net, QStringLiteral("GET"), QStringLiteral("/Items/%1/Images/Primary?quality=100").arg(id));
+    QObject::connect(r, &QNetworkReply::finished, ctx, [r, cb] {
+        r->deleteLater();
+        cb(r->error() == QNetworkReply::NoError ? r->readAll() : QByteArray());
+    });
+}
+
+QString bioText(const QJsonObject &p)
+{
+    // Тот же формат, что пишет Adult Soft (Nfo.bio): «Биография», текст, «Краткая справка»
+    QString text = p.value("Overview").toString();
+    text.replace(QRegularExpression(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption), QStringLiteral("\n"));
+    text.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
+    text = text.trimmed();
+    auto ru = [](const QString &iso) {
+        const QDate d = QDate::fromString(iso.left(10), Qt::ISODate);
+        return d.isValid() && d.year() >= 1800 ? d.toString(QStringLiteral("dd.MM.yyyy")) : QString();
+    };
+    const QString born = ru(p.value("PremiereDate").toString());
+    const QString died = ru(p.value("EndDate").toString());
+    const QString place = p.value("ProductionLocations").toArray().at(0).toString();
+    if (text.isEmpty() && born.isEmpty() && place.isEmpty())
+        return {};
+    QString out;
+    if (!text.startsWith(QStringLiteral("Биография"), Qt::CaseInsensitive))
+        out += QStringLiteral("Биография\n");
+    out += text;
+    if (!text.contains(QStringLiteral("Краткая справка"), Qt::CaseInsensitive) && (!born.isEmpty() || !died.isEmpty() || !place.isEmpty())) {
+        out += QStringLiteral("\n\nКраткая справка:\n\n");
+        if (!born.isEmpty()) out += QStringLiteral("* Дата рождения: ") + born + QLatin1Char('\n');
+        if (!died.isEmpty()) out += QStringLiteral("* Дата смерти: ") + died + QLatin1Char('\n');
+        if (!place.isEmpty()) out += QStringLiteral("* Место рождения: ") + place + QLatin1Char('\n');
+    }
+    return out.trimmed() + QLatin1Char('\n');
+}
+
+bool saveBio(const QString &libraryRoot, const QString &name, const QString &text, bool overwrite)
+{
+    if (libraryRoot.isEmpty() || text.isEmpty())
+        return false;
+    const QString dir = QDir(libraryRoot).filePath(QStringLiteral(".bio"));
+    QDir().mkpath(dir);
+    QFile f(QDir(dir).filePath(Release::actorFile(name) + QStringLiteral(".txt")));
+    if (!overwrite && f.exists() && f.size() > 0)
+        return true;
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    f.write(text.toUtf8());
+    return true;
+}
+
+} // namespace Jellyfin
+
+QNetworkReply *ServerPage::api(const QString &method, const QString &path, const QByteArray &body, const QByteArray &type)
+{
+    return Jellyfin::request(m_net, method, path, body, type);
+}
+
+bool ServerPage::loggedIn() const
+{
+    return Jellyfin::loggedIn();
 }
 
 void ServerPage::login()
@@ -750,6 +838,7 @@ void ServerPage::loadList()
         n->setData(Qt::UserRole, person.value("Id").toString());
         n->setData(Qt::UserRole + 1, !person.value("Overview").toString().trimmed().isEmpty());
         n->setData(Qt::UserRole + 2, person.value("ImageTags").toObject().contains("Primary"));
+        n->setData(Qt::UserRole + 3, person);
         m_table->setItem(row, ColName, n);
         for (int c = ColStatus; c < ColCount; ++c)
             m_table->setItem(row, c, new QTableWidgetItem);
@@ -823,8 +912,8 @@ void ServerPage::lookupNext()
             return;
         }
         if (n->data(Qt::UserRole + 1).toBool()) {
-            m_table->item(row, ColStatus)->setText(T("анкета уже есть — пропуск"));
-            lookupNext();
+            // Анкета уже есть: копия для офлайн-библиотеки (.bio и фото в .actors релиза)
+            keepOffline(row, true);
             return;
         }
         m_table->item(row, ColStatus)->setText(T("ищу в базах (IAFD, Babepedia, FreeOnes, Boobpedia, Википедия)…"));
@@ -849,6 +938,7 @@ void ServerPage::lookupNext()
                 n->setData(Qt::UserRole, p.value("Id").toString());
                 n->setData(Qt::UserRole + 1, !p.value("Overview").toString().trimmed().isEmpty());
                 n->setData(Qt::UserRole + 2, p.value("ImageTags").toObject().contains("Primary"));
+                n->setData(Qt::UserRole + 3, p);
                 break;
             }
         }
@@ -1060,6 +1150,43 @@ void ServerPage::aiSettings()
                                       : (n.provider == Ai::Claude ? T("анкеты пишет Claude") : T("анкеты пишет %1").arg(n.model)));
 }
 
+QString ServerPage::libraryRoot() const
+{
+    // Корень папки с фильмами — основная папка релизов (там же ищет .bio Adult Soft)
+    return QDir::fromNativeSeparators(QSettings().value(QStringLiteral("ae/baseDir")).toString());
+}
+
+void ServerPage::keepOffline(int row, bool thenNext)
+{
+    QTableWidgetItem *n = m_table->item(row, ColName);
+    const QString name = n->text();
+    const QJsonObject person = n->data(Qt::UserRole + 3).toJsonObject();
+    const bool bio = Jellyfin::saveBio(libraryRoot(), name, Jellyfin::bioText(person));
+    const QString rel = QDir::fromNativeSeparators(m_release->text().trimmed());
+    const QString file = QDir(rel).filePath(QStringLiteral(".actors/") + Release::actorFile(name) + QStringLiteral(".jpg"));
+    auto finish = [this, row, thenNext, bio](bool photo) {
+        m_table->item(row, ColStatus)->setText(
+            T("анкета уже есть — сохранена копия: %1").arg(QStringList{bio ? QStringLiteral(".bio") : QString(), photo ? QStringLiteral(".actors") : QString()}
+                                                          .filter(QRegularExpression(QStringLiteral("."))).join(QStringLiteral(", "))));
+        if (thenNext)
+            lookupNext();
+    };
+    if (rel.isEmpty() || !n->data(Qt::UserRole + 2).toBool() || person.value("Id").toString().isEmpty()) {
+        finish(false);
+        return;
+    }
+    Jellyfin::photo(m_net, this, person.value("Id").toString(), [file, finish](const QByteArray &data) {
+        if (data.size() < 1000) {
+            finish(false);
+            return;
+        }
+        QDir().mkpath(QFileInfo(file).absolutePath());
+        QFile f(file);
+        const bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(data) == data.size();
+        finish(ok);
+    });
+}
+
 void ServerPage::editBio(int row)
 {
     FramedDialog d(this, true);
@@ -1151,6 +1278,15 @@ void ServerPage::writeNext()
             m_table->item(row, ColStatus)->setText(T("записано"));
             m_table->item(row, ColCheck)->setCheckState(Qt::Unchecked);
             n->setData(Qt::UserRole + 1, true);
+            // Новая анкета — и в офлайн-библиотеку
+            QJsonObject saved = n->data(Qt::UserRole + 3).toJsonObject();
+            saved.insert("Overview", m_table->item(row, ColBio)->data(Qt::UserRole).toString());
+            const QDate bd = QDate::fromString(m_table->item(row, ColBorn)->text().trimmed(), Qt::ISODate);
+            if (bd.isValid())
+                saved.insert("PremiereDate", bd.toString(Qt::ISODate));
+            if (!m_table->item(row, ColPlace)->text().trimmed().isEmpty())
+                saved.insert("ProductionLocations", QJsonArray{m_table->item(row, ColPlace)->text().trimmed()});
+            Jellyfin::saveBio(libraryRoot(), n->text(), Jellyfin::bioText(saved));
             // Фото: только если на сервере его нет
             QString photo;
             if (m_photos->isChecked() && !n->data(Qt::UserRole + 2).toBool()) {

@@ -32,43 +32,17 @@ static QString slug(const QString &s)
     return t;
 }
 
-static const QHash<QChar, QString> &translit()
-{
-    static const QHash<QChar, QString> tr = [] {
-        QHash<QChar, QString> h;
-        const QString ru = QStringLiteral("абвгдеёжзийклмнопрстуфхцчшщъыьэюя");
-        const QStringList en = {"a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p",
-                                "r", "s", "t", "u", "f", "h", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"};
-        for (int i = 0; i < ru.size(); ++i)
-            h.insert(ru[i], en[i]);
-        return h;
-    }();
-    return tr;
-}
-
 QString actorFile(const QString &name)
 {
-    QStringList words;
-    for (const QString &w : name.simplified().split(' ', Qt::SkipEmptyParts)) {
-        QString out;
-        for (const QChar c : w) {
-            const QChar lc = c.toLower();
-            if (translit().contains(lc)) {
-                const QString t = translit().value(lc);
-                out += (c == lc || t.isEmpty()) ? t : t.left(1).toUpper() + t.mid(1);
-            } else {
-                out += c;
-            }
-        }
-        if (!out.isEmpty())
-            out[0] = out[0].toUpper();
-        words << out;
-    }
-    QString f = words.join('_');
-    f.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]+")));
-    f.replace(QRegularExpression(QStringLiteral("_+")), QStringLiteral("_"));
-    f.remove(QRegularExpression(QStringLiteral("^_|_$")));
-    return f;
+    // Как в Adult Soft и Kodi: «Phoenix Marie» → «Phoenix_Marie» (запрещённые в именах файлов символы → «_»)
+    QString f = name.simplified();
+    f.replace(QRegularExpression(QStringLiteral("[<>:\"/\\\\|?*\\x00-\\x1F]")), QStringLiteral("_"));
+    f = f.trimmed();
+    while (f.endsWith('.') || f.endsWith(' '))
+        f.chop(1);
+    if (f.isEmpty())
+        f = QStringLiteral("_");
+    return f.replace(' ', '_');
 }
 
 QString safeName(const QString &s)

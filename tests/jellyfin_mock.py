@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs
 
 PERSONS = {
     "p1": {"Id": "p1", "Name": "Andi Avalon", "Type": "Person", "Overview": "", "ImageTags": {}, "Tags": ["Старый тег"]},
-    "p2": {"Id": "p2", "Name": "Cory Chase", "Type": "Person", "Overview": "Анкета уже заполнена.", "ImageTags": {"Primary": "x"}},
+    "p2": {"Id": "p2", "Name": "Cory Chase", "Type": "Person", "Overview": "Анкета уже заполнена.", "PremiereDate": "1980-04-10T00:00:00.0000000Z", "ProductionLocations": ["США"], "ImageTags": {"Primary": "x"}},
 }
 LOG = open(sys.argv[2] if len(sys.argv) > 2 else "jellyfin.log", "w", encoding="utf-8")
 
@@ -27,6 +27,15 @@ class H(BaseHTTPRequestHandler):
             term = q.get("searchTerm", [""])[0].lower()
             items = [p for p in PERSONS.values() if term in p["Name"].lower()]
             return self.send(200, {"Items": items, "TotalRecordCount": len(items)})
+        if u.path.endswith("/Images/Primary"):   # фото исполнителя с сервера
+            import os
+            img = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release", "gallery-2-large.jpg")
+            if os.path.exists(img):
+                body = open(img, "rb").read()
+                self.send_response(200); self.send_header("Content-Type", "image/jpeg"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+                LOG.write("PHOTO SENT %s\n" % u.path); LOG.flush()
+                return
+            return self.send(404)
         if u.path.startswith("/Users/u1/Items/"):
             pid = u.path.rsplit("/", 1)[1]
             return self.send(200, PERSONS[pid]) if pid in PERSONS else self.send(404)

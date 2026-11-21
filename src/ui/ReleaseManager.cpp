@@ -32,6 +32,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QNetworkAccessManager>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
@@ -1238,24 +1239,10 @@ void ReleaseManagerDialog::create()
     const QDir actors(QDir(dir).filePath(QStringLiteral(".actors")));
     if (!r.actresses.isEmpty())
         QDir().mkpath(actors.path());
-    // Фото актрис: выбранное раньше → своя медиатека → поиск 1000×1500 → фото с сайта → «пустое»
+    // Фото актрис: сервер Jellyfin (там же анкета → .bio) → выбранное раньше → своя медиатека → поиск 1000×1500 → фото с сайта → «пустое»
     const QString baseDir = QDir::fromNativeSeparators(m_base->text().trimmed());
     for (const QString &a : r.actresses) {
         const QString file = actors.filePath(Release::actorFile(a) + QStringLiteral(".jpg"));
-        if (QFileInfo(file).size() > 20000)
-            continue;   // уже есть настоящее фото
-        QString ready = ActressPhotos::cacheFile(a);
-        if (!QFileInfo::exists(ready))
-            ready = ActressPhotos::findInLibrary(a, baseDir);
-        if (!ready.isEmpty() && QFileInfo::exists(ready)) {
-            QImage img(ready);
-            QFile::remove(file);
-            if (img.width() == 1000 && img.height() == 1500)
-                QFile::copy(ready, file);
-            else
-                ActressPhotos::fitPortrait(img).save(file, "JPG", 92);
-            continue;
-        }
         QStringList site;
         for (const ReleasePerson &p : r.cast) {
             if (p.name != a)
@@ -1265,16 +1252,15 @@ void ReleaseManagerDialog::create()
             if (!p.id.isEmpty())
                 site << QStringLiteral("https://imgs1cdn.adultempire.com/actors/%1h.jpg").arg(p.id);
         }
-        if (m_autoPhotos->isChecked()) {
-            Job j{QString(), file, site, true};
+        Job j{QString(), file, site, true};
+        j.name = a;
+        j.libRoot = baseDir;
+        j.server = Jellyfin::loggedIn();
+        j.local = true;
+        j.portrait = true;
+        if (m_autoPhotos->isChecked())
             j.search = a;
-            j.portrait = true;
-            m_jobs << j;
-        } else if (!site.isEmpty()) {
-            m_jobs << Job{site.first(), file, site.mid(1), true};
-        } else {
-            placeholderPhoto().save(file, "JPG", 85);
-        }
+        m_jobs << j;
     }
 
     // Фан-арта нет — кадр из видео
@@ -1310,6 +1296,61 @@ void ReleaseManagerDialog::runJobs()
         return;
     }
     Job job = m_jobs.takeFirst();
+    if (job.server) {
+        // Актриса уже есть на сервере: её фото — без изменений, анкета — в .bio (для офлайн-библиотеки Adult Soft)
+        job.server = false;
+        m_state->setText(T("Проверяю сервер: %1…").arg(job.name));
+        if (!m_jnet)
+            m_jnet = new QNetworkAccessManager(this);
+        Jellyfin::findPerson(m_jnet, this, job.name, [this, job](const QJsonObject &p) mutable {
+            if (!p.isEmpty())
+                Jellyfin::saveBio(job.libRoot, job.name, Jellyfin::bioText(p));
+            if (!p.value("ImageTags").toObject().contains("Primary")) {
+                m_jobs.prepend(job);
+                runJobs();
+                return;
+            }
+            Jellyfin::photo(m_jnet, this, p.value("Id").toString(), [this, job](const QByteArray &data) mutable {
+                QDir().mkpath(QFileInfo(job.file).absolutePath());
+                QFile f(job.file);
+                if (data.size() > 1000 && f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(data) == data.size()) {
+                    runJobs();
+                    return;
+                }
+                m_jobs.prepend(job);
+                runJobs();
+            });
+        });
+        return;
+    }
+    if (job.local) {
+        job.local = false;
+        if (QFileInfo(job.file).size() > 20000) {   // уже есть настоящее фото
+            runJobs();
+            return;
+        }
+        QString ready = ActressPhotos::cacheFile(job.name);
+        if (!QFileInfo::exists(ready))
+            ready = ActressPhotos::findInLibrary(job.name, job.libRoot);
+        if (!ready.isEmpty() && QFileInfo::exists(ready)) {
+            QImage img(ready);
+            QFile::remove(job.file);
+            if (img.width() == 1000 && img.height() == 1500)
+                QFile::copy(ready, job.file);
+            else
+                ActressPhotos::fitPortrait(img).save(job.file, "JPG", 92);
+            runJobs();
+            return;
+        }
+        if (job.search.isEmpty()) {
+            if (job.fallbacks.isEmpty()) {
+                placeholderPhoto().save(job.file, "JPG", 85);
+                runJobs();
+                return;
+            }
+            job.url = job.fallbacks.takeFirst();
+        }
+    }
     if (!job.search.isEmpty()) {
         // Ищем фото актрисы, лучшие варианты — по очереди, затем фото с сайта
         m_state->setText(T("Ищу фото: %1…").arg(job.search));
@@ -1371,7 +1412,7 @@ void ReleaseManagerDialog::runJobs()
                 return false;   // превьюшка — ищем дальше
             const QImage fit = ActressPhotos::fitPortrait(img);
             if (img.height() >= 1200)
-                fit.save(ActressPhotos::cacheFile(QFileInfo(job.file).completeBaseName().replace('_', ' ')), "JPG", 92);
+                fit.save(ActressPhotos::cacheFile(job.name.isEmpty() ? QFileInfo(job.file).completeBaseName().replace('_', ' ') : job.name), "JPG", 92);
             return fit.save(job.file, "JPG", 92);
         }
         if (!img.isNull()) {

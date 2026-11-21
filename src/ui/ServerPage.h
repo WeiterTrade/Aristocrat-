@@ -41,6 +41,19 @@ private:
     int m_stage = 0, m_serial = 0, m_attempt = 0;
 };
 
+// Сервер Jellyfin для других частей программы (вход берётся из вкладки «Сервер»)
+namespace Jellyfin {
+bool loggedIn();
+QNetworkReply *request(QNetworkAccessManager *net, const QString &method, const QString &path,
+                       const QByteArray &body = QByteArray(), const QByteArray &type = "application/json");
+// Исполнитель по точному имени (Id, Overview, PremiereDate, ProductionLocations, ImageTags); пусто — не найден
+void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(const QJsonObject &)> cb);
+void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void(const QByteArray &)> cb);
+// Биография для офлайн-библиотеки Adult Soft: .bio/Имя_Фамилия.txt в корне папки с фильмами
+QString bioText(const QJsonObject &person);
+bool saveBio(const QString &libraryRoot, const QString &name, const QString &text, bool overwrite = false);
+}
+
 // Анкета по шаблону (как в образце): русский текст, латинское имя в скобках
 namespace Bio {
 QString monthDate(const QDate &d);                  // «9 ноября 1992»
@@ -61,7 +74,6 @@ private:
 
     QNetworkReply *api(const QString &method, const QString &path, const QByteArray &body = QByteArray(),
                        const QByteArray &type = "application/json");
-    QByteArray authHeader() const;
     bool loggedIn() const;
     void login();
     void logout();
@@ -73,6 +85,8 @@ private:
     void fillRow(int row, const QString &ruName, const QString &born, const QString &place,
                  const QStringList &aliases, const QString &text, const QString &status);
     void aiSettings();
+    QString libraryRoot() const;
+    void keepOffline(int row, bool thenNext);   // копия анкеты и фото с сервера для офлайн-библиотеки
     void writeAll();
     void writeNext();
     void editBio(int row);
