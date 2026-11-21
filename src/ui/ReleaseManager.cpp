@@ -357,7 +357,6 @@ var out=[];[].slice.call(document.querySelectorAll('a,button')).forEach(function
 
 void ReleaseFetcher::shotsOpen(int i)
 {
-    {
     setProperty("shotIndex", i);
     const QString href = m_shotButtons.at(i).toObject().value("href").toString();
     if (!href.isEmpty()) {   // отдельная страница со скриншотами сцены
