@@ -32,6 +32,9 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <memory>
+#include <QNetworkRequest>
+#include <QNetworkReply>
 #include <QNetworkAccessManager>
 #include <QPlainTextEdit>
 #include <QProcess>
@@ -479,6 +482,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     form->addRow(T("Страна:"), m_country);
     m_studio = edit(page);
     form->addRow(T("Студия:"), m_studio);
+    connect(m_studio, &QLineEdit::editingFinished, this, [this] { applyStudioCountry(m_studio->text().simplified()); });
     m_director = edit(page, T("Если режиссёра нет — подставится студия"));
     form->addRow(T("Режиссёр:"), m_director);
     auto *numRow = new QHBoxLayout;
@@ -835,6 +839,7 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
         m_year->setText(py);
     const QString studio = d.value("studio").toString().simplified();
     m_studio->setText(studio);
+    applyStudioCountry(studio);
     const QString rating = d.value("rating").toString();
     if (!rating.isEmpty())
         m_rating->setText(QString::number(rating.toDouble(), 'f', 1));
@@ -978,6 +983,50 @@ void ReleaseManagerDialog::setCastGender(QListWidgetItem *it, int gender, int so
     it->setCheckState(male ? Qt::Unchecked : Qt::Checked);
     it->setData(Qt::UserRole + 4, int(it->checkState()));
     it->setData(Qt::UserRole + 5, source);
+}
+
+void ReleaseManagerDialog::applyStudioCountry(const QString &studio)
+{
+    // Страна релиза — страна, где создана студия: запомненное → справочник → Википедия → США
+    const QString known = Release::studioCountry(studio);
+    if (!known.isEmpty()) {
+        m_country->setCurrentText(known);
+        m_country->setToolTip(T("Страна студии %1").arg(studio));
+        return;
+    }
+    m_country->setCurrentText(QStringLiteral("США"));
+    m_country->setToolTip(T("Страна студии не определена — проверьте"));
+    if (studio.isEmpty())
+        return;
+    if (!m_jnet)
+        m_jnet = new QNetworkAccessManager(this);
+    QStringList titles = {studio, studio + QStringLiteral(" (company)"), studio + QStringLiteral(" (studio)")};
+    auto tryNext = std::make_shared<std::function<void()>>();
+    *tryNext = [this, studio, titles, tryNext]() mutable {
+        if (titles.isEmpty())
+            return;
+        const QString t = titles.takeFirst();
+        QNetworkRequest req(QUrl(QStringLiteral("https://en.wikipedia.org/api/rest_v1/page/summary/")
+                                 + QString::fromLatin1(QUrl::toPercentEncoding(QString(t).replace(' ', '_')))));
+        req.setTransferTimeout(15000);
+        QNetworkReply *r = m_jnet->get(req);
+        connect(r, &QNetworkReply::finished, this, [this, r, studio, tryNext] {
+            r->deleteLater();
+            const QJsonObject o = QJsonDocument::fromJson(r->readAll()).object();
+            const QString text = o.value("description").toString() + QLatin1Char(' ') + o.value("extract").toString().left(400);
+            if (o.value("type").toString() == QLatin1String("standard")
+                && QRegularExpression(QStringLiteral("porn|adult|erotic"), QRegularExpression::CaseInsensitiveOption).match(text).hasMatch()) {
+                const QString c = Release::countryFromAdjective(text);
+                if (!c.isEmpty() && m_studio->text().simplified() == studio) {
+                    m_country->setCurrentText(c);
+                    m_country->setToolTip(T("Страна студии %1 (по Википедии)").arg(studio));
+                    return;
+                }
+            }
+            (*tryNext)();
+        });
+    };
+    (*tryNext)();
 }
 
 void ReleaseManagerDialog::setScenes(const QList<Chapter> &scenes)
@@ -1203,6 +1252,7 @@ void ReleaseManagerDialog::create()
     QSettings st;
     st.setValue(QStringLiteral("ae/baseDir"), QDir::fromNativeSeparators(m_base->text().trimmed()));
     st.setValue(QStringLiteral("ae/country"), r.country);
+    Release::rememberStudioCountry(r.studio, r.country);   // в следующий раз для этой студии — та же страна
     st.setValue(QStringLiteral("ae/useEdition"), m_useEdition->isChecked());
     st.setValue(QStringLiteral("ae/edition"), m_edition->text().trimmed());
     st.setValue(QStringLiteral("ae/lossless"), m_lossless->isChecked());

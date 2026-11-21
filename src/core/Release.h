@@ -52,6 +52,12 @@ int parseLengthMinutes(const QString &text);       // «2 hrs. 17 mins.» → 13
 QDate parseDate(const QString &text);              // «Nov 17 2026»
 bool fanartFromVideo(const QString &video, const QString &jpg);   // кадр из видео, если фан-арта нет
 
+// Страна релиза = страна, где создана студия (Marc Dorcel → Франция), даже если снимали в другой стране.
+// Сначала — выбранное вами раньше, потом встроенный справочник; пусто — студия неизвестна.
+QString studioCountry(const QString &studio);
+void rememberStudioCountry(const QString &studio, const QString &country);
+QString countryFromAdjective(const QString &text);   // «an American pornographic film studio» → «США»
+
 // Релиз, который ждёт скачивания видео: после загрузки видео переупаковывается в папку релиза
 struct Pending { QString name, dir, chaptersMeta; bool lossless = true; };
 void addPending(const QString &pageUrl, const Pending &p);

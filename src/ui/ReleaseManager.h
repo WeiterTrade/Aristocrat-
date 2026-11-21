@@ -74,6 +74,7 @@ private:
     void fetch();
     void fetchScenes(const QString &url);
     void setScenes(const QList<Chapter> &scenes);
+    void applyStudioCountry(const QString &studio);
     void setCastGender(QListWidgetItem *it, int gender, int source);   // отметка и значок ♀/♂
     void apply(const QJsonObject &d);
     void translate();

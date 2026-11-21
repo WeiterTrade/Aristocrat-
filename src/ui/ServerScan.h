@@ -29,7 +29,7 @@ private:
         int year = 0;
         QJsonObject item;           // карточка из списка
         bool needBio = false, needPhoto = false;
-        bool needOverview = false, needGenres = false, needStudio = false, needPeople = false;
+        bool needOverview = false, needGenres = false, needStudio = false, needPeople = false, needCountry = false;
         bool needPoster = false, needBack = false, needFanart = false;
         QString sku;
     };

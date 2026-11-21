@@ -226,6 +226,7 @@ QString ServerScanDialog::missingText(const Entry &e) const
     if (e.needGenres) m << T("жанры");
     if (e.needStudio) m << T("студия");
     if (e.needPeople) m << T("актрисы");
+    if (e.needCountry) m << T("страна");
     if (e.needPoster) m << T("постер");
     if (e.needBack) m << T("задняя обложка");
     if (e.needFanart) m << T("фан-арт");
@@ -284,7 +285,7 @@ void ServerScanDialog::scanMovies()
     const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
     QNetworkReply *r = Jellyfin::request(m_net, QStringLiteral("GET"),
         QStringLiteral("/Users/%1/Items?IncludeItemTypes=Movie&Recursive=true&Fields=Overview,Genres,Studios,People,OriginalTitle,"
-                       "ProductionYear,ProviderIds&EnableImageTypes=Primary,Backdrop,BoxRear&Limit=20000").arg(uid));
+                       "ProductionYear,ProviderIds,ProductionLocations&EnableImageTypes=Primary,Backdrop,BoxRear&Limit=20000").arg(uid));
     connect(r, &QNetworkReply::finished, this, [this, r] {
         r->deleteLater();
         if (r->error() != QNetworkReply::NoError) {
@@ -314,13 +315,14 @@ void ServerScanDialog::scanMovies()
                 e.needGenres = m.value("Genres").toArray().isEmpty();
                 e.needStudio = m.value("Studios").toArray().isEmpty();
                 e.needPeople = !actor;
+                e.needCountry = m.value("ProductionLocations").toArray().isEmpty();
             }
             if (m_movieArt->isChecked()) {
                 e.needPoster = !tags.contains("Primary");
                 e.needBack = !tags.contains("BoxRear");
                 e.needFanart = m.value("BackdropImageTags").toArray().isEmpty();
             }
-            if (e.needOverview || e.needGenres || e.needStudio || e.needPeople || e.needPoster || e.needBack || e.needFanart)
+            if (e.needOverview || e.needGenres || e.needStudio || e.needPeople || e.needCountry || e.needPoster || e.needBack || e.needFanart)
                 m_entries << e;
         }
         showList();
@@ -566,7 +568,7 @@ void ServerScanDialog::movieFromPage(int row, const QJsonObject &d)
         finishEntry(row, T("на Adult Empire нашёлся другой фильм — пропуск"));
         return;
     }
-    if (!(e.needOverview || e.needGenres || e.needStudio || e.needPeople)) {
+    if (!(e.needOverview || e.needGenres || e.needStudio || e.needPeople || e.needCountry)) {
         movieImages(row, d);
         return;
     }
@@ -629,6 +631,17 @@ void ServerScanDialog::movieFromPage(int row, const QJsonObject &d)
                 if (added > 0) {
                     item.insert("People", people);
                     done << T("актрисы");
+                }
+            }
+            if (e.needCountry) {
+                // Страна релиза — страна, где создана студия
+                QString st = studio;
+                if (st.isEmpty())
+                    st = item.value("Studios").toArray().at(0).toObject().value("Name").toString();
+                const QString country = Release::studioCountry(st);
+                if (!country.isEmpty()) {
+                    item.insert("ProductionLocations", QJsonArray{country});
+                    done << T("страна");
                 }
             }
             if (item.value("PremiereDate").toString().isEmpty()) {

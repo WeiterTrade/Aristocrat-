@@ -200,6 +200,78 @@ bool fanartFromVideo(const QString &video, const QString &jpg)
     return false;
 }
 
+static QString studioKey(const QString &studio)
+{
+    QString k = studio.toLower();
+    k.remove(QRegularExpression(QStringLiteral("[^a-z0-9а-яё]+")));
+    return k;
+}
+
+QString studioCountry(const QString &studio)
+{
+    const QString key = studioKey(studio);
+    if (key.isEmpty())
+        return {};
+    const QString mine = QSettings().value(QStringLiteral("studioCountry/") + key).toString();
+    if (!mine.isEmpty())
+        return mine;
+    // Крупные студии и страна, где они созданы
+    static const QList<QPair<QString, QString>> known = {
+        {"marcdorcel", "Франция"}, {"dorcel", "Франция"}, {"jacquieetmichel", "Франция"}, {"colmax", "Франция"},
+        {"private", "Испания"}, {"cumlouder", "Испания"}, {"erikalust", "Испания"}, {"lustcinema", "Испания"},
+        {"roccosiffredi", "Италия"}, {"mariosalieri", "Италия"}, {"salieri", "Италия"},
+        {"harmonyfilms", "Великобритания"}, {"bluebirdfilms", "Великобритания"}, {"killergram", "Великобритания"},
+        {"vivthomas", "Великобритания"}, {"joybear", "Великобритания"},
+        {"magmafilm", "Германия"}, {"videorama", "Германия"}, {"mmv", "Германия"}, {"puaka", "Германия"}, {"inflagranti", "Германия"},
+        {"goldlight", "Германия"}, {"muschimovie", "Германия"},
+        {"czechcasting", "Чехия"}, {"legalporno", "Чехия"}, {"gonzocom", "Чехия"}, {"czechav", "Чехия"},
+        {"brazzers", "Канада"}, {"twistys", "Канада"}, {"bellesa", "Канада"},
+        {"brasileirinhas", "Бразилия"},
+        {"s1no1style", "Япония"}, {"moodyz", "Япония"}, {"ideapocket", "Япония"}, {"prestige", "Япония"}, {"madonna", "Япония"},
+        {"vixen", "США"}, {"blacked", "США"}, {"blackedraw", "США"}, {"tushy", "США"}, {"tushyraw", "США"}, {"deeper", "США"},
+        {"slayed", "США"}, {"milfy", "США"}, {"wifey", "США"}, {"elegantangel", "США"}, {"julesjordan", "США"}, {"evilangel", "США"},
+        {"realitykings", "США"}, {"naughtyamerica", "США"}, {"bangbros", "США"}, {"digitalplayground", "США"}, {"wicked", "США"},
+        {"wickedpictures", "США"}, {"vivid", "США"}, {"newsensations", "США"}, {"girlfriendsfilms", "США"}, {"sweetheartvideo", "США"},
+        {"milehigh", "США"}, {"adamandeve", "США"}, {"adameve", "США"}, {"hustler", "США"}, {"penthouse", "США"}, {"zerotolerance", "США"},
+        {"3rddegree", "США"}, {"devilsfilm", "США"}, {"diabolic", "США"}, {"redlightdistrict", "США"}, {"kink", "США"}, {"puretaboo", "США"},
+        {"adulttime", "США"}, {"burningangel", "США"}, {"lethalhardcore", "США"}, {"hardx", "США"}, {"darkx", "США"}, {"archangel", "США"},
+        {"nubiles", "США"}, {"teamskeet", "США"}, {"mylf", "США"}, {"digitalsin", "США"}, {"pornfidelity", "США"},
+        {"westcoastproductions", "США"}, {"smashpictures", "США"}, {"xart", "США"}, {"metart", "США"}, {"bratty", "США"},
+        {"forbiddenfruitsfilms", "США"}, {"fillyfilms", "США"}, {"sweetsinner", "США"}, {"mommysgirl", "США"}, {"girlsway", "США"},
+        {"jayrock", "США"}, {"tabooheat", "США"}, {"familystrokes", "США"}, {"devilsfilmparodies", "США"}};
+    for (const auto &p : known)
+        if (key == p.first || (p.first.size() >= 8 && key.startsWith(p.first)))
+            return p.second;
+    return {};
+}
+
+void rememberStudioCountry(const QString &studio, const QString &country)
+{
+    const QString key = studioKey(studio);
+    if (!key.isEmpty() && !country.trimmed().isEmpty())
+        QSettings().setValue(QStringLiteral("studioCountry/") + key, country.trimmed());
+}
+
+QString countryFromAdjective(const QString &text)
+{
+    static const QList<QPair<QString, QString>> adj = {
+        {"american", "США"}, {"canadian", "Канада"}, {"french", "Франция"}, {"czech", "Чехия"}, {"hungarian", "Венгрия"},
+        {"spanish", "Испания"}, {"italian", "Италия"}, {"german", "Германия"}, {"british", "Великобритания"},
+        {"english", "Великобритания"}, {"japanese", "Япония"}, {"brazilian", "Бразилия"}, {"dutch", "Нидерланды"},
+        {"swedish", "Швеция"}, {"russian", "Россия"}, {"australian", "Австралия"}, {"danish", "Дания"}, {"polish", "Польша"}};
+    const QString t = text.toLower();
+    int best = -1;
+    QString country;
+    for (const auto &p : adj) {
+        const int i = t.indexOf(p.first);
+        if (i >= 0 && (best < 0 || i < best)) {
+            best = i;
+            country = p.second;
+        }
+    }
+    return country;
+}
+
 static QString pendingKey(const QString &url)
 {
     // Ссылка без параметров и «#…» — так совпадёт и страница сцен, и страница фильма
