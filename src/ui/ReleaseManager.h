@@ -101,7 +101,7 @@ private:
     QPushButton *m_create, *m_openDir;
 
     QString m_studioName, m_directorFound;
-    struct Job { QString url, file, fallbackUrl; bool placeholder = false; };
+    struct Job { QString url, file; QStringList fallbacks; bool placeholder = false; };
     QList<Job> m_jobs;
     QStringList m_errors;
     QString m_createdDir;
