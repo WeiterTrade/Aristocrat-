@@ -641,6 +641,7 @@
  "Яркость": "Brightness",
  "анкета уже есть — пропуск": "profile already exists — skipped",
  "анкета уже есть — сохранена копия: %1": "profile already exists — copy saved: %1",
+ "анкета уже есть — фото скопировано в .actors": "profile already exists — photo copied to .actors",
  "анкеты пишет %1": "profiles written by %1",
  "анкеты пишет Claude": "profiles written by Claude",
  "анкеты по шаблону": "profiles from template",

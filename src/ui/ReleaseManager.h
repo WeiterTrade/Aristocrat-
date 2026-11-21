@@ -125,7 +125,7 @@ private:
         bool placeholder = false;
         QString search;        // найти фото актрисы (1000×1500) по этому имени
         bool portrait = false; // подогнать под 1000×1500 и запомнить
-        QString name, libRoot; // актриса и корень медиатеки (для .bio)
+        QString name, libRoot; // актриса и корень медиатеки (поиск фото в своих релизах)
         bool server = false;   // сначала взять фото и анкету с сервера Jellyfin
         bool local = false;    // затем — выбранное раньше или из своей медиатеки
     };

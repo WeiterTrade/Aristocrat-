@@ -1239,7 +1239,7 @@ void ReleaseManagerDialog::create()
     const QDir actors(QDir(dir).filePath(QStringLiteral(".actors")));
     if (!r.actresses.isEmpty())
         QDir().mkpath(actors.path());
-    // Фото актрис: сервер Jellyfin (там же анкета → .bio) → выбранное раньше → своя медиатека → поиск 1000×1500 → фото с сайта → «пустое»
+    // Фото актрис: сервер Jellyfin → выбранное раньше → своя медиатека → поиск 1000×1500 → фото с сайта → «пустое»
     const QString baseDir = QDir::fromNativeSeparators(m_base->text().trimmed());
     for (const QString &a : r.actresses) {
         const QString file = actors.filePath(Release::actorFile(a) + QStringLiteral(".jpg"));
@@ -1297,14 +1297,12 @@ void ReleaseManagerDialog::runJobs()
     }
     Job job = m_jobs.takeFirst();
     if (job.server) {
-        // Актриса уже есть на сервере: её фото — без изменений, анкета — в .bio (для офлайн-библиотеки Adult Soft)
+        // Актриса уже есть на сервере: её фото копируется в .actors без изменений
         job.server = false;
         m_state->setText(T("Проверяю сервер: %1…").arg(job.name));
         if (!m_jnet)
             m_jnet = new QNetworkAccessManager(this);
         Jellyfin::findPerson(m_jnet, this, job.name, [this, job](const QJsonObject &p) mutable {
-            if (!p.isEmpty())
-                Jellyfin::saveBio(job.libRoot, job.name, Jellyfin::bioText(p));
             if (!p.value("ImageTags").toObject().contains("Primary")) {
                 m_jobs.prepend(job);
                 runJobs();

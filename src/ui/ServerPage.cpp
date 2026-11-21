@@ -696,50 +696,6 @@ void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::fun
     });
 }
 
-QString bioText(const QJsonObject &p)
-{
-    // Тот же формат, что пишет Adult Soft (Nfo.bio): «Биография», текст, «Краткая справка»
-    QString text = p.value("Overview").toString();
-    text.replace(QRegularExpression(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption), QStringLiteral("\n"));
-    text.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
-    text = text.trimmed();
-    auto ru = [](const QString &iso) {
-        const QDate d = QDate::fromString(iso.left(10), Qt::ISODate);
-        return d.isValid() && d.year() >= 1800 ? d.toString(QStringLiteral("dd.MM.yyyy")) : QString();
-    };
-    const QString born = ru(p.value("PremiereDate").toString());
-    const QString died = ru(p.value("EndDate").toString());
-    const QString place = p.value("ProductionLocations").toArray().at(0).toString();
-    if (text.isEmpty() && born.isEmpty() && place.isEmpty())
-        return {};
-    QString out;
-    if (!text.startsWith(QStringLiteral("Биография"), Qt::CaseInsensitive))
-        out += QStringLiteral("Биография\n");
-    out += text;
-    if (!text.contains(QStringLiteral("Краткая справка"), Qt::CaseInsensitive) && (!born.isEmpty() || !died.isEmpty() || !place.isEmpty())) {
-        out += QStringLiteral("\n\nКраткая справка:\n\n");
-        if (!born.isEmpty()) out += QStringLiteral("* Дата рождения: ") + born + QLatin1Char('\n');
-        if (!died.isEmpty()) out += QStringLiteral("* Дата смерти: ") + died + QLatin1Char('\n');
-        if (!place.isEmpty()) out += QStringLiteral("* Место рождения: ") + place + QLatin1Char('\n');
-    }
-    return out.trimmed() + QLatin1Char('\n');
-}
-
-bool saveBio(const QString &libraryRoot, const QString &name, const QString &text, bool overwrite)
-{
-    if (libraryRoot.isEmpty() || text.isEmpty())
-        return false;
-    const QString dir = QDir(libraryRoot).filePath(QStringLiteral(".bio"));
-    QDir().mkpath(dir);
-    QFile f(QDir(dir).filePath(Release::actorFile(name) + QStringLiteral(".txt")));
-    if (!overwrite && f.exists() && f.size() > 0)
-        return true;
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return false;
-    f.write(text.toUtf8());
-    return true;
-}
-
 } // namespace Jellyfin
 
 QNetworkReply *ServerPage::api(const QString &method, const QString &path, const QByteArray &body, const QByteArray &type)
@@ -912,7 +868,7 @@ void ServerPage::lookupNext()
             return;
         }
         if (n->data(Qt::UserRole + 1).toBool()) {
-            // Анкета уже есть: копия для офлайн-библиотеки (.bio и фото в .actors релиза)
+            // Анкета уже есть: фото с сервера — в .actors релиза
             keepOffline(row, true);
             return;
         }
@@ -1150,24 +1106,15 @@ void ServerPage::aiSettings()
                                       : (n.provider == Ai::Claude ? T("анкеты пишет Claude") : T("анкеты пишет %1").arg(n.model)));
 }
 
-QString ServerPage::libraryRoot() const
-{
-    // Корень папки с фильмами — основная папка релизов (там же ищет .bio Adult Soft)
-    return QDir::fromNativeSeparators(QSettings().value(QStringLiteral("ae/baseDir")).toString());
-}
-
-void ServerPage::keepOffline(int row, bool thenNext)
+void ServerPage::keepOffline(int row, bool thenNext)   // фото актрисы с сервера → .actors релиза
 {
     QTableWidgetItem *n = m_table->item(row, ColName);
     const QString name = n->text();
     const QJsonObject person = n->data(Qt::UserRole + 3).toJsonObject();
-    const bool bio = Jellyfin::saveBio(libraryRoot(), name, Jellyfin::bioText(person));
     const QString rel = QDir::fromNativeSeparators(m_release->text().trimmed());
     const QString file = QDir(rel).filePath(QStringLiteral(".actors/") + Release::actorFile(name) + QStringLiteral(".jpg"));
-    auto finish = [this, row, thenNext, bio](bool photo) {
-        m_table->item(row, ColStatus)->setText(
-            T("анкета уже есть — сохранена копия: %1").arg(QStringList{bio ? QStringLiteral(".bio") : QString(), photo ? QStringLiteral(".actors") : QString()}
-                                                          .filter(QRegularExpression(QStringLiteral("."))).join(QStringLiteral(", "))));
+    auto finish = [this, row, thenNext](bool photo) {
+        m_table->item(row, ColStatus)->setText(photo ? T("анкета уже есть — фото скопировано в .actors") : T("анкета уже есть — пропуск"));
         if (thenNext)
             lookupNext();
     };
@@ -1278,15 +1225,6 @@ void ServerPage::writeNext()
             m_table->item(row, ColStatus)->setText(T("записано"));
             m_table->item(row, ColCheck)->setCheckState(Qt::Unchecked);
             n->setData(Qt::UserRole + 1, true);
-            // Новая анкета — и в офлайн-библиотеку
-            QJsonObject saved = n->data(Qt::UserRole + 3).toJsonObject();
-            saved.insert("Overview", m_table->item(row, ColBio)->data(Qt::UserRole).toString());
-            const QDate bd = QDate::fromString(m_table->item(row, ColBorn)->text().trimmed(), Qt::ISODate);
-            if (bd.isValid())
-                saved.insert("PremiereDate", bd.toString(Qt::ISODate));
-            if (!m_table->item(row, ColPlace)->text().trimmed().isEmpty())
-                saved.insert("ProductionLocations", QJsonArray{m_table->item(row, ColPlace)->text().trimmed()});
-            Jellyfin::saveBio(libraryRoot(), n->text(), Jellyfin::bioText(saved));
             // Фото: только если на сервере его нет
             QString photo;
             if (m_photos->isChecked() && !n->data(Qt::UserRole + 2).toBool()) {
