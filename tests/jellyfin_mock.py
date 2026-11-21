@@ -34,6 +34,13 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if u.path == "/v1/chat/completions":   # заменитель нейросети (формат OpenAI)
+            req = json.loads(data)
+            prompt = req["messages"][0]["content"]
+            LOG.write("AI REQUEST model=%s key=%s prompt_has_iafd=%s\n" % (req.get("model"), self.headers.get("Authorization"), "IAFD" in prompt)); LOG.flush()
+            answer = {"ru_name": "Энди Авалон", "bio": "Энди Авалон (Andi Avalon) — американская актриса фильмов для взрослых.\n\nВторой абзац.\n\nТретий абзац.",
+                      "birth_date": "1988-08-20", "birth_place": "Лос-Анджелес, США", "aliases": ["Two Cherrys", "Andi"]}
+            return self.send(200, {"choices": [{"message": {"role": "assistant", "content": "```json\n" + json.dumps(answer, ensure_ascii=False) + "\n```"}}]})
         if u.path == "/Users/AuthenticateByName":
             return self.send(200, {"AccessToken": "tok", "User": {"Id": "u1", "Name": "test"}})
         if not self.authed(): return self.send(401)

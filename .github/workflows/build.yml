@@ -31,6 +31,7 @@ jobs:
           target: desktop
           arch: win64_msvc2019_64
           modules: 'qtwebengine'
+          tools: 'tools_openssl_x64,qt.tools.openssl.win_x64'
           cache: true
 
       - name: Сборка
@@ -88,6 +89,9 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$out\tools\yt-dlp.exe"
           Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile deno.zip
           Expand-Archive deno.zip -DestinationPath "$out\tools\deno"
+          # OpenSSL 1.1 — HTTPS для запросов программы (нейросети, Википедия)
+          $ssl = Get-ChildItem -Path "$env:RUNNER_WORKSPACE","$env:IQTA_TOOLS" -Recurse -Filter "libssl-1_1-x64.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($ssl) { Copy-Item "$($ssl.DirectoryName)\libssl-1_1-x64.dll","$($ssl.DirectoryName)\libcrypto-1_1-x64.dll" $out\; "OpenSSL: $($ssl.DirectoryName)" } else { "OpenSSL не найден" }
           # rclone — выгрузка релизов в облака
           Invoke-WebRequest -Uri "https://downloads.rclone.org/rclone-current-windows-amd64.zip" -OutFile rclone.zip
           Expand-Archive rclone.zip -DestinationPath rclone-x
@@ -250,7 +254,7 @@ jobs:
           echo "--- выгружено ---"; find "$HOME/Облако тест" | sed "s|$HOME/||" | head -20
           # Вкладка «Сервер»: тестовый Jellyfin, анкеты актрис релиза (данные с настоящего IAFD)
           (python3 tests/jellyfin_mock.py 8792 "$PWD/jellyfin.log" &) ; sleep 1
-          ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 SHOT_WAIT=60 ARISTOCRAT_LANG=ru shot server --demo-server
+          ARISTOCRAT_TEST_SERVER=http://127.0.0.1:8792 ARISTOCRAT_TEST_AI=http://127.0.0.1:8792/v1 SHOT_WAIT=60 ARISTOCRAT_LANG=ru shot server --demo-server
           echo "--- записано на сервер ---"; cat jellyfin.log || true
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 

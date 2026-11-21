@@ -63,6 +63,10 @@ private:
     void loadList();
     void lookupNext();
     void prepareRow(int row, const QJsonObject &bio);
+    void aiRow(int row, const QJsonObject &bio);          // анкета через нейросеть (Claude или Qwen)
+    void fillRow(int row, const QString &ruName, const QString &born, const QString &place,
+                 const QStringList &aliases, const QString &text, const QString &status);
+    void aiSettings();
     void writeAll();
     void writeNext();
     void editBio(int row);
@@ -75,6 +79,7 @@ private:
     QLineEdit *m_release;
     QPushButton *m_load, *m_write;
     QCheckBox *m_photos;
+    QLabel *m_aiState;
     QTableWidget *m_table;
     QLabel *m_state;
 

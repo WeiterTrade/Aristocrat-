@@ -9,6 +9,7 @@
 #include "Frameless.h"
 
 #include <QCheckBox>
+#include <functional>
 #include <QComboBox>
 #include <QDate>
 #include <QDir>
@@ -303,6 +304,121 @@ QString transliterate(const QString &latin)
 
 } // namespace Bio
 
+// ======================= Нейросеть (Claude / Qwen) =======================
+
+namespace Ai {
+enum Provider { Off = 0, Claude = 1, Qwen = 2, Custom = 3 };
+struct Config {
+    int provider = Off;
+    QString key, model, baseUrl;
+    bool search = false;
+};
+static Config load()
+{
+    QSettings st;
+    Config c;
+    c.provider = st.value(QStringLiteral("ai/provider"), int(Off)).toInt();
+    c.key = st.value(QStringLiteral("ai/key")).toString();
+    c.model = st.value(QStringLiteral("ai/model")).toString();
+    c.baseUrl = st.value(QStringLiteral("ai/baseUrl")).toString();
+    c.search = st.value(QStringLiteral("ai/search"), true).toBool();
+    if (c.model.isEmpty())
+        c.model = c.provider == Claude ? QStringLiteral("claude-sonnet-5-5") : QStringLiteral("qwen-plus");
+    if (c.baseUrl.isEmpty())
+        c.baseUrl = c.provider == Claude ? QStringLiteral("https://api.anthropic.com")
+                                         : QStringLiteral("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+    return c;
+}
+static bool enabled()
+{
+    const Config c = load();
+    return c.provider != Off && !c.key.isEmpty();
+}
+
+// Задание для нейросети: ваш образец анкеты, правила и собранные сведения
+static QString prompt(const QString &name, const QJsonObject &iafd, const QString &wiki)
+{
+    QString p = QStringLiteral(
+        "Напиши биографию актрисы фильмов для взрослых %1 для карточки исполнителя в медиатеке Jellyfin.\n\n"
+        "Требования:\n"
+        "- Русский язык, три коротких абзаца, нейтральный энциклопедический стиль, без откровенных подробностей.\n"
+        "- Первая фраза: «Русское имя (Латинское имя), также известная как до трёх псевдонимов — национальность актриса фильмов для взрослых "
+        "[и эротическая модель, если это так]. Родилась дата в месте.»\n"
+        "- Второй абзац: начало карьеры, студии, число сцен или фильмов, образ, другие псевдонимы.\n"
+        "- Третий абзац: снимается ли сейчас или когда завершила карьеру и чем занялась; награды или «Сведений о наградах и номинациях нет».\n"
+        "- Только проверяемые факты из сведений ниже или из надёжных источников. Если факт не подтверждён — не пиши его. Ничего не выдумывай.\n"
+        "- Не добавляй разделов «Краткая справка», списков и пояснений — только текст биографии.\n\n"
+        "Пример нужного стиля:\n"
+        "Таисия Шанти (Taissia Shanti), также известная как Eva Shanti, Yanika Shanti и Taisia — российская актриса фильмов для взрослых и "
+        "эротическая модель. Родилась 9 ноября 1992 года в России.\n\n"
+        "Карьеру в кино для взрослых Таисия начала в 2013 году и снималась в основном у европейских студий. За почти десять лет работы она "
+        "снялась более чем в 400 сценах и стала одной из самых плодовитых российских актрис своего поколения. Работала под многими "
+        "псевдонимами, включая Cindy March, Diva, Elizavetta и Magda.\n\n"
+        "Таисия Шанти снималась до 2022 года и затем завершила карьеру. Сведений о наградах и номинациях нет.\n\n").arg(name);
+    p += QStringLiteral("Сведения с IAFD (JSON): ") + QString::fromUtf8(QJsonDocument(iafd).toJson(QJsonDocument::Compact)) + QStringLiteral("\n");
+    if (!wiki.isEmpty())
+        p += QStringLiteral("Сведения из Википедии: ") + wiki.left(4000) + QStringLiteral("\n");
+    p += QStringLiteral(
+        "\nОтветь ТОЛЬКО одним JSON-объектом без пояснений:\n"
+        "{\"ru_name\": \"имя по-русски\", \"bio\": \"три абзаца, разделённые \\n\\n\", \"birth_date\": \"ГГГГ-ММ-ДД или пусто\", "
+        "\"birth_place\": \"город, страна по-русски или пусто\", \"aliases\": [\"все известные псевдонимы латиницей\"]}");
+    return p;
+}
+
+static void ask(QNetworkAccessManager *net, QObject *ctx, const QString &text, std::function<void(const QString &, const QString &)> cb)
+{
+    const Config c = load();
+    QNetworkRequest req;
+    QJsonObject body;
+    if (c.provider == Claude) {
+        req.setUrl(QUrl(c.baseUrl + QStringLiteral("/v1/messages")));
+        req.setRawHeader("x-api-key", c.key.toUtf8());
+        req.setRawHeader("anthropic-version", "2023-06-01");
+        body = {{"model", c.model}, {"max_tokens", 3000},
+                {"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", text}}}}};
+        if (c.search)   // поиск в интернете силами Claude
+            body.insert("tools", QJsonArray{QJsonObject{{"type", "web_search_20250305"}, {"name", "web_search"}, {"max_uses", 5}}});
+    } else {
+        req.setUrl(QUrl(c.baseUrl + QStringLiteral("/chat/completions")));
+        req.setRawHeader("Authorization", "Bearer " + c.key.toUtf8());
+        body = {{"model", c.model}, {"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", text}}}}};
+        if (c.search && c.provider == Qwen)   // поиск в интернете силами Qwen
+            body.insert("enable_search", true);
+    }
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    req.setTransferTimeout(180000);
+    QNetworkReply *r = net->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    QObject::connect(r, &QNetworkReply::finished, ctx, [r, cb, c] {
+        r->deleteLater();
+        const QJsonObject o = QJsonDocument::fromJson(r->readAll()).object();
+        QString out;
+        if (c.provider == Claude) {
+            for (const QJsonValue &b : o.value("content").toArray())
+                if (b.toObject().value("type").toString() == QLatin1String("text"))
+                    out += b.toObject().value("text").toString();
+        } else {
+            out = o.value("choices").toArray().at(0).toObject().value("message").toObject().value("content").toString();
+        }
+        QString err;
+        if (out.isEmpty())
+            err = o.value("error").toObject().value("message").toString();
+        if (out.isEmpty() && err.isEmpty())
+            err = r->errorString();
+        cb(out, err);
+    });
+}
+
+// JSON из ответа (нейросеть иногда оборачивает его в ```)
+static QJsonObject parse(const QString &text)
+{
+    const int a = text.indexOf('{');
+    const int b = text.lastIndexOf('}');
+    if (a < 0 || b <= a)
+        return {};
+    return QJsonDocument::fromJson(text.mid(a, b - a + 1).toUtf8()).object();
+}
+} // namespace Ai
+
 // ======================= Вкладка «Сервер» =======================
 
 ServerPage::ServerPage(QWidget *parent)
@@ -378,6 +494,12 @@ ServerPage::ServerPage(QWidget *parent)
     m_write->setMinimumWidth(200);
     btns->addWidget(m_photos);
     btns->addStretch();
+    m_aiState = new QLabel(this);
+    m_aiState->setObjectName(QStringLiteral("Muted"));
+    auto *aiBtn = new QPushButton(T("Нейросеть…"), this);
+    btns->addWidget(m_aiState);
+    btns->addWidget(aiBtn);
+    connect(aiBtn, &QPushButton::clicked, this, &ServerPage::aiSettings);
     btns->addWidget(m_write);
     root->addLayout(btns);
 
@@ -399,6 +521,9 @@ ServerPage::ServerPage(QWidget *parent)
 
     setRelease(st.value(QStringLiteral("ae/lastRelease")).toString());
     updateLogin();
+    const Ai::Config ai = Ai::load();
+    m_aiState->setText(!Ai::enabled() ? T("анкеты по шаблону")
+                                      : (ai.provider == Ai::Claude ? T("анкеты пишет Claude") : T("анкеты пишет %1").arg(ai.model)));
 
     // Автопроверка сборки: вход на тестовый сервер, поиск анкет и запись
     if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_SERVER")) {
@@ -406,6 +531,13 @@ ServerPage::ServerPage(QWidget *parent)
         m_user->setText(QStringLiteral("test"));
         m_pass->setText(QStringLiteral("test"));
         m_auto = true;
+        if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AI")) {   // заменитель нейросети на тестовом сервере
+            QSettings ai;
+            ai.setValue(QStringLiteral("ai/provider"), 3);
+            ai.setValue(QStringLiteral("ai/key"), QStringLiteral("test-key"));
+            ai.setValue(QStringLiteral("ai/model"), QStringLiteral("test-model"));
+            ai.setValue(QStringLiteral("ai/baseUrl"), qEnvironmentVariable("ARISTOCRAT_TEST_AI"));
+        }
         QTimer::singleShot(500, this, &ServerPage::login);
     }
 }
@@ -670,6 +802,10 @@ void ServerPage::prepareRow(int row, const QJsonObject &bioIn)
 {
     QJsonObject bio = bioIn;
     const QString name = m_table->item(row, ColName)->text();
+    if (Ai::enabled()) {
+        aiRow(row, bio);
+        return;
+    }
     if (bio.isEmpty() || (bio.value("birthday").toString().isEmpty() && bio.value("years").toString().isEmpty())) {
         m_table->item(row, ColStatus)->setText(T("нет данных на IAFD — заполните вручную"));
         lookupNext();
@@ -719,6 +855,146 @@ void ServerPage::prepareRow(int row, const QJsonObject &bioIn)
     connect(tr, &Translator::finished, this, [tr, finish](const QStringList &out) { tr->deleteLater(); finish(out); });
     connect(tr, &Translator::failed, this, [tr, finish](const QString &) { tr->deleteLater(); finish({}); });
     tr->translate(src);
+}
+
+void ServerPage::fillRow(int row, const QString &ruName, const QString &born, const QString &place,
+                         const QStringList &aliases, const QString &text, const QString &status)
+{
+    m_table->item(row, ColRuName)->setText(ruName);
+    m_table->item(row, ColBorn)->setText(born);
+    m_table->item(row, ColPlace)->setText(place);
+    m_table->item(row, ColTags)->setText(aliases.join(QStringLiteral(", ")));
+    m_table->item(row, ColBio)->setText(text.section('\n', 0, 0));
+    m_table->item(row, ColBio)->setData(Qt::UserRole, text);
+    m_table->item(row, ColBio)->setToolTip(text);
+    m_table->item(row, ColStatus)->setText(status);
+    m_table->item(row, ColCheck)->setCheckState(text.isEmpty() ? Qt::Unchecked : Qt::Checked);
+}
+
+void ServerPage::aiRow(int row, const QJsonObject &iafdIn)
+{
+    const QString name = m_table->item(row, ColName)->text();
+    QJsonObject iafd = iafdIn;
+    iafd.remove("page");
+    iafd.remove("h1");
+    m_table->item(row, ColStatus)->setText(T("пишет нейросеть…"));
+    m_state->setText(T("Нейросеть пишет анкету: %1").arg(name));
+    // Википедия (краткая статья), если есть
+    QNetworkRequest wreq(QUrl(QStringLiteral("https://en.wikipedia.org/api/rest_v1/page/summary/")
+                              + QString::fromLatin1(QUrl::toPercentEncoding(QString(name).replace(' ', '_')))));
+    wreq.setTransferTimeout(15000);
+    QNetworkReply *w = m_net->get(wreq);
+    connect(w, &QNetworkReply::finished, this, [this, w, row, name, iafd] {
+        w->deleteLater();
+        const QJsonObject wo = QJsonDocument::fromJson(w->readAll()).object();
+        QString wiki;
+        if (w->error() == QNetworkReply::NoError && wo.value("type").toString() == QLatin1String("standard"))
+            wiki = wo.value("extract").toString();
+        Ai::ask(m_net, this, Ai::prompt(name, iafd, wiki), [this, row, name, iafd](const QString &text, const QString &err) {
+            const QJsonObject a = Ai::parse(text);
+            const QString bio = a.value("bio").toString().trimmed();
+            if (bio.isEmpty()) {
+                // Нейросеть не ответила — анкета по шаблону, если есть данные IAFD
+                m_table->item(row, ColStatus)->setText(T("нейросеть: %1").arg(err.isEmpty() ? T("пустой ответ") : err.left(120)));
+                if (!iafd.value("birthday").toString().isEmpty() || !iafd.value("years").toString().isEmpty()) {
+                    QJsonObject b = iafd;
+                    b.insert("name", name);
+                    // шаблон без нейросети
+                    const QString ru = Bio::transliterate(name);
+                    QStringList aka;
+                    for (const QJsonValue &v : iafd.value("akaList").toArray())
+                        aka << v.toString();
+                    const QDate born = Release::parseDate(iafd.value("birthday").toString());
+                    fillRow(row, ru, born.isValid() ? born.toString(Qt::ISODate) : QString(), iafd.value("birthplace").toString(), aka,
+                            Bio::build(b, ru, QString()), T("по шаблону (нейросеть не ответила)"));
+                }
+                lookupNext();
+                return;
+            }
+            QStringList aliases;
+            for (const QJsonValue &v : a.value("aliases").toArray())
+                if (!v.toString().trimmed().isEmpty() && v.toString().compare(name, Qt::CaseInsensitive) != 0)
+                    aliases << v.toString().trimmed();
+            if (aliases.isEmpty())
+                for (const QJsonValue &v : iafd.value("akaList").toArray())
+                    aliases << v.toString();
+            QString born = a.value("birth_date").toString().trimmed();
+            if (!QDate::fromString(born, Qt::ISODate).isValid()) {
+                const QDate d = Release::parseDate(iafd.value("birthday").toString());
+                born = d.isValid() ? d.toString(Qt::ISODate) : QString();
+            }
+            fillRow(row, a.value("ru_name").toString().trimmed(), born, a.value("birth_place").toString().trimmed(), aliases,
+                    bio, T("готово (нейросеть) — проверьте"));
+            lookupNext();
+        });
+    });
+}
+
+void ServerPage::aiSettings()
+{
+    FramedDialog d(this, true);
+    d.setWindowTitle(T("Нейросеть для анкет"));
+    d.resize(620, 400);
+    auto *root = d.contentLayout();
+    root->setContentsMargins(20, 14, 20, 14);
+    auto *info = new QLabel(T("Нейросеть пишет анкету по вашему образцу из данных IAFD и Википедии и может искать в интернете. "
+                              "Нужен ключ API — он платный (у Qwen есть бесплатный пробный объём для новых аккаунтов). "
+                              "Без ключа анкеты собираются по шаблону."), &d);
+    info->setWordWrap(true);
+    root->addWidget(info);
+    Ai::Config c = Ai::load();
+    auto *form = new QGridLayout;
+    auto *prov = new QComboBox(&d);
+    prov->addItems({T("Выключено — по шаблону"), QStringLiteral("Claude (Anthropic)"), QStringLiteral("Qwen (Alibaba Model Studio)"),
+                    T("Другая (совместимая с OpenAI)")});
+    prov->setCurrentIndex(c.provider);
+    auto *key = new QLineEdit(c.key, &d);
+    key->setEchoMode(QLineEdit::Password);
+    auto *model = new QLineEdit(QSettings().value(QStringLiteral("ai/model")).toString(), &d);
+    auto *base = new QLineEdit(QSettings().value(QStringLiteral("ai/baseUrl")).toString(), &d);
+    auto *search = new QCheckBox(T("Разрешить искать в интернете (точнее, но дороже)"), &d);
+    search->setObjectName(QStringLiteral("PlainCheck"));
+    search->setChecked(c.search);
+    auto hints = [prov, model, base] {
+        const int p = prov->currentIndex();
+        model->setPlaceholderText(p == Ai::Claude ? QStringLiteral("claude-sonnet-5-5") : QStringLiteral("qwen-plus"));
+        base->setPlaceholderText(p == Ai::Claude ? QStringLiteral("https://api.anthropic.com")
+                                                 : QStringLiteral("https://dashscope-intl.aliyuncs.com/compatible-mode/v1"));
+    };
+    hints();
+    connect(prov, QOverload<int>::of(&QComboBox::currentIndexChanged), &d, hints);
+    form->addWidget(new QLabel(T("Нейросеть:"), &d), 0, 0);
+    form->addWidget(prov, 0, 1);
+    form->addWidget(new QLabel(T("Ключ API:"), &d), 1, 0);
+    form->addWidget(key, 1, 1);
+    form->addWidget(new QLabel(T("Модель:"), &d), 2, 0);
+    form->addWidget(model, 2, 1);
+    form->addWidget(new QLabel(T("Адрес API:"), &d), 3, 0);
+    form->addWidget(base, 3, 1);
+    form->addWidget(search, 4, 1);
+    form->setColumnStretch(1, 1);
+    root->addLayout(form);
+    root->addStretch();
+    auto *btns = new QHBoxLayout;
+    auto *cancel = new QPushButton(T("Отмена"), &d);
+    auto *ok = Ui::primaryButton(T("Сохранить"), &d);
+    btns->addStretch();
+    btns->addWidget(cancel);
+    btns->addWidget(ok);
+    root->addLayout(btns);
+    connect(cancel, &QPushButton::clicked, &d, &QDialog::reject);
+    connect(ok, &QPushButton::clicked, &d, &QDialog::accept);
+    if (d.exec() != QDialog::Accepted)
+        return;
+    QSettings st;
+    st.setValue(QStringLiteral("ai/provider"), prov->currentIndex());
+    st.setValue(QStringLiteral("ai/key"), key->text().trimmed());
+    st.setValue(QStringLiteral("ai/model"), model->text().trimmed());
+    st.setValue(QStringLiteral("ai/baseUrl"), base->text().trimmed());
+    st.setValue(QStringLiteral("ai/search"), search->isChecked());
+    const Ai::Config n = Ai::load();
+    m_aiState->setText(!Ai::enabled() ? T("анкеты по шаблону")
+                                      : (n.provider == Ai::Claude ? T("анкеты пишет Claude") : T("анкеты пишет %1").arg(n.model)));
 }
 
 void ServerPage::editBio(int row)
