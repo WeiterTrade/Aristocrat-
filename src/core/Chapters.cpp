@@ -51,7 +51,8 @@ QString metadataFile(const QList<Chapter> &list, double duration)
     for (int i = 0; i < list.size(); ++i) {
         const Chapter &c = list[i];
         double end = c.end;
-        const double next = i + 1 < list.size() ? list[i + 1].start : (duration > 0 ? duration : c.start + 1);
+        const double next = i + 1 < list.size() ? list[i + 1].start
+                          : (duration > 0 ? duration : (c.end > c.start ? c.end : c.start + 1));
         if (end <= c.start || end > next)
             end = next;   // главы идут подряд, без наложений
         t += QStringLiteral("[CHAPTER]\nTIMEBASE=1/1000\nSTART=%1\nEND=%2\ntitle=%3\n")
