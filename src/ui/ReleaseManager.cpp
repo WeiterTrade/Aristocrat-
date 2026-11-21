@@ -622,6 +622,24 @@ void ReleaseManagerDialog::fetch()
     f->start(url);
 }
 
+// Адрес задней обложки по адресу постера: …/5125349h.jpg → …/5125349bh.jpg (так устроен Adult Empire)
+static QStringList backGuesses(const QString &front)
+{
+    QStringList out;
+    static const QRegularExpression hi(QStringLiteral("(\\d+)h(\\.(?:jpe?g|webp))"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression plain(QStringLiteral("(\\d+)(\\.(?:jpe?g|webp))"), QRegularExpression::CaseInsensitiveOption);
+    QString f = front.section('?', 0, 0);
+    if (hi.match(f).hasMatch()) {
+        out << QString(f).replace(hi, QStringLiteral("\\1bh\\2"));
+        out << QString(f).replace(hi, QStringLiteral("\\1b\\2"));
+    } else if (plain.match(f).hasMatch()) {
+        out << QString(f).replace(plain, QStringLiteral("\\1bh\\2"));
+        out << QString(f).replace(plain, QStringLiteral("\\1b\\2"));
+    }
+    out.removeAll(f);
+    return out;
+}
+
 static QString cleanTitle(const QJsonObject &d)
 {
     static const QRegularExpression promo(QStringLiteral("\\s+[-–—]\\s+(On Sale|Sale|Save|Deal|\\d+\\s*% Off|Black Friday|Cyber Monday|Clearance|New Release)\\b.*$"),
@@ -707,6 +725,8 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     // Обложки
     m_frontUrl->setText(d.value("front").toString());
     m_backUrl->setText(d.value("back").toString());
+    if (m_backUrl->text().isEmpty() && !backGuesses(m_frontUrl->text()).isEmpty())
+        m_backUrl->setText(backGuesses(m_frontUrl->text()).first());
     m_fanartUrl->setText(d.value("fanart").toString());
     loadPreview(m_frontPrev, m_frontUrl->text());
     loadPreview(m_backPrev, m_backUrl->text());
@@ -977,7 +997,14 @@ void ReleaseManagerDialog::create()
     // Загрузки: обложки и фото актрис
     m_jobs.clear();
     if (!r.frontUrl.isEmpty()) m_jobs << Job{r.frontUrl, QDir(dir).filePath(base + QStringLiteral("-poster.jpg")), {}, false};
-    if (!r.backUrl.isEmpty()) m_jobs << Job{r.backUrl, QDir(dir).filePath(base + QStringLiteral("-back.jpg")), {}, false};
+    if (!r.backUrl.isEmpty()) {
+        const QStringList g = backGuesses(r.frontUrl);
+        QString alt;
+        for (const QString &u : g)
+            if (u != r.backUrl && alt.isEmpty())
+                alt = u;
+        m_jobs << Job{r.backUrl, QDir(dir).filePath(base + QStringLiteral("-back.jpg")), alt, false};
+    }
     if (!r.fanartUrl.isEmpty()) m_jobs << Job{r.fanartUrl, QDir(dir).filePath(base + QStringLiteral("-fanart.jpg")), {}, false};
     const QDir actors(QDir(dir).filePath(QStringLiteral(".actors")));
     if (!r.actresses.isEmpty())
