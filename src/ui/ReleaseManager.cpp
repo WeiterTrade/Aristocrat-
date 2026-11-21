@@ -646,6 +646,8 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     auto mkImg = [&](int col, const QString &caption, QLineEdit *&urlEdit, QLabel *&prev) {
         auto *cap = new QLabel(caption, page);
         cap->setObjectName(QStringLiteral("Muted"));
+        cap->setWordWrap(true);
+        cap->setMaximumWidth(105);   // длинные подписи не раздвигают колонку
         prev = new QLabel(page);
         prev->setFixedSize(105, 145);
         prev->setAlignment(Qt::AlignCenter);
