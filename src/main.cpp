@@ -121,15 +121,17 @@ int main(int argc, char *argv[])
         app.processEvents();
     }
 
-    MainWindow w;
-    w.show();
+    MainWindow w;   // окно готовится, пока видна заставка
     if (splash) {
-        // Не меньше 1,5 с, затем заставка исчезает и окно программы выходит вперёд
+        // Как в оригинале: сначала заставка (не меньше 1,5 с), она закрывается — и только потом появляется программа
         QTimer::singleShot(qMax<qint64>(0, 1500 - shown.elapsed()), splash, [splash, &w] {
-            splash->finish(&w);
+            splash->close();
+            w.show();
             w.raise();
             w.activateWindow();
         });
+    } else {
+        w.show();
     }
 
     // Файлы, переданные при запуске («Открыть с помощью…»).

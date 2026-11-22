@@ -25,6 +25,7 @@ public:
 private:
     struct Entry {
         bool movie = false;
+        bool director = false;      // режиссёр: общая картинка
         QString id, name, original;
         int year = 0;
         QJsonObject item;           // карточка из списка

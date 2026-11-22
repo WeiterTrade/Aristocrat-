@@ -381,6 +381,7 @@ namespace Pasted {
 
 struct Card {
     QString ruName, place, overview;
+    QString realName;      // «Оригинальное имя» в Jellyfin: настоящее имя или «Не раскрывается»
     QDate born, died;
     QStringList aliases;
     bool hasDied = false;
@@ -457,7 +458,7 @@ static Card parse(const QString &raw)
 {
     Card c;
     QStringList body;
-    static const QRegularExpression field(QStringLiteral("^\\s*[*•-]?\\s*\\**\\s*(Имя(?: на русском)?|Русское имя|Дата рождения|Родилась|Место рождения|"
+    static const QRegularExpression field(QStringLiteral("^\\s*[*•-]?\\s*\\**\\s*(Имя(?: на русском)?|Русское имя|Настоящее имя|Имя при рождении|Оригинальное имя|Дата рождения|Родилась|Место рождения|"
                                                          "Псевдонимы|Также известна как|Теги|Дата смерти|Умерла|Биография)\\s*\\**\\s*:\\s*\\**\\s*(.*)$"),
                                           QRegularExpression::CaseInsensitiveOption);
     for (const QString &line : raw.split('\n')) {
@@ -467,7 +468,10 @@ static Card parse(const QString &raw)
             continue;
         }
         const QString key = m.captured(1).toLower(), val = m.captured(2).trimmed();
-        if (key.startsWith(QStringLiteral("имя")) || key.startsWith(QStringLiteral("русское")))
+        if (key.startsWith(QStringLiteral("настоящее")) || key.startsWith(QStringLiteral("имя при")) || key.startsWith(QStringLiteral("оригинальное")))
+            c.realName = val.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption))
+                             ? QStringLiteral("Не раскрывается") : QString(val).remove(QRegularExpression(QStringLiteral("[.;]+$")));
+        else if (key.startsWith(QStringLiteral("имя")) || key.startsWith(QStringLiteral("русское")))
             c.ruName = val;
         else if (key.startsWith(QStringLiteral("дата рожд")) || key == QStringLiteral("родилась"))
             c.born = ruDate(val);
@@ -482,6 +486,23 @@ static Card parse(const QString &raw)
             body << val;
     }
     c.overview = body.join('\n').trimmed();
+    // Фраза о настоящем имени уходит из биографии в поле «Оригинальное имя»
+    static const QRegularExpression realRe(QStringLiteral("\\s*(?:[Ее]ё\\s+)?[Нн]астоящее\\s+имя[^.\\n]*\\.?"));
+    const auto rm = realRe.match(c.overview);
+    if (rm.hasMatch()) {
+        const QString phrase = rm.captured(0).trimmed();
+        if (c.realName.isEmpty()) {
+            if (phrase.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption)))
+                c.realName = QStringLiteral("Не раскрывается");
+            else {
+                static const QRegularExpression val(QStringLiteral("имя(?:\\s+актрисы)?\\s*(?:—|–|-|:)\\s*([^.\\n]+)"));
+                c.realName = val.match(phrase).captured(1).trimmed();
+            }
+        }
+        c.overview.remove(rm.capturedStart(0), rm.capturedLength(0));
+        c.overview.replace(QRegularExpression(QStringLiteral("[ \\t]{2,}")), QStringLiteral(" "));
+        c.overview = c.overview.trimmed();
+    }
     c.overview.replace(QRegularExpression(QStringLiteral("\\n{3,}")), QStringLiteral("\n\n"));
     const QString t = c.overview;
     // Имя: «Таисия Шанти (Taissia Shanti), …»
@@ -942,6 +963,36 @@ void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, s
                 return;
             }
         cb({});
+    });
+}
+
+void directorPhoto(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(int)> cb)
+{
+    findPerson(net, ctx, name, [net, ctx, name, cb](const QJsonObject &p) {
+        const QString id = p.value("Id").toString();
+        if (id.isEmpty() || p.value("ImageTags").toObject().contains("Primary")) {
+            cb(0);
+            return;
+        }
+        // Снимается как актриса — у неё своё фото
+        QNetworkReply *a = request(net, QStringLiteral("GET"), QStringLiteral("/Persons?personTypes=Actor&searchTerm=")
+                                                                   + QString::fromLatin1(QUrl::toPercentEncoding(name)));
+        QObject::connect(a, &QNetworkReply::finished, ctx, [net, ctx, a, name, id, cb] {
+            a->deleteLater();
+            for (const QJsonValue &v : QJsonDocument::fromJson(a->readAll()).object().value("Items").toArray())
+                if (v.toObject().value("Name").toString().compare(name, Qt::CaseInsensitive) == 0) {
+                    cb(0);
+                    return;
+                }
+            QFile f(QStringLiteral(":/director.jpg"));
+            f.open(QIODevice::ReadOnly);
+            QNetworkReply *u = request(net, QStringLiteral("POST"), QStringLiteral("/Items/%1/Images/Primary").arg(id),
+                                       f.readAll().toBase64(), "image/jpeg");
+            QObject::connect(u, &QNetworkReply::finished, ctx, [u, cb] {
+                u->deleteLater();
+                cb(u->error() == QNetworkReply::NoError ? 1 : -1);
+            });
+        });
     });
 }
 
@@ -1418,13 +1469,23 @@ void ServerPage::pushReleaseImages(int attempt)
     const QString title = tag(QStringLiteral("title")), orig = tag(QStringLiteral("originaltitle"));
     const QString base = QFileInfo(nfos.first()).completeBaseName();
     const QStringList actresses = releaseActresses(dir);
+    QStringList directors;
+    {
+        static const QRegularExpression dre(QStringLiteral("<director>([^<]+)</director>"));
+        auto it = dre.globalMatch(x);
+        while (it.hasNext()) {
+            const QString d = it.next().captured(1).trimmed().replace(QStringLiteral("&amp;"), QStringLiteral("&"));
+            if (!d.isEmpty() && !directors.contains(d) && !actresses.contains(d, Qt::CaseInsensitive))
+                directors << d;
+        }
+    }
     setBusy(true, T("Ищу фильм на сервере: %1…").arg(title));
 
     const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
     QNetworkReply *r = api(QStringLiteral("GET"),
         QStringLiteral("/Users/%1/Items?IncludeItemTypes=Movie&Recursive=true&Fields=OriginalTitle&EnableImageTypes=Primary,Backdrop,BoxRear&searchTerm=%2")
             .arg(uid, QString::fromLatin1(QUrl::toPercentEncoding(title.left(60)))));
-    connect(r, &QNetworkReply::finished, this, [this, r, dir, base, title, orig, actresses, attempt] {
+    connect(r, &QNetworkReply::finished, this, [this, r, dir, base, title, orig, actresses, directors, attempt] {
         r->deleteLater();
         QJsonObject movie;
         for (const QJsonValue &v : QJsonDocument::fromJson(r->readAll()).object().value("Items").toArray()) {
@@ -1466,8 +1527,9 @@ void ServerPage::pushReleaseImages(int attempt)
             ups->append({fanart, QStringLiteral("/Items/%1/Images/Backdrop").arg(id), T("фан-арт")});
         auto done = std::make_shared<QStringList>();
         auto people = std::make_shared<QStringList>(actresses);
+        auto dirs = std::make_shared<QStringList>(directors);
         auto step = std::make_shared<std::function<void()>>();
-        *step = [this, ups, done, people, step, dir] {
+        *step = [this, ups, done, people, dirs, step, dir] {
             if (!ups->isEmpty()) {
                 const Up u = ups->takeFirst();
                 QFile f(u.path);
@@ -1507,6 +1569,15 @@ void ServerPage::pushReleaseImages(int attempt)
                             *done << name;
                         (*step)();
                     });
+                });
+                return;
+            }
+            if (!dirs->isEmpty()) {
+                const QString name = dirs->takeFirst();
+                Jellyfin::directorPhoto(m_net, this, name, [name, done, step](int res) {
+                    if (res == 1)
+                        *done << T("режиссёр %1").arg(name);
+                    (*step)();
                 });
                 return;
             }
@@ -1594,8 +1665,11 @@ void ServerPage::editActress(int row)
     died->setPlaceholderText(T("пусто — дата смерти будет удалена с сервера"));
     auto *tags = new QLineEdit(m_table->item(row, ColTags)->text(), &d);
     tags->setPlaceholderText(T("псевдонимы через запятую"));
+    auto *real = new QLineEdit(m_table->item(row, ColRuName)->data(Qt::UserRole).toString(), &d);
+    real->setPlaceholderText(QStringLiteral("Не раскрывается"));
+    real->setToolTip(T("Записывается в поле Jellyfin «Оригинальное имя». Пусто — «Не раскрывается»."));
     int r = 0;
-    for (auto pr : {qMakePair(T("Имя по-русски:"), ru), qMakePair(T("Дата рождения:"), born), qMakePair(T("Место рождения:"), place),
+    for (auto pr : {qMakePair(T("Имя по-русски:"), ru), qMakePair(T("Настоящее имя:"), real), qMakePair(T("Дата рождения:"), born), qMakePair(T("Место рождения:"), place),
                     qMakePair(T("Дата смерти:"), died), qMakePair(T("Псевдонимы (теги):"), tags)}) {
         g->addWidget(new QLabel(pr.first, &d), r, 0);
         g->addWidget(pr.second, r++, 1);
@@ -1711,6 +1785,7 @@ void ServerPage::editActress(int row)
         if (c.born.isValid()) born->setText(c.born.toString(Qt::ISODate));
         if (!c.place.isEmpty()) place->setText(c.place);
         if (!c.aliases.isEmpty()) tags->setText(c.aliases.join(QStringLiteral(", ")));
+        if (!c.realName.isEmpty()) real->setText(c.realName);
         if (c.hasDied) died->setText(c.died.isValid() ? c.died.toString(Qt::ISODate) : QString());
         QStringList got;
         if (c.born.isValid()) got << T("дата рождения");
@@ -1756,6 +1831,8 @@ void ServerPage::editActress(int row)
             const QJsonArray locs = it.value("ProductionLocations").toArray();
             if (place->text().isEmpty() && !locs.isEmpty())
                 place->setText(locs.first().toString());
+            if (real->text().isEmpty())
+                real->setText(it.value("OriginalTitle").toString());
             if (tags->text().isEmpty()) {
                 QStringList t;
                 for (const QJsonValue &v : it.value("Tags").toArray())
@@ -1778,6 +1855,7 @@ void ServerPage::editActress(int row)
         const QString dd = died->text().trimmed();
         const QDate dt = dd.isEmpty() ? QDate() : Pasted::ruDate(dd);
         m_table->item(row, ColRuName)->setText(ru->text().trimmed());
+        m_table->item(row, ColRuName)->setData(Qt::UserRole, real->text().trimmed());
         m_table->item(row, ColBorn)->setText(bd.isValid() ? bd.toString(Qt::ISODate) : QString());
         m_table->item(row, ColBorn)->setData(Qt::UserRole, dt.isValid() ? dt.toString(Qt::ISODate) : QString());
         m_table->item(row, ColPlace)->setText(place->text().trimmed());
@@ -1922,6 +2000,12 @@ void ServerPage::writeNext()
             item.insert("EndDate", died.toString(Qt::ISODate) + QStringLiteral("T00:00:00.0000000Z"));
         else
             item.remove("EndDate");
+        // «Оригинальное имя» — настоящее имя; неизвестно — «Не раскрывается» (если на сервере пусто)
+        const QString realName = m_table->item(row, ColRuName)->data(Qt::UserRole).toString().trimmed();
+        if (!realName.isEmpty())
+            item.insert("OriginalTitle", realName);
+        else if (item.value("OriginalTitle").toString().trimmed().isEmpty())
+            item.insert("OriginalTitle", QStringLiteral("Не раскрывается"));
         // Закрепить карточку, чтобы обновление метаданных её не переписало
         item.insert("LockData", true);
         const QString place = m_table->item(row, ColPlace)->text().trimmed();

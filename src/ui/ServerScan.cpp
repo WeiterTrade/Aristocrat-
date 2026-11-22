@@ -3,6 +3,7 @@
 #include "ReleaseManager.h"
 #include "SceneTools.h"
 #include "ServerPage.h"
+#include <QSet>
 #include "Widgets.h"
 #include "core/Gender.h"
 #include "core/I18n.h"
@@ -254,6 +255,7 @@ void ServerScanDialog::scan()
             setBusy(false, T("Сервер не ответил: %1").arg(r->errorString()));
             return;
         }
+        auto allActors = std::make_shared<QSet<QString>>();
         for (const QJsonValue &v : QJsonDocument::fromJson(r->readAll()).object().value("Items").toArray()) {
             const QJsonObject p = v.toObject();
             Entry e;
@@ -262,6 +264,7 @@ void ServerScanDialog::scan()
             e.item = p;
             if (e.id.isEmpty() || e.name.isEmpty())
                 continue;
+            *allActors << e.id;
             Gender::Source src = Gender::None;
             const Gender::Value g = Gender::known(e.name, &src);
             if (g == Gender::Male || (g == Gender::Unknown && Gender::byFirstName(e.name) == Gender::Male))
@@ -271,7 +274,31 @@ void ServerScanDialog::scan()
             if (e.needBio || e.needPhoto)
                 m_entries << e;
         }
-        scanMovies();
+        if (!m_photos->isChecked()) {
+            scanMovies();
+            return;
+        }
+        // Режиссёры без фото (кроме тех, кто снимается как актриса) — общая картинка
+        QNetworkReply *d = Jellyfin::request(m_net, QStringLiteral("GET"),
+                                             QStringLiteral("/Persons?personTypes=Director&enableImages=true&limit=20000"));
+        connect(d, &QNetworkReply::finished, this, [this, d, allActors] {
+            d->deleteLater();
+            const QSet<QString> &actors = *allActors;
+            for (const QJsonValue &v : QJsonDocument::fromJson(d->readAll()).object().value("Items").toArray()) {
+                const QJsonObject p = v.toObject();
+                if (p.value("ImageTags").toObject().contains("Primary") || actors.contains(p.value("Id").toString()))
+                    continue;
+                Entry e;
+                e.director = true;
+                e.id = p.value("Id").toString();
+                e.name = p.value("Name").toString();
+                e.item = p;
+                e.needPhoto = true;
+                if (!e.id.isEmpty() && !e.name.isEmpty())
+                    m_entries << e;
+            }
+            scanMovies();
+        });
     });
 }
 
@@ -340,7 +367,7 @@ void ServerScanDialog::showList()
         c->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
         c->setCheckState(Qt::Checked);
         m_table->setItem(row, ColCheck, c);
-        m_table->setItem(row, ColType, new QTableWidgetItem(e.movie ? T("Фильм") : T("Актриса")));
+        m_table->setItem(row, ColType, new QTableWidgetItem(e.movie ? T("Фильм") : e.director ? T("Режиссёр") : T("Актриса")));
         m_table->setItem(row, ColName, new QTableWidgetItem(e.movie && !e.original.isEmpty() && e.original != e.name
                                                                 ? e.name + QStringLiteral("  (") + e.original + QLatin1Char(')')
                                                                 : e.name));
@@ -402,6 +429,13 @@ void ServerScanDialog::finishEntry(int row, const QString &status)
 void ServerScanDialog::doPerson(int row)
 {
     Entry &e = m_entries[row];
+    if (e.director) {
+        Jellyfin::directorPhoto(m_net, this, e.name, [this, row](int res) {
+            finishEntry(row, res == 1 ? T("фото режиссёра загружено") : res == 0 ? T("не нужно (снимается как актриса или фото уже есть)")
+                                                                               : T("фото не загрузилось"));
+        });
+        return;
+    }
     if (!e.needBio) {
         personPhoto(row);
         return;

@@ -50,6 +50,9 @@ QNetworkReply *request(QNetworkAccessManager *net, const QString &method, const 
 // Исполнитель по точному имени (Id, Overview, PremiereDate, ProductionLocations, ImageTags); пусто — не найден
 void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(const QJsonObject &)> cb);
 void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void(const QByteArray &)> cb);
+// Режиссёру — общая картинка «Фотографии режиссёров не добавляются», если у него нет фото и он не снимается
+// как актриса в фильмах библиотеки. Результат: 1 — загружено, 0 — не нужно (нет на сервере, есть фото, актриса), -1 — ошибка.
+void directorPhoto(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(int)> cb);
 }
 
 // Готовая анкета из собранных данных: по шаблону, а если данных нет — нейросетью (если указан ключ).
