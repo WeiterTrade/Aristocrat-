@@ -16,6 +16,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <memory>
 #include <QPainter>
 #include <QPushButton>
 #include <QStandardPaths>
@@ -166,8 +170,74 @@ void ImageSearch::fetchImage(const QUrl &url, std::function<void(const QByteArra
     ++m_serial;
     m_imageMode = true;
     m_imgCb = std::move(cb);
-    m_timeout.start(15000);
+    m_timeout.start(12000);
     m_view->load(url);
+}
+
+void ImageSearch::fetchBest(const ActressPhotos::Candidate &c, std::function<void(const QByteArray &)> cb,
+                            std::function<void(int, int)> progress)
+{
+    if (!m_net)
+        m_net = new QNetworkAccessManager(this);
+    const int serial = ++m_bestSerial;
+    QStringList urls{c.url};
+    for (const QString &a : c.alts)
+        if (!urls.contains(a))
+            urls << a;
+    while (urls.size() > 4)
+        urls.removeLast();
+    // Попытки: для каждого адреса — прямой запрос, затем скрытое окно
+    const int total = urls.size() * 2;
+    auto good = [](const QByteArray &data) {
+        QImage img;
+        return img.loadFromData(data) && img.width() >= 200 && img.height() >= 300;
+    };
+    auto step = std::make_shared<std::function<void(int)>>();
+    *step = [this, serial, urls, total, good, cb, progress, step, ref = c.referer](int i) {
+        if (serial != m_bestSerial)
+            return;   // выбрано другое фото
+        if (i >= total) {
+            cb({});
+            return;
+        }
+        if (progress)
+            progress(i + 1, total);
+        const QUrl url(urls[i / 2]);
+        if (i % 2 == 0) {
+            QNetworkRequest rq(url);
+            rq.setRawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                          "Chrome/124.0 Safari/537.36");
+            rq.setRawHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+            const QUrl r = ref.isEmpty() ? QUrl(url.scheme() + QStringLiteral("://") + url.host() + QStringLiteral("/")) : QUrl(ref);
+            rq.setRawHeader("Referer", r.toEncoded());
+            rq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+            rq.setTransferTimeout(10000);
+            QNetworkReply *rep = m_net->get(rq);
+            connect(rep, &QNetworkReply::finished, this, [this, rep, serial, i, step, good, cb] {
+                rep->deleteLater();
+                if (serial != m_bestSerial)
+                    return;
+                const QByteArray data = rep->readAll();
+                if (rep->error() == QNetworkReply::NoError && good(data)) {
+                    cb(data);
+                    return;
+                }
+                qInfo("photo: direct %s failed: %s", qPrintable(rep->url().host()), qPrintable(rep->errorString()));
+                (*step)(i + 1);
+            });
+            return;
+        }
+        fetchImage(url, [this, serial, i, step, good, cb](const QByteArray &data) {
+            if (serial != m_bestSerial)
+                return;
+            if (good(data)) {
+                cb(data);
+                return;
+            }
+            (*step)(i + 1);
+        });
+    };
+    (*step)(0);
 }
 
 void ImageSearch::grab(int attempt)
@@ -231,7 +301,10 @@ void ImageSearch::extract(int attempt)
 var st=JSON.parse(el.getAttribute('data-state'));var e=st.initialState.serpList.items.entities;
 Object.keys(e).map(function(k){return e[k];}).sort(function(a,b){return (a.pos||0)-(b.pos||0);}).forEach(function(x){
  if(!x.origUrl)return;var t=x.imageUnblurred||x.image||'';if(t.indexOf('//')===0)t='https:'+t;
- out.push({u:x.origUrl,t:t,w:x.origWidth||x.width||0,h:x.origHeight||x.height||0,a:(x.alt||'')});});}catch(err){}
+ var alts=[];var vd=x.viewerData||{};[].concat(vd.preview||[],vd.dups||[]).forEach(function(d){
+  if(d&&d.url&&d.url!==x.origUrl&&alts.indexOf(d.url)<0&&(!d.w||d.w>=600))alts.push(d.url);});
+ var ref=(vd.snippet&&vd.snippet.url)||(x.snippet&&x.snippet.url)||'';
+ out.push({u:x.origUrl,t:t,w:x.origWidth||x.width||0,h:x.origHeight||x.height||0,alts:alts,ref:ref});});}catch(err){}
 return JSON.stringify(out);})())JS";
     static const char *bing = R"JS((function(){var out=[];
 [].forEach.call(document.querySelectorAll('a.iusc'),function(a){try{var m=JSON.parse(a.getAttribute('m')||'{}');
@@ -250,6 +323,9 @@ return JSON.stringify(out);})())JS";
             c.thumb = o.value("t").toString();
             c.w = o.value("w").toInt();
             c.h = o.value("h").toInt();
+            for (const QJsonValue &a : o.value("alts").toArray())
+                c.alts << a.toString();
+            c.referer = o.value("ref").toString();
             list << c;
         }
         if (list.isEmpty() && attempt < 3) {
@@ -389,13 +465,16 @@ void ActressPhotoDialog::choose(int index)
         return;
     const QString name = m_names[row];
     const ActressPhotos::Candidate c = m_cands[index];
+    m_grid->setCurrentRow(index);
     m_state->setText(T("Скачиваю фото…"));
-    m_search->fetchImage(QUrl(c.url), [this, name, row](const QByteArray &data) {
+    m_search->fetchBest(c, [this, name, row](const QByteArray &data) {
         if (ActressPhotos::saveChosen(name, data)) {
             m_state->setText(T("Фото «%1» сохранено (1000×1500).").arg(name));
             refreshLeft(row);
             return;
         }
-        m_state->setText(T("Это фото не скачалось — выберите другое."));
+        m_state->setText(T("Это фото сайт не отдаёт — выберите другое."));
+    }, [this](int i, int n) {
+        m_state->setText(T("Скачиваю фото… попытка %1 из %2").arg(i).arg(n));
     });
 }

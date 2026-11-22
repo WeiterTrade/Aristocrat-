@@ -505,7 +505,7 @@ void ServerScanDialog::personPhoto(int row)
                 finishEntry(row, prefix + T("фото: не найдено"));
                 return;
             }
-            m_img->fetchImage(QUrl(good[i].url), [this, e, upload, tryOne, i](const QByteArray &data) {
+            m_img->fetchBest(good[i], [this, e, upload, tryOne, i](const QByteArray &data) {
                 QImage img;
                 img.loadFromData(data);
                 if (img.width() >= 300 && img.height() >= 400) {

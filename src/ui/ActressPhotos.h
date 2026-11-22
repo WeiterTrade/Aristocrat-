@@ -13,6 +13,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QWebEngineView;
+class QNetworkAccessManager;
 
 // Фото актрис для медиатеки: 1000×1500 (2:3), предпочтительно в белье, без наготы.
 // Порядок: выбранное раньше → своя медиатека (.actors в папках релизов) → поиск картинок (Bing, безопасный поиск).
@@ -20,6 +21,8 @@ namespace ActressPhotos {
 struct Candidate {
     QString url, thumb;
     int w = 0, h = 0;
+    QStringList alts;    // копии той же картинки на других сайтах (из Яндекса)
+    QString referer;     // страница, где картинка найдена
 };
 QImage fitPortrait(const QImage &src);                       // обрезка до 2:3 (голова сохраняется) → 1000×1500
 QString cacheFile(const QString &name);                      // выбранное фото (общее для всех релизов)
@@ -39,6 +42,10 @@ public:
     void search(const QString &query, Callback cb);
     // Скачать картинку, открыв её в скрытом окне: ошибка (403/404) видна сразу, без долгого ожидания
     void fetchImage(const QUrl &url, std::function<void(const QByteArray &)> cb);
+    // Надёжное скачивание: каждый адрес (оригинал, затем копии) — прямым запросом, затем через скрытое окно.
+    // progress — номер попытки и их число; повторный вызов отменяет предыдущий.
+    void fetchBest(const ActressPhotos::Candidate &c, std::function<void(const QByteArray &)> cb,
+                   std::function<void(int, int)> progress = nullptr);
 
 private:
     void extract(int attempt);
@@ -52,6 +59,8 @@ private:
     QTimer m_timeout;
     Callback m_cb;
     int m_serial = 0;
+    int m_bestSerial = 0;
+    QNetworkAccessManager *m_net = nullptr;
 };
 
 // Окно выбора фото: слева актрисы, справа найденные варианты

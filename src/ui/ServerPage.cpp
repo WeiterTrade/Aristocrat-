@@ -1827,7 +1827,7 @@ void ServerPage::searchPhoto(int row)
                 writeNext();
                 return;
             }
-            m_img->fetchImage(QUrl(good[i].url), [this, row, n, name, id, tryOne, i](const QByteArray &data) {
+            m_img->fetchBest(good[i], [this, row, n, name, id, tryOne, i](const QByteArray &data) {
                 if (!ActressPhotos::saveChosen(name, data)) {
                     (*tryOne)(i + 1);
                     return;
