@@ -22,6 +22,7 @@
 #include <QDesktopServices>
 #include <QDateTime>
 #include <QDir>
+#include <QTimer>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -388,7 +389,10 @@ void DownloadCard::refresh()
 
     switch (d.status) {
     case DownloadItem::Queued: m_state->setText(T("В очереди")); break;
-    case DownloadItem::Paused: m_state->setText(T("Пауза · %1%").arg(int(d.progress * 100))); break;
+    case DownloadItem::Paused:
+        m_state->setText(d.retryWait ? T("Ждёт связи · %1% · %2").arg(int(d.progress * 100)).arg(d.error)
+                                     : T("Пауза · %1%").arg(int(d.progress * 100)));
+        break;
     case DownloadItem::Failed: m_state->setText(T("Ошибка: ") + d.error); break;
     case DownloadItem::Done: m_state->setText(T("✔ Готово · ") + QFileInfo(d.filePath).fileName()); break;
     case DownloadItem::Downloading: {
@@ -913,6 +917,9 @@ void DownloadPage::startItem(const DownloadPtr &item)
     }
     // Вывод (в том числе путь к готовому файлу) — в UTF-8, иначе на Windows русские буквы превращаются в «�»
     a << "--encoding" << "utf-8";
+    // Обрывы связи: долгие повторы с растущей паузой, докачка с места обрыва (.part и состояние фрагментов сохраняются)
+    a << "--continue" << "--retries" << "30" << "--fragment-retries" << "30"
+      << "--retry-sleep" << "exp=2:60" << "--retry-sleep" << "fragment:exp=2:60" << "--socket-timeout" << "30";
     a << "--no-simulate" << "--progress"
       << "--progress-template" << "download:ARISTO|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
       << "--print" << "before_dl:ARISTOINFO|%(extractor_key)s|%(duration)s|%(thumbnail)s|%(title)s"
@@ -1024,6 +1031,64 @@ QString DownloadPage::locateDownloaded(const DownloadPtr &item) const
     return {};
 }
 
+// Ошибка из-за сети (обрыв, нет связи, таймаут, сбой сервера) — стоит повторить
+static bool networkError(const QString &log)
+{
+    static const QRegularExpression re(QStringLiteral(
+        "timed out|timeout|connection|getaddrinfo|resolve|unreachable|temporary failure|remote end closed|incompleteread|"
+        "reset by peer|broken pipe|ssl|eof occurred|http error 5\\d\\d|giving up after|unable to download (?:video )?(?:data|fragment)|"
+        "no route to host|network|errno 1100\\d|winerror 100\\d\\d|10054|10060|10065"), QRegularExpression::CaseInsensitiveOption);
+    return re.match(log).hasMatch();
+}
+
+// Ссылка на поток больше не принимается (временная ссылка истекла)
+bool DownloadPage::linkExpired(const DownloadPtr &item) const
+{
+    static const QRegularExpression re(QStringLiteral("http error 40[0-4]|http error 410|forbidden|expired|signature"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    return item->external && !item->pageUrl.isEmpty() && re.match(item->log).hasMatch();
+}
+
+bool DownloadPage::retryable(const DownloadPtr &item) const
+{
+    return networkError(item->log) || linkExpired(item);
+}
+
+void DownloadPage::refreshLink(const DownloadPtr &item)
+{
+#ifdef HAVE_WEBENGINE
+    m_status->setText(T("«%1»: беру новую ссылку на видео со страницы…").arg(item->title));
+    GrabDialog gd(QUrl::fromUserInput(item->pageUrl), QString(), QString(), window());
+    if (gd.exec() == QDialog::Accepted && gd.media().isValid()) {
+        item->url = gd.media().toString();
+        item->headers = gd.headers();
+        item->status = DownloadItem::Queued;   // имя файла прежнее — докачка продолжится с места обрыва
+        m_status->setText(T("«%1»: ссылка обновлена, продолжаю загрузку").arg(item->title));
+    } else if (item->autoRetries < 40) {
+        // Связи всё ещё нет — подождём ещё
+        item->status = DownloadItem::Paused;
+        item->retryWait = true;
+        item->error = T("нет связи — повторю через 60 с");
+        QTimer::singleShot(60000, this, [this, item] {
+            if (!m_items.contains(item) || !item->retryWait)
+                return;
+            item->retryWait = false;
+            ++item->autoRetries;
+            refreshLink(item);
+        });
+    } else {
+        item->status = DownloadItem::Failed;
+        item->error = T("не удалось получить новую ссылку на видео — нажмите «Продолжить», когда появится интернет");
+    }
+#else
+    item->status = DownloadItem::Queued;
+#endif
+    refreshCard(item);
+    saveQueue();
+    updateView();
+    startNext();
+}
+
 void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st)
 {
     if (!m_procs.contains(item->id))
@@ -1036,6 +1101,7 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
         item->status = DownloadItem::Paused;
     } else if (st == QProcess::NormalExit && code == 0 && !(item->filePath = locateDownloaded(item)).isEmpty()) {
         item->status = DownloadItem::Done;
+        item->autoRetries = 0;
         item->progress = 1;
         item->total = QFileInfo(item->filePath).size();
         if (DownloadCard *c = m_cards.value(item->id)) {
@@ -1057,6 +1123,31 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
         item->noCookies = true;
         item->status = DownloadItem::Queued;
         m_status->setText(T("Не удалось взять вход из браузера — качаю без входа"));
+    } else if (item->autoRetries < 40 && retryable(item)) {
+        // Обрыв связи или протухшая ссылка: ждём и продолжаем с того же места
+        ++item->autoRetries;
+        const bool expired = linkExpired(item);
+        const int delay = qMin(60, 5 * item->autoRetries);
+        item->status = DownloadItem::Paused;
+        item->retryWait = true;
+        item->error = T("связь прервалась — продолжу через %1 с (попытка %2)").arg(delay).arg(item->autoRetries);
+        m_status->setText(T("«%1»: %2").arg(item->title, item->error));
+        QTimer::singleShot(delay * 1000, this, [this, item, expired] {
+            if (!m_items.contains(item) || !item->retryWait || item->status != DownloadItem::Paused)
+                return;   // удалено или поставлено на паузу вручную
+            item->retryWait = false;
+            item->error.clear();
+            item->log.clear();
+            // Протухшая ссылка (или каждая 3-я попытка у видео со страницы) — берём новую со страницы
+            if (item->external && !item->pageUrl.isEmpty() && (expired || item->autoRetries % 3 == 0)) {
+                refreshLink(item);
+                return;
+            }
+            item->status = DownloadItem::Queued;
+            refreshCard(item);
+            saveQueue();
+            startNext();
+        });
     } else {
         item->status = DownloadItem::Failed;
         QStringList lines;
@@ -1081,8 +1172,15 @@ void DownloadPage::pauseResume(const DownloadPtr &item)
         proc->kill();     // недокачанная часть (.part) сохраняется, yt-dlp продолжит с того же места
         return;
     }
-    if (item->status == DownloadItem::Paused || item->status == DownloadItem::Failed)
+    if (item->retryWait) {   // ждал автоповтора — пользователь продолжил сам
+        item->retryWait = false;
+        item->error.clear();
+        item->autoRetries = 0;
         item->status = DownloadItem::Queued;
+    } else if (item->status == DownloadItem::Paused || item->status == DownloadItem::Failed) {
+        item->status = DownloadItem::Queued;
+        item->autoRetries = 0;
+    }
     else if (item->status == DownloadItem::Queued)
         item->status = DownloadItem::Paused;
     refreshCard(item);

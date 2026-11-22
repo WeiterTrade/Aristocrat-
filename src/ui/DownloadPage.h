@@ -45,6 +45,8 @@ struct DownloadItem {
     QString log;               // вывод yt-dlp (для подробностей ошибки)
     bool pausing = false;
     bool noCookies = false;    // вход из браузера не удался — качаем без него
+    int autoRetries = 0;       // автоповторы после обрыва связи
+    bool retryWait = false;    // ждёт автоповтора (не ручная пауза)
     bool external = false;     // пришло из расширения браузера
     QStringList headers;       // заголовки запроса из браузера (Referer, Cookie…)
     QString pageUrl;           // страница фильма (для глав)
@@ -143,6 +145,9 @@ private:
     void removeItem(const DownloadPtr &item);
     void onOutput(const DownloadPtr &item);
     QString locateDownloaded(const DownloadPtr &item) const;
+    void refreshLink(const DownloadPtr &item);
+    bool linkExpired(const DownloadPtr &item) const;
+    bool retryable(const DownloadPtr &item) const;   // новая ссылка на видео со страницы (старая протухла)
     void onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st);
     void saveQueue() const;
     void loadQueue();

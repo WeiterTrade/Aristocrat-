@@ -426,6 +426,7 @@ static QString nominative(const QString &place)
     QStringList out;
     for (const QString &partIn : place.split(',')) {
         QString w = partIn.trimmed();
+        w.remove(QRegularExpression(QStringLiteral("^(?:городе|город|г\\.|посёлке|поселке|деревне|штате|штат|провинции|области)\\s+")));
         if (w.endsWith(QStringLiteral("ии")))
             w = w.left(w.size() - 1) + QStringLiteral("я");            // России → Россия, Калифорнии → Калифорния
         else if (w.endsWith(QLatin1Char('е')) && !w.contains(' ')) {
@@ -461,10 +462,32 @@ static Card parse(const QString &raw)
     static const QRegularExpression field(QStringLiteral("^\\s*[*•-]?\\s*\\**\\s*(Имя(?: на русском)?|Русское имя|Настоящее имя|Имя при рождении|Оригинальное имя|Дата рождения|Родилась|Место рождения|"
                                                          "Псевдонимы|Также известна как|Теги|Дата смерти|Умерла|Биография)\\s*\\**\\s*:\\s*\\**\\s*(.*)$"),
                                           QRegularExpression::CaseInsensitiveOption);
+    // Разделы ответа из чата: «Биография» (текст), «Краткая справка» (только поля), «Что проверено» (не нужно)
+    static const QRegularExpression bioHead(QStringLiteral("^\\s*#*\\s*\\**\\s*Биография\\s*\\**\\s*:?\\s*$"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression infoHead(QStringLiteral("^\\s*#*\\s*\\**\\s*(Краткая справка|Справка|Основные данные|Данные для полей|Метаданные)\\b"),
+                                             QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression skipHead(QStringLiteral("^\\s*#*\\s*\\**\\s*(Что проверено|Проверено|Источники|Примечани[ея]|Sources)\\b"),
+                                             QRegularExpression::CaseInsensitiveOption);
+    enum { Text, Info, Skip } part = Text;
     for (const QString &line : raw.split('\n')) {
+        if (skipHead.match(line).hasMatch()) {
+            part = Skip;
+            continue;
+        }
+        if (part == Skip)
+            continue;
+        if (infoHead.match(line).hasMatch()) {
+            part = Info;
+            continue;
+        }
+        if (bioHead.match(line).hasMatch()) {
+            part = Text;
+            continue;
+        }
         const auto m = field.match(line);
         if (!m.hasMatch()) {
-            body << line;
+            if (part == Text)
+                body << line;
             continue;
         }
         const QString key = m.captured(1).toLower(), val = m.captured(2).trimmed();
@@ -1855,7 +1878,10 @@ void ServerPage::editActress(int row)
         const QString dd = died->text().trimmed();
         const QDate dt = dd.isEmpty() ? QDate() : Pasted::ruDate(dd);
         m_table->item(row, ColRuName)->setText(ru->text().trimmed());
-        m_table->item(row, ColRuName)->setData(Qt::UserRole, real->text().trimmed());
+        QString realName = real->text().trimmed();
+        if (realName.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption)))
+            realName = QStringLiteral("Не раскрывается");
+        m_table->item(row, ColRuName)->setData(Qt::UserRole, realName);
         m_table->item(row, ColBorn)->setText(bd.isValid() ? bd.toString(Qt::ISODate) : QString());
         m_table->item(row, ColBorn)->setData(Qt::UserRole, dt.isValid() ? dt.toString(Qt::ISODate) : QString());
         m_table->item(row, ColPlace)->setText(place->text().trimmed());
