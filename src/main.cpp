@@ -62,7 +62,7 @@ static QSplashScreen *makeSplash()
                T("Версия: %1").arg(QStringLiteral(APP_VERSION)));
     f.setPointSizeF(9);
     p.setFont(f);
-    p.drawText(QRectF(0, size.height() - 44, size.width(), 24), Qt::AlignCenter, QStringLiteral("WeiterTrade"));
+    p.drawText(QRectF(0, size.height() - 44, size.width(), 24), Qt::AlignCenter, QStringLiteral("Aristocrat TEAM"));
     p.end();
 
     auto *s = new QSplashScreen(pm, Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::SplashScreen);
