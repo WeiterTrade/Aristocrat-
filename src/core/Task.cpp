@@ -23,6 +23,7 @@ QString UpscaleOptions::modeName(Mode m)
     case Fast4K: return T("4K — быстро");
     case AI1080: return T("1080p — нейросеть");
     case AI4K: return T("4K — нейросеть");
+    case Fast720: return T("720p — улучшение");
     }
     return {};
 }
@@ -37,6 +38,15 @@ QSize ConversionTask::outputSize() const
 {
     if (preset.isAudioOnly() || !info.hasVideo)
         return {};
+    if (upscale.mode == UpscaleOptions::Fast720) {
+        // 720 по высоте, ширина — по пропорциям кадра (после обрезки рамок), без добавления полос
+        QSize src = edit.crop.isNull() ? QSize(info.width, info.height) : edit.crop.size();
+        const double sar = info.sar > 0 ? info.sar : 1.0;
+        if (src.height() <= 0)
+            return QSize(1280, 720);
+        const int w = int(qRound(720.0 * src.width() * sar / src.height() / 2.0)) * 2;
+        return QSize(qMax(2, w), 720);
+    }
     if (upscale.mode != UpscaleOptions::None)
         return QSize(upscale.targetWidth(), upscale.targetHeight());
     if (customResolution.isValid() && !customResolution.isEmpty())

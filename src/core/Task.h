@@ -44,13 +44,13 @@ struct EditOptions {
 
 // Наш апскейл — функции нет в оригинале.
 struct UpscaleOptions {
-    enum Mode { None = 0, Fast1080 = 1, Fast4K = 2, AI1080 = 3, AI4K = 4 };
+    enum Mode { None = 0, Fast1080 = 1, Fast4K = 2, AI1080 = 3, AI4K = 4, Fast720 = 5 };
     Mode mode = None;
     bool vhsRestore = false;    // устранение чересстрочности, шумоподавление, обрезка полосы снизу
     QString model = QStringLiteral("realesr-animevideov3"); // или realesrgan-x4plus
     bool isAI() const { return mode == AI1080 || mode == AI4K; }
-    int targetHeight() const { return (mode == Fast4K || mode == AI4K) ? 2160 : (mode == None ? 0 : 1080); }
-    int targetWidth() const { return (mode == Fast4K || mode == AI4K) ? 3840 : (mode == None ? 0 : 1920); }
+    int targetHeight() const { return (mode == Fast4K || mode == AI4K) ? 2160 : mode == Fast720 ? 720 : (mode == None ? 0 : 1080); }
+    int targetWidth() const { return (mode == Fast4K || mode == AI4K) ? 3840 : mode == Fast720 ? 1280 : (mode == None ? 0 : 1920); }
     static QString modeName(Mode m);
 };
 
@@ -67,6 +67,7 @@ struct ConversionTask {
     QString outputName;       // имя без расширения
     QString outputDir;        // своя папка (Менеджер релизов), пусто — общая
     QString chaptersMeta;     // файл глав FFMETADATA — вставить в результат после конвертации
+    bool improveLowRes = false;  // видео релиза: если ниже 720p — обрезать рамки, поднять до 720p, сжать в H.265
     EditOptions edit;
     UpscaleOptions upscale;
 

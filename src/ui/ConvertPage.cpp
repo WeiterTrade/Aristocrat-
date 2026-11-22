@@ -516,6 +516,32 @@ TaskPtr ConvertPage::addTask(const QString &input, const QString &displayName)
         if (t->info.interlaced)
             t->edit.deinterlace = true;
         card->setInfoLoaded();
+        // Видео релиза ниже 720p: обрезать чёрные рамки, поднять до 720p, сжать в H.265 (MKV)
+        if (t->improveLowRes && t->info.ok && t->info.hasVideo && t->info.height > 0 && t->info.height < 700) {
+            Preset p;
+            p.id = QStringLiteral("release-hevc720");
+            p.category = QStringLiteral("video");
+            p.group = QStringLiteral("HEVC MKV");
+            p.name = QStringLiteral("720P");
+            p.badge = QStringLiteral("MKV");
+            p.ext = QStringLiteral("mkv");
+            p.vcodec = QStringLiteral("libx265");
+            p.acodec = QStringLiteral("copy");
+            t->preset = p;
+            t->upscale.mode = UpscaleOptions::Fast720;
+            t->customVBitrate = 1500;   // ~1,6 ГБ на 2,5 часа — качество 720p без лишнего веса
+            const bool start = m_autoStart.remove(t->id);
+            auto rect = QSharedPointer<QRect>::create();
+            ConversionTask copy = *t;
+            Ui::runAsync(card, [copy, rect] { *rect = FfmpegCommand::detectBlackBars(copy); }, [this, t, rect, start] {
+                t->edit.crop = *rect;
+                if (TaskCard *c = m_cards.value(t->id))
+                    c->refresh();
+                if (start)
+                    convertOne(t);
+            });
+            return;
+        }
         if (m_autoStart.remove(t->id) && t->info.ok)
             convertOne(t);
     });
@@ -707,6 +733,7 @@ void ConvertPage::addReleaseVideo(const QString &input, const QString &name, con
     TaskPtr task = addTask(input, name);
     task->outputDir = dir;
     task->chaptersMeta = chaptersMeta;
+    task->improveLowRes = true;
     if (lossless) {
         Preset p;
         p.id = QStringLiteral("release-copy");

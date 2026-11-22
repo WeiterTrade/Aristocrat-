@@ -178,6 +178,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_upscale = new QComboBox(this);
     m_upscale->setToolTip(T("Апскейл — увеличение разрешения (для старых кассет)"));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::None), int(UpscaleOptions::None));
+    m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast720), int(UpscaleOptions::Fast720));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast1080), int(UpscaleOptions::Fast1080));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast4K), int(UpscaleOptions::Fast4K));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI1080), int(UpscaleOptions::AI1080));

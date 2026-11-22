@@ -64,6 +64,8 @@ static QStringList preFilters(const ConversionTask &t)
         f << QStringLiteral("crop=iw-16:ih-12:8:0"); // дрожащая полоса внизу кадра у VHS
     if (t.upscale.vhsRestore || e.denoise)
         f << QStringLiteral("hqdn3d=3:2:4:3");
+    else if (t.upscale.mode == UpscaleOptions::Fast720)
+        f << QStringLiteral("hqdn3d=1.5:1.5:4:4");   // лёгкое шумоподавление перед увеличением
     if (e.rotate == 90) f << QStringLiteral("transpose=1");
     else if (e.rotate == 270) f << QStringLiteral("transpose=2");
     else if (e.rotate == 180) f << QStringLiteral("hflip") << QStringLiteral("vflip");
@@ -88,7 +90,11 @@ static QStringList scaleFilters(const ConversionTask &t)
     const bool needScale = o.isValid() && !o.isEmpty()
         && (t.upscale.mode != UpscaleOptions::None || (t.customResolution.isValid() && !t.customResolution.isEmpty())
             || (t.preset.width > 0 && t.preset.height > 0));
-    if (needScale) {
+    if (needScale && t.upscale.mode == UpscaleOptions::Fast720) {
+        // Старый релиз ниже 720p: увеличение до 720 по высоте (пропорции сохраняются) и лёгкая резкость
+        f << QStringLiteral("scale=-2:720:flags=lanczos") << QStringLiteral("unsharp=5:5:0.6:5:5:0.0")
+          << QStringLiteral("setsar=1");
+    } else if (needScale) {
         const int W = even(o.width()), H = even(o.height());
         if (t.edit.fit == 1) {
             // Во весь экран: увеличиваем до заполнения кадра и срезаем лишнее — без чёрных полос
