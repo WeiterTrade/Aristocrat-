@@ -104,7 +104,7 @@ MainWindow::MainWindow(QWidget *parent)
         const QString fanart = QDir(p.dir).filePath(p.name + QStringLiteral("-fanart.jpg"));
         if (!QFileInfo::exists(fanart))
             Release::fanartFromVideo(file, fanart);
-        m_convert->addReleaseVideo(file, p.name, p.dir, p.lossless, p.chaptersMeta);
+        m_convert->addReleaseVideo(file, p.name, p.dir, p.lossless, p.chaptersMeta, true);   // скачанное — удалить после обработки
     });
     connect(download, &DownloadPage::chaptersConvert, this,
             [this](const QString &in, const QString &name, const QString &dir, const QString &meta) {

@@ -67,7 +67,8 @@ struct ConversionTask {
     QString outputName;       // имя без расширения
     QString outputDir;        // своя папка (Менеджер релизов), пусто — общая
     QString chaptersMeta;     // файл глав FFMETADATA — вставить в результат после конвертации
-    bool improveLowRes = false;  // видео релиза: если ниже 720p — обрезать рамки, поднять до 720p, сжать в H.265
+    bool improveLowRes = false;
+    bool deleteInputAfter = false;  // скачанный исходник видео релиза — удалить после успешной обработки  // видео релиза: если ниже 720p — обрезать рамки, поднять до 720p, сжать в H.265
     EditOptions edit;
     UpscaleOptions upscale;
 

@@ -30,7 +30,8 @@ public:
     void reloadSettings();
     void addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless);
     // Видео из Менеджера релизов: своё имя и папка, главы вставляются после конвертации
-    void addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless, const QString &chaptersMeta);
+    void addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless, const QString &chaptersMeta,
+                         bool deleteSource = false);   // deleteSource — скачанный файл удалить после успешной обработки
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;

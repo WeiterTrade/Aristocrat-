@@ -95,8 +95,19 @@ ConvertPage::ConvertPage(QWidget *parent)
     connect(m_engine, &ConversionEngine::message, this, [this](const QString &m) { m_statusLine->setText(m); });
     connect(m_engine, &ConversionEngine::taskFinished, this, [this](int id) {
         for (const TaskPtr &t : m_tasks)
-            if (t->id == id && t->status == ConversionTask::Done)
+            if (t->id == id && t->status == ConversionTask::Done) {
                 addConvertedEntry(t);
+                // Скачанный исходник видео релиза больше не нужен: результат уже в папке релиза
+                const QFileInfo out(t->outputPath), in(t->input);
+                if (t->deleteInputAfter && out.exists() && out.size() > 1024 * 1024
+                    && out.absoluteFilePath() != in.absoluteFilePath() && QFile::remove(t->input)) {
+                    m_statusLine->setText(T("Видео релиза готово, скачанный исходник удалён: %1").arg(in.fileName()));
+                    // хвосты загрузки рядом (.part, .ytdl) — тоже
+                    for (const QFileInfo &f : in.dir().entryInfoList({in.completeBaseName() + QStringLiteral("*.part*"),
+                                                                       in.completeBaseName() + QStringLiteral("*.ytdl")}, QDir::Files))
+                        QFile::remove(f.absoluteFilePath());
+                }
+            }
     });
 
     if (!Tools::hasFfmpeg())
@@ -728,9 +739,10 @@ void ConvertPage::reloadSettings()
 }
 
 void ConvertPage::addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless,
-                                  const QString &chaptersMeta)
+                                  const QString &chaptersMeta, bool deleteSource)
 {
     TaskPtr task = addTask(input, name);
+    task->deleteInputAfter = deleteSource;
     task->outputDir = dir;
     task->chaptersMeta = chaptersMeta;
     task->improveLowRes = true;
