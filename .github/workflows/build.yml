@@ -227,6 +227,9 @@ jobs:
             convert shot.png -resize 1100x -quality 60 "$name.jpg"
             echo "SCREENSHOT_BEGIN $name"; base64 -w 8000 "$name.jpg"; echo "SCREENSHOT_END"
           }
+          SHOT_WAIT=6 ARISTOCRAT_LANG=ru shot splash --demo-splash
+          convert shot.png -gravity center -crop 620x380+0+0 +repage -quality 85 splash.jpg
+          echo "SCREENSHOT_BEGIN splash-full"; base64 -w 8000 splash.jpg; echo "SCREENSHOT_END"
           shot trim --demo-trim "$PWD/Кассета 1994.mp4"
           shot convert "$PWD/Кассета 1994.mp4"
           shot download --page=1

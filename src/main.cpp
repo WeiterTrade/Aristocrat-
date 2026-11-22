@@ -103,6 +103,12 @@ int main(int argc, char *argv[])
         Tools::hardwareHevcEncoder();
     });
 
+    if (app.arguments().contains(QStringLiteral("--demo-splash"))) {   // снимок заставки для автопроверки
+        QSplashScreen *only = makeSplash();
+        only->show();
+        return app.exec();
+    }
+
     // Заставка (не в автопроверке сборки — там служебные ключи --demo-… и т. п.)
     bool service = false;
     for (const QString &a : app.arguments().mid(1))
