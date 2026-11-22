@@ -206,6 +206,24 @@ FramedDialog::FramedDialog(QWidget *parent, bool resizable)
         new FrameResizer(this, m_frame, b);
 }
 
+void FramedDialog::setMinimizable()
+{
+    QWidget *bar = m_buttons->parentWidget();
+    auto *nb = new WindowButtons(this, true, m_resizable, bar);
+    if (bar->layout())
+        bar->layout()->replaceWidget(m_buttons, nb);
+    removeEventFilter(m_buttons);
+    m_buttons->deleteLater();
+    m_buttons = nb;
+    nb->updateState();
+    const bool visible = isVisible();
+    // Без владельца: на Windows окно с владельцем не сворачивается на панель задач
+    setParent(nullptr, Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint);
+    setWindowIcon(QApplication::windowIcon());
+    if (visible)
+        show();
+}
+
 void FramedDialog::changeEvent(QEvent *e)
 {
     if (e->type() == QEvent::WindowTitleChange && m_title)

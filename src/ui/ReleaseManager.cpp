@@ -130,6 +130,9 @@ r.watch='';[].slice.call(document.querySelectorAll('a[href]')).some(function(a){
 // Adult Empire: страница видео (…-porn-videos.html) указана в кнопке «More Screenshots»
 (function(){var e=document.querySelector('[onclick*="ShowMoreScreens"]');var m=e&&/'([^']+porn-videos[^']*)'/.exec(e.getAttribute('onclick')||'');
  if(m)r.watch=new URL(m[1],location.href).href;})();
+// Номер обложек: на странице видео (…-porn-videos.html) обложки лежат под номером DVD-издания, а не под SKU страницы
+(function(){var a=document.querySelector('#front-cover');var u=a?(a.getAttribute('data-href')||a.getAttribute('href')||''):'';
+ var m=/\/movie\/(\d+)/.exec(u);r.coverId=m?m[1]:'';})();
 var sku=r.sku.replace(/\D/g,'');
 function pick(ok){var best='';urls.forEach(function(u){if(ok(u)&&(!best||(sku&&u.indexOf(sku)>=0&&best.indexOf(sku)<0)))best=u;});return best;}
 r.back=pick(function(u){return /\d+bh\.(jpe?g|webp)/i.test(u);});
@@ -1087,7 +1090,8 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     // Обложки
     m_frontUrl->setText(d.value("front").toString());
     m_backUrl->setText(d.value("back").toString());
-    const QString sku = m_uid->text();
+    m_coverId = d.value("coverId").toString();
+    const QString sku = m_coverId.isEmpty() ? m_uid->text() : m_coverId;
     if (!sku.isEmpty()) {
         // Точное правило сайта: обложки по номеру SKU
         m_frontUrl->setText(coverUrls(sku, false).first());
@@ -1532,10 +1536,10 @@ void ReleaseManagerDialog::create()
     // Загрузки: обложки и фото актрис
     m_jobs.clear();
     if (!r.frontUrl.isEmpty())
-        m_jobs << Job{r.frontUrl, QDir(dir).filePath(base + QStringLiteral("-poster.jpg")), coverUrls(r.sku, false), false};
+        m_jobs << Job{r.frontUrl, QDir(dir).filePath(base + QStringLiteral("-poster.jpg")), coverUrls(m_coverId.isEmpty() ? r.sku : m_coverId, false), false};
     if (!r.backUrl.isEmpty()) {
         m_jobs << Job{r.backUrl, QDir(dir).filePath(base + QStringLiteral("-back.jpg")),
-                      coverUrls(r.sku, true) + backGuesses(r.frontUrl), false};
+                      coverUrls(m_coverId.isEmpty() ? r.sku : m_coverId, true) + backGuesses(r.frontUrl), false};
     }
     if (!r.fanartUrl.isEmpty()) {
         QStringList alt = m_shots;

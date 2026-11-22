@@ -96,6 +96,7 @@
  "Введите адрес сервера (например, http://ваш-IP:8096), логин и пароль. Пароль не сохраняется — программа хранит только ключ доступа.": "Inserisci l'indirizzo del server (es. http://tuo-IP:8096), login e password. La password non viene salvata: il programma conserva solo una chiave di accesso.",
  "Введите адрес сервера и логин.": "Inserisci l'indirizzo del server e il login.",
  "Ввести ссылки вручную…": "Inserisci link manualmente…",
+ "Версия: %1": "Versione: %1",
  "Видео": "Video",
  "Видео (*.avi *.mpg *.mpeg *.vob *.mp4 *.mkv *.mov *.dv *.ts *.wmv);;Все файлы (*)": "Video (*.avi *.mpg *.mpeg *.vob *.mp4 *.mkv *.mov *.dv *.ts *.wmv);;Tutti i file (*)",
  "Видео (*.mkv *.mp4 *.m4v *.mov *.avi *.wmv *.ts *.webm);;Все файлы (*)": "Video (*.mkv *.mp4 *.m4v *.mov *.avi *.wmv *.ts *.webm);;Tutti i file (*)",

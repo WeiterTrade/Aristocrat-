@@ -82,6 +82,7 @@ signals:
     void downloadRequested(const QString &pageUrl);
 
 private:
+    QString m_coverId;   // номер обложек Adult Empire (на странице видео он отличается от SKU)
     void fetch();
     void fetchScenes(const QString &url);
     void setScenes(const QList<Chapter> &scenes);

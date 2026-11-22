@@ -206,6 +206,9 @@ void ToolboxPage::openRelease(const QString &url, const QString &video, const QS
 #ifdef HAVE_WEBENGINE
     auto *d = new ReleaseManagerDialog(url, video, window(), scenesUrl);
     d->setAttribute(Qt::WA_DeleteOnClose);
+    const QRect host = window()->geometry();
+    d->setMinimizable();   // можно свернуть, пока качается видео релиза
+    d->move(host.center() - QPoint(d->width() / 2, d->height() / 2));
     connect(d, &ReleaseManagerDialog::videoRequested, this, &ToolboxPage::releaseVideo);
     connect(d, &ReleaseManagerDialog::downloadRequested, this, &ToolboxPage::releaseDownload);
     if (tab == 1)

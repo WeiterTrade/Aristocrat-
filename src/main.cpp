@@ -4,10 +4,72 @@
 #include "ui/MainWindow.h"
 
 #include <QApplication>
+#include <QLinearGradient>
+#include <QPainter>
+#include <QPainterPath>
+#include <QScreen>
+#include <QSplashScreen>
+#include <QSvgRenderer>
+#include <QTimer>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
 #include <QThread>
 #include <QThreadPool>
+
+// Заставка при запуске: тёмная карточка, логотип, название и версия (как у Aimersoft UniConverter)
+static QSplashScreen *makeSplash()
+{
+    const qreal dpr = qApp->primaryScreen() ? qApp->primaryScreen()->devicePixelRatio() : 1.0;
+    const QSize size(540, 300);
+    QPixmap pm(size * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::TextAntialiasing);
+    QPainterPath card;
+    card.addRoundedRect(QRectF(0.5, 0.5, size.width() - 1, size.height() - 1), 16, 16);
+    QLinearGradient bg(0, 0, 0, size.height());
+    bg.setColorAt(0, QColor(0x2b, 0x26, 0x23));
+    bg.setColorAt(1, QColor(0x1b, 0x18, 0x16));
+    p.fillPath(card, bg);
+    p.setPen(QPen(QColor(212, 166, 74, 90), 1));
+    p.drawPath(card);
+
+    QSvgRenderer logo(QStringLiteral(":/logo/logo.svg"));
+    logo.render(&p, QRectF(70, 92, 96, 96));
+
+    const QColor gold(0xd4, 0xa6, 0x4a), muted(0x9a, 0x8f, 0x84);
+    QFont f = qApp->font();
+    f.setPointSizeF(26);
+    f.setBold(true);
+    f.setLetterSpacing(QFont::PercentageSpacing, 104);
+    p.setFont(f);
+    p.setPen(gold);
+    p.drawText(QRectF(190, 96, 330, 44), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("ARISTOCRAT"));
+    f.setPointSizeF(11.5);
+    f.setBold(false);
+    f.setLetterSpacing(QFont::AbsoluteSpacing, 3.2);
+    p.setFont(f);
+    p.setPen(QColor(0xe8, 0xdf, 0xd4));
+    p.drawText(QRectF(192, 140, 330, 24), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("ВИДЕОКОНВЕРТЕР"));
+    f.setPointSizeF(10);
+    f.setLetterSpacing(QFont::AbsoluteSpacing, 0);
+    p.setFont(f);
+    p.setPen(muted);
+    p.drawText(QRectF(192, 168, 330, 22), Qt::AlignLeft | Qt::AlignVCenter,
+               T("Версия: %1").arg(QStringLiteral(APP_VERSION)));
+    f.setPointSizeF(9);
+    p.setFont(f);
+    p.drawText(QRectF(0, size.height() - 44, size.width(), 24), Qt::AlignCenter, QStringLiteral("WeiterTrade"));
+    p.end();
+
+    auto *s = new QSplashScreen(pm, Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::SplashScreen);
+    s->setAttribute(Qt::WA_TranslucentBackground);
+    s->setAttribute(Qt::WA_DeleteOnClose);
+    return s;
+}
 
 int main(int argc, char *argv[])
 {
@@ -41,8 +103,28 @@ int main(int argc, char *argv[])
         Tools::hardwareHevcEncoder();
     });
 
+    // Заставка (не в автопроверке сборки — там служебные ключи --demo-… и т. п.)
+    bool service = false;
+    for (const QString &a : app.arguments().mid(1))
+        service |= a.startsWith(QLatin1String("--"));
+    QSplashScreen *splash = service ? nullptr : makeSplash();
+    QElapsedTimer shown;
+    if (splash) {
+        splash->show();
+        shown.start();
+        app.processEvents();
+    }
+
     MainWindow w;
     w.show();
+    if (splash) {
+        // Не меньше 1,5 с, затем заставка исчезает и окно программы выходит вперёд
+        QTimer::singleShot(qMax<qint64>(0, 1500 - shown.elapsed()), splash, [splash, &w] {
+            splash->finish(&w);
+            w.raise();
+            w.activateWindow();
+        });
+    }
 
     // Файлы, переданные при запуске («Открыть с помощью…»).
     // Служебные ключи для автопроверки сборки: --page=N (открыть раздел), --demo-trim (окно обрезки).

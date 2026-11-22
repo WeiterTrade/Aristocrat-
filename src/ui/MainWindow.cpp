@@ -21,6 +21,7 @@
 #include "Widgets.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QHBoxLayout>
@@ -385,6 +386,10 @@ void MainWindow::closeEvent(QCloseEvent *e)
     }
     QSettings s;
     s.setValue("window/geometry", saveGeometry());
+    // Отдельные окна (менеджер Adult Empire) закрываются вместе с программой
+    for (QWidget *w : QApplication::topLevelWidgets())
+        if (w != this && w->isVisible() && !w->parentWidget() && qobject_cast<QDialog *>(w))
+            w->close();
     e->accept();
 }
 

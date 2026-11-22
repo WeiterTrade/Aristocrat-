@@ -66,6 +66,8 @@ class FramedDialog : public QDialog
 public:
     explicit FramedDialog(QWidget *parent = nullptr, bool resizable = false);
     QVBoxLayout *contentLayout() const { return m_content; }
+    // Отдельное окно со своим значком на панели задач и кнопкой «Свернуть»
+    void setMinimizable();
 
 protected:
     void changeEvent(QEvent *e) override;
