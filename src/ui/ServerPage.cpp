@@ -381,7 +381,7 @@ namespace Pasted {
 
 struct Card {
     QString ruName, place, overview;
-    QString realName;      // «Оригинальное имя» в Jellyfin: настоящее имя или «Не раскрывается»
+    QString realName;      // «Оригинальное имя» в Jellyfin: настоящее имя или «Не Раскрывается»
     QDate born, died;
     QStringList aliases;
     bool hasDied = false;
@@ -493,7 +493,7 @@ static Card parse(const QString &raw)
         const QString key = m.captured(1).toLower(), val = m.captured(2).trimmed();
         if (key.startsWith(QStringLiteral("настоящее")) || key.startsWith(QStringLiteral("имя при")) || key.startsWith(QStringLiteral("оригинальное")))
             c.realName = val.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption))
-                             ? QStringLiteral("Не раскрывается") : QString(val).remove(QRegularExpression(QStringLiteral("[.;]+$")));
+                             ? QStringLiteral("Не Раскрывается") : QString(val).remove(QRegularExpression(QStringLiteral("[.;]+$")));
         else if (key.startsWith(QStringLiteral("имя")) || key.startsWith(QStringLiteral("русское")))
             c.ruName = val;
         else if (key.startsWith(QStringLiteral("дата рожд")) || key == QStringLiteral("родилась"))
@@ -516,7 +516,7 @@ static Card parse(const QString &raw)
         const QString phrase = rm.captured(0).trimmed();
         if (c.realName.isEmpty()) {
             if (phrase.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption)))
-                c.realName = QStringLiteral("Не раскрывается");
+                c.realName = QStringLiteral("Не Раскрывается");
             else {
                 static const QRegularExpression val(QStringLiteral("имя(?:\\s+актрисы)?\\s*(?:—|–|-|:)\\s*([^.\\n]+)"));
                 c.realName = val.match(phrase).captured(1).trimmed();
@@ -1689,8 +1689,8 @@ void ServerPage::editActress(int row)
     auto *tags = new QLineEdit(m_table->item(row, ColTags)->text(), &d);
     tags->setPlaceholderText(T("псевдонимы через запятую"));
     auto *real = new QLineEdit(m_table->item(row, ColRuName)->data(Qt::UserRole).toString(), &d);
-    real->setPlaceholderText(QStringLiteral("Не раскрывается"));
-    real->setToolTip(T("Записывается в поле Jellyfin «Оригинальное имя». Пусто — «Не раскрывается»."));
+    real->setPlaceholderText(QStringLiteral("Не Раскрывается"));
+    real->setToolTip(T("Записывается в поле Jellyfin «Оригинальное имя». Пусто — «Не Раскрывается»."));
     int r = 0;
     for (auto pr : {qMakePair(T("Имя по-русски:"), ru), qMakePair(T("Настоящее имя:"), real), qMakePair(T("Дата рождения:"), born), qMakePair(T("Место рождения:"), place),
                     qMakePair(T("Дата смерти:"), died), qMakePair(T("Псевдонимы (теги):"), tags)}) {
@@ -1880,7 +1880,7 @@ void ServerPage::editActress(int row)
         m_table->item(row, ColRuName)->setText(ru->text().trimmed());
         QString realName = real->text().trimmed();
         if (realName.contains(QRegularExpression(QStringLiteral("не\\s+раскрыва|неизвестн|не\\s+разглаш"), QRegularExpression::CaseInsensitiveOption)))
-            realName = QStringLiteral("Не раскрывается");
+            realName = QStringLiteral("Не Раскрывается");
         m_table->item(row, ColRuName)->setData(Qt::UserRole, realName);
         m_table->item(row, ColBorn)->setText(bd.isValid() ? bd.toString(Qt::ISODate) : QString());
         m_table->item(row, ColBorn)->setData(Qt::UserRole, dt.isValid() ? dt.toString(Qt::ISODate) : QString());
@@ -2031,7 +2031,7 @@ void ServerPage::writeNext()
         if (!realName.isEmpty())
             item.insert("OriginalTitle", realName);
         else if (item.value("OriginalTitle").toString().trimmed().isEmpty())
-            item.insert("OriginalTitle", QStringLiteral("Не раскрывается"));
+            item.insert("OriginalTitle", QStringLiteral("Не Раскрывается"));
         // Закрепить карточку, чтобы обновление метаданных её не переписало
         item.insert("LockData", true);
         const QString place = m_table->item(row, ColPlace)->text().trimmed();
