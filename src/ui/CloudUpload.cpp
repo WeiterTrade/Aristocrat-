@@ -3,6 +3,9 @@
 #include "Widgets.h"
 #include "core/I18n.h"
 #include "core/Tools.h"
+#ifdef HAVE_WEBENGINE
+#include "BrowserWindow.h"
+#endif
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -26,6 +29,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <atomic>
@@ -162,10 +166,16 @@ CloudUploadPage::CloudUploadPage(QWidget *parent)
     m_cancel->setVisible(false);
     m_upload = Ui::primaryButton(T("Выгрузить в эту папку"), this);
     m_upload->setMinimumWidth(220);
+    auto *web = new QPushButton(T("Через браузер…"), this);
+    web->setToolTip(T("Открыть облако во встроенном браузере в этой папке — туда можно перетащить папку релиза"));
+    btns->addWidget(web);
     btns->addStretch();
     btns->addWidget(m_cancel);
     btns->addWidget(m_upload);
     root->addLayout(btns);
+    connect(web, &QPushButton::clicked, this, &CloudUploadPage::openWeb);
+    connect(m_provider, QOverload<int>::of(&QComboBox::currentIndexChanged), web, [this, web] { web->setVisible(!isLocal()); });
+    web->setVisible(!isLocal());
 
     connect(m_provider, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] {
         QSettings().setValue(QStringLiteral("upload/provider"), current().id);
@@ -234,6 +244,31 @@ QString CloudUploadPage::configFile()
 QStringList CloudUploadPage::rc(const QStringList &args) const
 {
     return args + QStringList{QStringLiteral("--config"), configFile()};
+}
+
+// Облако в браузере — сразу в текущей папке (где это возможно); вход в аккаунт запоминается
+void CloudUploadPage::openWeb()
+{
+#ifdef HAVE_WEBENGINE
+    const QString type = current().type;
+    const QString path = QString::fromLatin1(QUrl::toPercentEncoding(m_cwd, "/"));
+    QString url;
+    if (type == QLatin1String("mailru"))
+        url = QStringLiteral("https://cloud.mail.ru/home/") + path;
+    else if (type == QLatin1String("yandex"))
+        url = QStringLiteral("https://disk.yandex.ru/client/disk/") + path;
+    else if (type == QLatin1String("drive"))
+        url = QStringLiteral("https://drive.google.com/drive/my-drive");
+    else if (type == QLatin1String("onedrive"))
+        url = QStringLiteral("https://onedrive.live.com/");
+    if (url.isEmpty())
+        return;
+    auto *b = new BrowserWindow(window());
+    b->setAttribute(Qt::WA_DeleteOnClose);
+    b->open(QUrl(url));
+    b->show();
+    m_state->setText(T("Облако открыто в браузере — перетащите туда папку релиза из Проводника."));
+#endif
 }
 
 QString CloudUploadPage::remotePath(const QString &path) const
@@ -525,9 +560,13 @@ void CloudUploadPage::upload()
             const auto m = pct.match(line);
             if (m.hasMatch()) {
                 m_progress->setValue(m.captured(1).toInt());
+                static const QRegularExpression speed(QStringLiteral("([0-9.]+\\s*[KMG]i?B/s)"));
                 const QString e = eta.match(line).captured(1);
+                const QString sp = speed.match(line).captured(1);
                 if (!e.isEmpty() && e != QLatin1String("-"))
-                    m_state->setText(T("Выгрузка… осталось примерно %1").arg(e));
+                    m_state->setText(T("Выгрузка… %1%, скорость %2, осталось примерно %3").arg(m.captured(1), sp.isEmpty() ? QStringLiteral("—") : sp, e));
+                else
+                    m_state->setText(T("Выгрузка… %1%, скорость %2").arg(m.captured(1), sp.isEmpty() ? QStringLiteral("—") : sp));
             }
         }
     });
@@ -546,7 +585,16 @@ void CloudUploadPage::upload()
             setBusy(false, st == QProcess::CrashExit ? T("Выгрузка остановлена.") : T("Выгрузка не удалась. Проверьте подключение к интернету и место в облаке."));
         }
     });
-    m_proc->start(Tools::rclone(), rc({QStringLiteral("copy"), rel, dst, QStringLiteral("--stats"), QStringLiteral("1s"),
-                                       QStringLiteral("--stats-one-line"), QStringLiteral("--stats-log-level"), QStringLiteral("NOTICE"),
-                                       QStringLiteral("--transfers"), QStringLiteral("2")}));
+    QStringList args{QStringLiteral("copy"), rel, dst, QStringLiteral("--stats"), QStringLiteral("1s"),
+                     QStringLiteral("--stats-one-line"), QStringLiteral("--stats-log-level"), QStringLiteral("NOTICE"),
+                     QStringLiteral("--transfers"), QStringLiteral("4"), QStringLiteral("--checkers"), QStringLiteral("8"),
+                     QStringLiteral("--buffer-size"), QStringLiteral("64M")};
+    if (current().type == QLatin1String("mailru"))
+        // «Ускорение по хешу» сначала считает хеш и пишет временную копию файла — на большом видео это долгая пауза
+        args << QStringLiteral("--mailru-speedup-enable=false");
+    else if (current().type == QLatin1String("drive"))
+        args << QStringLiteral("--drive-chunk-size") << QStringLiteral("128M");
+    else if (current().type == QLatin1String("onedrive"))
+        args << QStringLiteral("--onedrive-chunk-size") << QStringLiteral("100M");
+    m_proc->start(Tools::rclone(), rc(args));
 }

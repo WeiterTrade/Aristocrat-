@@ -30,6 +30,7 @@ private:
     };
     const Provider &current() const;
     bool isLocal() const { return current().type.isEmpty(); }
+    void openWeb();
     QString remote() const { return QStringLiteral("aristo-") + current().id; }
     QString remotePath(const QString &path) const;
     static QString configFile();

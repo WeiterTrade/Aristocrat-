@@ -142,6 +142,7 @@ private:
     void pauseResume(const DownloadPtr &item);
     void removeItem(const DownloadPtr &item);
     void onOutput(const DownloadPtr &item);
+    QString locateDownloaded(const DownloadPtr &item) const;
     void onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st);
     void saveQueue() const;
     void loadQueue();

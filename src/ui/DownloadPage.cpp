@@ -20,6 +20,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -910,6 +911,8 @@ void DownloadPage::startItem(const DownloadPtr &item)
         for (const QString &h : item->headers)
             a << "--add-header" << h;
     }
+    // Вывод (в том числе путь к готовому файлу) — в UTF-8, иначе на Windows русские буквы превращаются в «�»
+    a << "--encoding" << "utf-8";
     a << "--no-simulate" << "--progress"
       << "--progress-template" << "download:ARISTO|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
       << "--print" << "before_dl:ARISTOINFO|%(extractor_key)s|%(duration)s|%(thumbnail)s|%(title)s"
@@ -1001,6 +1004,26 @@ void DownloadPage::onOutput(const DownloadPtr &item)
     }
 }
 
+// Готовый файл: путь от yt-dlp; если его нет (кодировка, перемещение) — самый новый файл в папке загрузок
+// с тем же названием, иначе просто самый новый видеофайл, появившийся за время загрузки.
+QString DownloadPage::locateDownloaded(const DownloadPtr &item) const
+{
+    if (!item->filePath.isEmpty() && QFileInfo::exists(item->filePath))
+        return item->filePath;
+    const QDir dir(outputDir());
+    const QFileInfoList files = dir.entryInfoList({"*.mp4", "*.mkv", "*.webm", "*.mov", "*.m4v", "*.ts", "*.mp3", "*.m4a"},
+                                                  QDir::Files, QDir::Time);
+    const QString title = item->title.trimmed();
+    if (!title.isEmpty())
+        for (const QFileInfo &f : files)
+            if (f.completeBaseName().startsWith(title, Qt::CaseInsensitive))
+                return f.absoluteFilePath();
+    for (const QFileInfo &f : files)
+        if (f.lastModified().secsTo(QDateTime::currentDateTime()) < 120)
+            return f.absoluteFilePath();
+    return {};
+}
+
 void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitStatus st)
 {
     if (!m_procs.contains(item->id))
@@ -1011,7 +1034,7 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
 
     if (item->pausing) {
         item->status = DownloadItem::Paused;
-    } else if (st == QProcess::NormalExit && code == 0 && !item->filePath.isEmpty()) {
+    } else if (st == QProcess::NormalExit && code == 0 && !(item->filePath = locateDownloaded(item)).isEmpty()) {
         item->status = DownloadItem::Done;
         item->progress = 1;
         item->total = QFileInfo(item->filePath).size();
