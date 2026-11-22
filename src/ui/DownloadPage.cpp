@@ -1,4 +1,13 @@
 #include "DownloadPage.h"
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 #include "core/I18n.h"
 #include "Widgets.h"
 #include "ChaptersDialog.h"
@@ -804,7 +813,7 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
                 item->title = safeFileName(rel.name);
                 // Качаем во временную папку внутри папки релиза — после переупаковки она удаляется целиком
                 if (!rel.dir.isEmpty())
-                    item->outDir = QDir(rel.dir).filePath(QStringLiteral(".aristocrat-download"));
+                    item->outDir = QDir(rel.dir).filePath(QStringLiteral(".aristocrat-temp"));
             }
             if (!gd.thumb().isEmpty())
                 item->thumbUrl = gd.thumb();
@@ -914,6 +923,11 @@ void DownloadPage::startItem(const DownloadPtr &item)
     item->log.clear();
     item->pausing = false;
     QDir().mkpath(itemDir(item));
+#ifdef Q_OS_WIN
+    // Временная папка внутри папки релиза — скрытая (удаляется, когда релиз готов)
+    if (QDir(itemDir(item)).dirName() == QLatin1String(".aristocrat-temp"))
+        SetFileAttributesW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(itemDir(item)).utf16()), FILE_ATTRIBUTE_HIDDEN);
+#endif
     QSettings s;
 
     QStringList a = baseArgs(!item->noCookies && !item->external);
@@ -1204,7 +1218,7 @@ void DownloadPage::removeLeftovers(const DownloadPtr &item)
     for (const QFileInfo &f : dir.entryInfoList({title + QStringLiteral("*.part"), title + QStringLiteral("*.part-Frag*"),
                                                  title + QStringLiteral("*.ytdl"), title + QStringLiteral("*.temp.*")}, QDir::Files))
         QFile::remove(f.absoluteFilePath());
-    if (!item->outDir.isEmpty() && dir.dirName() == QLatin1String(".aristocrat-download") && dir.isEmpty())
+    if (!item->outDir.isEmpty() && dir.dirName() == QLatin1String(".aristocrat-temp") && dir.isEmpty())
         dir.removeRecursively();
 }
 

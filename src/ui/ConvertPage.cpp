@@ -108,7 +108,7 @@ ConvertPage::ConvertPage(QWidget *parent)
                         QFile::remove(f.absoluteFilePath());
                     // временная папка загрузки внутри папки релиза — целиком
                     QDir tmp = in.dir();
-                    if (tmp.dirName() == QLatin1String(".aristocrat-download"))
+                    if (tmp.dirName() == QLatin1String(".aristocrat-temp"))
                         tmp.removeRecursively();
                 }
             }
