@@ -1619,9 +1619,10 @@ void ServerPage::editActress(int row)
     auto *cancel = new QPushButton(T("Отмена"), &d);
     auto *save = new QPushButton(T("Только сохранить"), &d);
     auto *write = Ui::primaryButton(T("Записать на сервер"), &d);
-    write->setEnabled(!id.isEmpty() && loggedIn());
+    write->setEnabled(loggedIn());
     if (id.isEmpty())
-        state->setText(T("Этой актрисы нет на сервере — сначала она должна появиться в библиотеке Jellyfin."));
+        state->setText(T("Когда список загружался, актрисы на сервере не было. При записи программа поищет её ещё раз — "
+                         "если фильм уже в библиотеке Jellyfin, всё запишется."));
     btns->addWidget(cancel);
     btns->addWidget(save);
     btns->addWidget(write);
@@ -1787,7 +1788,7 @@ void ServerPage::editActress(int row)
         m_table->item(row, ColBio)->setToolTip(text);
         n->setData(Qt::UserRole + 4, *chosen);
         m_table->item(row, ColStatus)->setText(T("заполнено вручную"));
-        if (!text.isEmpty() && !id.isEmpty())
+        if (!text.isEmpty())
             m_table->item(row, ColCheck)->setCheckState(Qt::Checked);
         return true;
     };
@@ -1855,7 +1856,7 @@ void ServerPage::writeAll()
 {
     m_queue.clear();
     for (int r = 0; r < m_table->rowCount(); ++r)
-        if (m_table->item(r, ColCheck)->checkState() == Qt::Checked && !m_table->item(r, ColName)->data(Qt::UserRole).toString().isEmpty())
+        if (m_table->item(r, ColCheck)->checkState() == Qt::Checked)   // без номера на сервере — найдём при записи
             m_queue << r;
     if (m_queue.isEmpty()) {
         m_state->setText(T("Отметьте анкеты для записи."));
@@ -1881,6 +1882,24 @@ void ServerPage::writeNext()
     const int row = m_queue.takeFirst();
     QTableWidgetItem *n = m_table->item(row, ColName);
     const QString id = n->data(Qt::UserRole).toString();
+    if (id.isEmpty()) {
+        // Раньше актрисы на сервере не было (фильм ещё не добавлен) — ищем заново, заполненное сохраняется
+        m_table->item(row, ColStatus)->setText(T("ищу на сервере…"));
+        Jellyfin::findPerson(m_net, this, n->text(), [this, row, n](const QJsonObject &p) {
+            const QString found = p.value("Id").toString();
+            if (found.isEmpty()) {
+                m_table->item(row, ColStatus)->setText(T("всё ещё нет на сервере — Jellyfin пока не добавил фильм; попробуйте через пару минут"));
+                writeNext();
+                return;
+            }
+            n->setData(Qt::UserRole, found);
+            n->setData(Qt::UserRole + 2, p.value("ImageTags").toObject().contains("Primary"));
+            n->setData(Qt::UserRole + 3, p);
+            m_queue.prepend(row);
+            writeNext();
+        });
+        return;
+    }
     const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
     // Jellyfin требует полную карточку: берём, меняем нужные поля, отправляем обратно
     QNetworkReply *r = api(QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
