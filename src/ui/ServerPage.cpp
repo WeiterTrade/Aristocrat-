@@ -989,6 +989,26 @@ void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, s
     });
 }
 
+void lockItem(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void()> done)
+{
+    const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
+    QNetworkReply *g = request(net, QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+    QObject::connect(g, &QNetworkReply::finished, ctx, [net, ctx, g, id, done] {
+        g->deleteLater();
+        QJsonObject item = QJsonDocument::fromJson(g->readAll()).object();
+        if (item.isEmpty() || item.value("LockData").toBool()) {
+            done();
+            return;
+        }
+        item.insert("LockData", true);
+        QNetworkReply *u = request(net, QStringLiteral("POST"), QStringLiteral("/Items/%1").arg(id), QJsonDocument(item).toJson(QJsonDocument::Compact));
+        QObject::connect(u, &QNetworkReply::finished, ctx, [u, done] {
+            u->deleteLater();
+            done();
+        });
+    });
+}
+
 void directorPhoto(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(int)> cb)
 {
     findPerson(net, ctx, name, [net, ctx, name, cb](const QJsonObject &p) {
@@ -1552,7 +1572,8 @@ void ServerPage::pushReleaseImages(int attempt)
         auto people = std::make_shared<QStringList>(actresses);
         auto dirs = std::make_shared<QStringList>(directors);
         auto step = std::make_shared<std::function<void()>>();
-        *step = [this, ups, done, people, dirs, step, dir] {
+        auto locked = std::make_shared<bool>(false);
+        *step = [this, ups, done, people, dirs, step, dir, id, locked] {
             if (!ups->isEmpty()) {
                 const Up u = ups->takeFirst();
                 QFile f(u.path);
@@ -1590,6 +1611,29 @@ void ServerPage::pushReleaseImages(int attempt)
                         u->deleteLater();
                         if (u->error() == QNetworkReply::NoError)
                             *done << name;
+                        (*step)();
+                    });
+                });
+                return;
+            }
+            if (!*locked) {
+                // Закрепить фильм: сканирование библиотеки не будет пересобирать его данные и картинки
+                // (иначе загруженная задняя обложка со временем пропадает)
+                *locked = true;
+                const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
+                QNetworkReply *g = api(QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+                connect(g, &QNetworkReply::finished, this, [this, g, id, step] {
+                    g->deleteLater();
+                    QJsonObject item = QJsonDocument::fromJson(g->readAll()).object();
+                    if (item.isEmpty() || item.value("LockData").toBool()) {
+                        (*step)();
+                        return;
+                    }
+                    item.insert("LockData", true);
+                    QNetworkReply *u = api(QStringLiteral("POST"), QStringLiteral("/Items/%1").arg(id),
+                                           QJsonDocument(item).toJson(QJsonDocument::Compact));
+                    connect(u, &QNetworkReply::finished, this, [u, step] {
+                        u->deleteLater();
                         (*step)();
                     });
                 });

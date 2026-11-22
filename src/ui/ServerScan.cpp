@@ -688,6 +688,7 @@ void ServerScanDialog::movieFromPage(int row, const QJsonObject &d)
                 if (rel.isValid())
                     item.insert("PremiereDate", rel.toString(Qt::ISODate) + QStringLiteral("T00:00:00.0000000Z"));
             }
+            item.insert("LockData", true);   // сканирование библиотеки не перепишет дописанное
             QNetworkReply *u = Jellyfin::request(m_net, QStringLiteral("POST"), QStringLiteral("/Items/") + e.id,
                                                  QJsonDocument(item).toJson(QJsonDocument::Compact));
             connect(u, &QNetworkReply::finished, this, [this, u, row, d, done] {
@@ -761,7 +762,13 @@ void ServerScanDialog::movieImages(int row, const QJsonObject &d)
         while (!steps->isEmpty() && (!steps->first().need || steps->first().urls.isEmpty()))
             steps->removeFirst();
         if (steps->isEmpty()) {
-            finishEntry(row, prefix + (got->isEmpty() ? T("обложки: не найдены") : T("обложки: %1").arg(got->join(QStringLiteral(", ")))));
+            const QString status = prefix + (got->isEmpty() ? T("обложки: не найдены") : T("обложки: %1").arg(got->join(QStringLiteral(", "))));
+            if (got->isEmpty()) {
+                finishEntry(row, status);
+                return;
+            }
+            // Закрепить фильм, чтобы загруженные обложки (особенно задняя) не пропали при сканировании
+            Jellyfin::lockItem(m_net, this, e.id, [this, row, status] { finishEntry(row, status); });
             return;
         }
         const Step s = steps->takeFirst();

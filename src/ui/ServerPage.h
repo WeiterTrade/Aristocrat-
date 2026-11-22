@@ -52,6 +52,8 @@ void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, s
 void photo(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void(const QByteArray &)> cb);
 // Режиссёру — общая картинка «Фотографии режиссёров не добавляются», если у него нет фото и он не снимается
 // как актриса в фильмах библиотеки. Результат: 1 — загружено, 0 — не нужно (нет на сервере, есть фото, актриса), -1 — ошибка.
+// Включить «Заблокировать» (LockData) у элемента, чтобы обновление метаданных его не переписывало
+void lockItem(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void()> done);
 void directorPhoto(QNetworkAccessManager *net, QObject *ctx, const QString &name, std::function<void(int)> cb);
 }
 
