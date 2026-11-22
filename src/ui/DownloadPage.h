@@ -50,6 +50,7 @@ struct DownloadItem {
     bool external = false;     // пришло из расширения браузера
     QStringList headers;       // заголовки запроса из браузера (Referer, Cookie…)
     QString pageUrl;           // страница фильма (для глав)
+    QString outDir;            // своя папка (видео релиза — временная папка внутри папки релиза)
 };
 using DownloadPtr = QSharedPointer<DownloadItem>;
 
@@ -145,6 +146,8 @@ private:
     void removeItem(const DownloadPtr &item);
     void onOutput(const DownloadPtr &item);
     QString locateDownloaded(const DownloadPtr &item) const;
+    QString itemDir(const DownloadPtr &item) const { return item->outDir.isEmpty() ? outputDir() : item->outDir; }
+    void removeLeftovers(const DownloadPtr &item);   // хвосты загрузки: .part, .ytdl, фрагменты
     void refreshLink(const DownloadPtr &item);
     bool linkExpired(const DownloadPtr &item) const;
     bool retryable(const DownloadPtr &item) const;   // новая ссылка на видео со страницы (старая протухла)

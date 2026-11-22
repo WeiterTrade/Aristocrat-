@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "Tools.h"
 
 #include <QDir>
 #include <QSettings>
@@ -18,7 +19,8 @@ QString outputDir()
     if (def.isEmpty())
         def = QDir::homePath();
     def += QStringLiteral("/Aristocrat Видеоконвертер");
-    return s().value("outputDir", def).toString();
+    const QString dir = s().value("outputDir", def).toString();
+    return Tools::insideAppDir(dir) ? def : dir;   // в папке программы — только сама программа
 }
 
 void setOutputDir(const QString &dir)

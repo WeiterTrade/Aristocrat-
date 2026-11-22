@@ -49,7 +49,7 @@ static QString defaultDownloaded()
 {
     QString d = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (d.isEmpty()) d = QDir::homePath();
-    return d + QStringLiteral("/Aristocrat Видеоконвертер");
+    return d + QStringLiteral("/Aristocrat Загрузки");   // не совпадает с папкой программы в «Загрузках»
 }
 
 static QString defaultBurned()

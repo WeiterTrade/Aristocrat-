@@ -106,6 +106,10 @@ ConvertPage::ConvertPage(QWidget *parent)
                     for (const QFileInfo &f : in.dir().entryInfoList({in.completeBaseName() + QStringLiteral("*.part*"),
                                                                        in.completeBaseName() + QStringLiteral("*.ytdl")}, QDir::Files))
                         QFile::remove(f.absoluteFilePath());
+                    // временная папка загрузки внутри папки релиза — целиком
+                    QDir tmp = in.dir();
+                    if (tmp.dirName() == QLatin1String(".aristocrat-download"))
+                        tmp.removeRecursively();
                 }
             }
     });

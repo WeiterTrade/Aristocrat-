@@ -57,13 +57,16 @@ static QString speedText(double bps)
     return QString::number(bps / 1024, 'f', 0) + T(" КБ/с");
 }
 
+// Папка загрузок. В папке программы ничего не храним: если папка совпадает с ней или лежит внутри — «Загрузки/Aristocrat Загрузки»
 static QString downloadDir()
 {
     QSettings s;
     QString def = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (def.isEmpty())
         def = QDir::homePath();
-    return s.value("download/dir", def + QStringLiteral("/Aristocrat Видеоконвертер")).toString();
+    def += QStringLiteral("/Aristocrat Загрузки");
+    const QString dir = s.value("download/dir", def).toString();
+    return Tools::insideAppDir(dir) ? def : dir;
 }
 
 static QImage grabImageUrl(const QString &url)
@@ -797,8 +800,12 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
             item->pageUrl = urlText;
             // Видео релиза из менеджера Adult Empire: файл сразу называется как релиз
             Release::Pending rel;
-            if (Release::peekPending(urlText, &rel) && !rel.name.isEmpty())
+            if (Release::peekPending(urlText, &rel) && !rel.name.isEmpty()) {
                 item->title = safeFileName(rel.name);
+                // Качаем во временную папку внутри папки релиза — после переупаковки она удаляется целиком
+                if (!rel.dir.isEmpty())
+                    item->outDir = QDir(rel.dir).filePath(QStringLiteral(".aristocrat-download"));
+            }
             if (!gd.thumb().isEmpty())
                 item->thumbUrl = gd.thumb();
             addItem(item);
@@ -906,7 +913,7 @@ void DownloadPage::startItem(const DownloadPtr &item)
     item->error.clear();
     item->log.clear();
     item->pausing = false;
-    QDir().mkpath(outputDir());
+    QDir().mkpath(itemDir(item));
     QSettings s;
 
     QStringList a = baseArgs(!item->noCookies && !item->external);
@@ -924,7 +931,7 @@ void DownloadPage::startItem(const DownloadPtr &item)
       << "--progress-template" << "download:ARISTO|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
       << "--print" << "before_dl:ARISTOINFO|%(extractor_key)s|%(duration)s|%(thumbnail)s|%(title)s"
       << "--print" << "after_move:ARISTOFILE|%(filepath)s"
-      << "-P" << outputDir()
+      << "-P" << itemDir(item)
       << "-o" << (item->external && !item->title.isEmpty()
                      ? QString(item->title).replace('%', QStringLiteral("%%")) + QStringLiteral(".%(ext)s")
                      : QStringLiteral("%(title).120B [%(id)s].%(ext)s"));
@@ -1017,7 +1024,7 @@ QString DownloadPage::locateDownloaded(const DownloadPtr &item) const
 {
     if (!item->filePath.isEmpty() && QFileInfo::exists(item->filePath))
         return item->filePath;
-    const QDir dir(outputDir());
+    const QDir dir(itemDir(item));
     const QFileInfoList files = dir.entryInfoList({"*.mp4", "*.mkv", "*.webm", "*.mov", "*.m4v", "*.ts", "*.mp3", "*.m4a"},
                                                   QDir::Files, QDir::Time);
     const QString title = item->title.trimmed();
@@ -1188,6 +1195,19 @@ void DownloadPage::pauseResume(const DownloadPtr &item)
     startNext();
 }
 
+void DownloadPage::removeLeftovers(const DownloadPtr &item)
+{
+    const QString title = item->title.trimmed();
+    if (title.isEmpty())
+        return;
+    QDir dir(itemDir(item));
+    for (const QFileInfo &f : dir.entryInfoList({title + QStringLiteral("*.part"), title + QStringLiteral("*.part-Frag*"),
+                                                 title + QStringLiteral("*.ytdl"), title + QStringLiteral("*.temp.*")}, QDir::Files))
+        QFile::remove(f.absoluteFilePath());
+    if (!item->outDir.isEmpty() && dir.dirName() == QLatin1String(".aristocrat-download") && dir.isEmpty())
+        dir.removeRecursively();
+}
+
 void DownloadPage::removeItem(const DownloadPtr &item)
 {
     if (QProcess *proc = m_procs.value(item->id)) {
@@ -1195,6 +1215,8 @@ void DownloadPage::removeItem(const DownloadPtr &item)
         proc->kill();
         proc->waitForFinished(3000);
     }
+    if (item->status != DownloadItem::Done)
+        removeLeftovers(item);
     m_items.removeAll(item);
     if (DownloadCard *c = m_cards.take(item->id))
         c->deleteLater();
@@ -1221,6 +1243,7 @@ void DownloadPage::saveQueue() const
         o["progress"] = d->progress;
         o["external"] = d->external;
         o["page"] = d->pageUrl;
+        o["outDir"] = d->outDir;
         o["headers"] = QJsonArray::fromStringList(d->headers);
         arr << o;
     }
@@ -1245,6 +1268,7 @@ void DownloadPage::loadQueue()
         d->audioOnly = o["audio"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
         d->external = o["external"].toBool();
         d->pageUrl = o["page"].toString();
+        d->outDir = o["outDir"].toString();
         for (const QJsonValue &h : o["headers"].toArray()) d->headers << h.toString();
         d->status = resume ? DownloadItem::Queued : DownloadItem::Paused;
         if (!d->url.isEmpty())

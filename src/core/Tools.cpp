@@ -151,4 +151,29 @@ QString escapeFilterPath(const QString &path)
     return QStringLiteral("'") + p + QStringLiteral("'");
 }
 
+
+
+bool insideAppDir(const QString &dir)
+{
+    if (dir.trimmed().isEmpty())
+        return false;
+    const QString app = QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).absolutePath());
+    const QString d = QDir::cleanPath(QDir(dir).absolutePath());
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+    return d.compare(app, cs) == 0 || d.startsWith(app + QLatin1Char('/'), cs);
+}
+
+void cleanAppDir()
+{
+    QDir app(QCoreApplication::applicationDirPath());
+    for (const QFileInfo &f : app.entryInfoList({QStringLiteral("*.part"), QStringLiteral("*.part-Frag*"), QStringLiteral("*.ytdl"),
+                                                 QStringLiteral("*.f[0-9]*.mp4"), QStringLiteral("*.f[0-9]*.m4a"), QStringLiteral("*.f[0-9]*.webm")},
+                                                QDir::Files))
+        QFile::remove(f.absoluteFilePath());
+}
+
 } // namespace Tools

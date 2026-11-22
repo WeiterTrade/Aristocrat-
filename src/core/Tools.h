@@ -16,7 +16,11 @@ QString realesrganModelsDir();
 QString ytdlp();
 QProcessEnvironment utf8Env();   // окружение для yt-dlp: вывод в UTF-8 (иначе русские имена файлов искажаются)
 QString deno();
-QString rclone();   // выгрузка в облака (Google Диск, Яндекс Диск, Облако Mail.ru, OneDrive)
+QString rclone();
+// Папка совпадает с папкой программы или лежит внутри неё (там храним только саму программу)
+bool insideAppDir(const QString &dir);
+// Удалить из папки программы хвосты загрузок (.part, .ytdl, фрагменты) — файлы самой программы не трогаются
+void cleanAppDir();   // выгрузка в облака (Google Диск, Яндекс Диск, Облако Mail.ru, OneDrive)
 
 bool hasFfmpeg();
 bool hasRealesrgan();
