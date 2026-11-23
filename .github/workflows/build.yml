@@ -265,7 +265,7 @@ jobs:
           # Настоящая структура DVD (dvdauthor): оглавление по IFO и чтение фильма в один файл
           mkdir -p realdvd && $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=600" \
             -t 40 -target pal-dvd -aspect 16:9 -shortest real.vob
-          VIDEO_FORMAT=PAL dvdauthor -q -o realdvd -t real.vob && VIDEO_FORMAT=PAL dvdauthor -q -o realdvd -T
+          VIDEO_FORMAT=PAL dvdauthor -o realdvd -t real.vob 2>/dev/null && VIDEO_FORMAT=PAL dvdauthor -o realdvd -T 2>/dev/null
           ls -la realdvd/VIDEO_TS
           genisoimage -quiet -dvd-video -V REALDVD -o real.iso realdvd
           xvfb-run -a "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-rip-test=$PWD/real.iso|$PWD/realdvd/VIDEO_TS|$PWD/ripped.vob" > rip.log 2>&1 || true
