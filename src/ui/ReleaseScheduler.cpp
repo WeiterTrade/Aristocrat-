@@ -3,6 +3,8 @@
 #include "Widgets.h"
 #include "core/I18n.h"
 #include "core/Release.h"
+#include "core/Tools.h"
+#include "CloudUpload.h"
 
 #include <QApplication>
 #include <QDateTimeEdit>
@@ -19,6 +21,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QTemporaryDir>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSharedPointer>
@@ -95,7 +101,7 @@ ReleaseScheduler *ReleaseScheduler::instance()
 ReleaseScheduler::ReleaseScheduler(QObject *parent) : QObject(parent)
 {
     load();
-    m_timer.setInterval(15000);
+    m_timer.setInterval(15000);   // и наблюдение за видео текущего релиза
     connect(&m_timer, &QTimer::timeout, this, &ReleaseScheduler::tick);
     m_timer.start();
 }
@@ -120,6 +126,31 @@ QString ReleaseScheduler::workDir()
     return QDir::fromNativeSeparators(d);
 }
 
+QString ReleaseScheduler::target()
+{
+    QSettings st;
+    QString t = st.value(QStringLiteral("aeSched/target")).toString();
+    if (t.isEmpty()) {   // по умолчанию — облако, подключённое во «Выгрузить»
+        const QString p = st.value(QStringLiteral("upload/provider")).toString();
+        t = (p.isEmpty() || p == QLatin1String("local")) ? QStringLiteral("local") : p;
+    }
+    return t;
+}
+
+QString ReleaseScheduler::remoteRoot()
+{
+    return QSettings().value(QStringLiteral("aeSched/remoteRoot"), QStringLiteral("XXX")).toString();
+}
+
+bool ReleaseScheduler::deleteLocal()
+{
+    return QSettings().value(QStringLiteral("aeSched/deleteLocal"), true).toBool();
+}
+
+void ReleaseScheduler::setTarget(const QString &t) { QSettings().setValue(QStringLiteral("aeSched/target"), t); }
+void ReleaseScheduler::setRemoteRoot(const QString &r) { QSettings().setValue(QStringLiteral("aeSched/remoteRoot"), r.trimmed().remove(QRegularExpression(QStringLiteral("^/+|/+$")))); }
+void ReleaseScheduler::setDeleteLocal(bool on) { QSettings().setValue(QStringLiteral("aeSched/deleteLocal"), on); }
+
 void ReleaseScheduler::setLibraryDir(const QString &d) { QSettings().setValue(QStringLiteral("aeSched/libraryDir"), QDir::fromNativeSeparators(d)); }
 void ReleaseScheduler::setWorkDir(const QString &d) { QSettings().setValue(QStringLiteral("aeSched/workDir"), QDir::fromNativeSeparators(d)); }
 
@@ -129,8 +160,8 @@ QString ReleaseScheduler::stateName(const SchedItem &it)
     case SchedItem::Waiting: return T("ждёт запуска");
     case SchedItem::Scheduled: return T("запуск в %1").arg(it.when.toString(QStringLiteral("dd.MM HH:mm")));
     case SchedItem::Running: return T("собираю данные и создаю релиз…");
-    case SchedItem::Video: return T("видео: загрузка и обработка…");
-    case SchedItem::Moving: return T("переношу в библиотеку…");
+    case SchedItem::Video: return it.message.isEmpty() ? T("видео: загрузка и обработка…") : T("видео: %1").arg(it.message);
+    case SchedItem::Moving: return it.message.isEmpty() ? T("переношу в библиотеку…") : it.message;
     case SchedItem::Done: return T("готово");
     case SchedItem::Failed: return T("ошибка: %1").arg(it.message);
     }
@@ -216,10 +247,42 @@ void ReleaseScheduler::startAt(const QDateTime &when)
     emit changed();
 }
 
+// Видео релиза: где оно сейчас (загрузка / обработка). Пропало отовсюду — повторить загрузку, потом — ошибка.
+void ReleaseScheduler::watch(SchedItem &it)
+{
+    const QString c = convertStatus ? convertStatus(it.dir) : QString();
+    const QString d = (downloadStatus && !it.dlUrl.isEmpty()) ? downloadStatus(it.dlUrl) : QString();
+    const QString now = !c.isEmpty() ? c : d;
+    if (!now.isEmpty() && now != T("загрузка не удалась")) {
+        it.idle = 0;
+        if (it.message != now) {
+            it.message = now;
+            emit changed();
+        }
+        return;
+    }
+    if (++it.idle < 8)   // ~2 минуты: между загрузкой и обработкой бывает пауза
+        return;
+    it.idle = 0;
+    if (it.retries < 2 && !it.dlUrl.isEmpty() && requestDownload) {
+        ++it.retries;
+        it.message = T("видео не найдено в загрузках — повторяю загрузку (%1 из 2)").arg(it.retries);
+        save();
+        emit changed();
+        requestDownload(it.dlUrl);
+        return;
+    }
+    finishItem(it.id, false, T("видео не скачалось — релиз (без видео) в рабочей папке; «Запустить сейчас» — повторить"));
+}
+
 void ReleaseScheduler::tick()
 {
-    if (m_current)
+    if (m_current) {
+        if (SchedItem *it = find(m_current))
+            if (it->state == SchedItem::Video)
+                watch(*it);
         return;   // по одному релизу
+    }
     for (SchedItem &it : m_items)
         if (it.state == SchedItem::Scheduled && it.when <= QDateTime::currentDateTime()) {
             process(it);
@@ -248,7 +311,12 @@ void ReleaseScheduler::process(SchedItem &it)
     const int id = it.id;
     auto *d = new ReleaseManagerDialog(it.url, QString(), nullptr);   // не показывается: всё делает сам
     m_dialog = d;
-    connect(d, &ReleaseManagerDialog::downloadRequested, this, [this](const QString &page) {
+    connect(d, &ReleaseManagerDialog::downloadRequested, this, [this, id](const QString &page) {
+        if (SchedItem *x = find(id)) {
+            x->dlUrl = page;
+            x->retries = 0;
+            x->idle = 0;
+        }
         if (requestDownload)
             requestDownload(page);
     });
@@ -293,6 +361,20 @@ void ReleaseScheduler::onDownloadFailed(const QString &pageUrl, const QString &r
     SchedItem *it = find(m_current);
     if (!it || it->state != SchedItem::Video)
         return;
+    if (it->retries < 2 && !it->dlUrl.isEmpty() && requestDownload) {   // например, обновили модули — ещё попытка
+        ++it->retries;
+        it->idle = 0;
+        it->message = T("%1 — повторю через минуту (%2 из 2)").arg(reason).arg(it->retries);
+        save();
+        emit changed();
+        const int id = it->id;
+        QTimer::singleShot(60000, this, [this, id] {
+            SchedItem *x = find(id);
+            if (x && x->state == SchedItem::Video && requestDownload)
+                requestDownload(x->dlUrl);
+        });
+        return;
+    }
     finishItem(it->id, false, T("видео: %1 — релиз (без видео) остался в рабочей папке").arg(reason));
 }
 
@@ -333,33 +415,98 @@ static bool copyTree(const QString &from, const QString &to)
     return ok;
 }
 
+static QString nfoValue(const QString &dir, const QString &tag)
+{
+    for (const QString &nfo : QDir(dir).entryList({QStringLiteral("*.nfo")}, QDir::Files)) {
+        QFile f(QDir(dir).filePath(nfo));
+        if (!f.open(QIODevice::ReadOnly))
+            return {};
+        const QRegularExpression re(QStringLiteral("<%1>([^<]+)</%1>").arg(tag));
+        QString v = re.match(QString::fromUtf8(f.readAll())).captured(1).trimmed();
+        return v.replace(QStringLiteral("&amp;"), QStringLiteral("&")).replace(QStringLiteral("&apos;"), QStringLiteral("'"));
+    }
+    return {};
+}
+
+// В NFO релиза — название коллекции, как у существующей папки серии
+static void setNfoSet(const QString &dir, const QString &setName)
+{
+    for (const QString &nfo : QDir(dir).entryList({QStringLiteral("*.nfo")}, QDir::Files)) {
+        QFile f(QDir(dir).filePath(nfo));
+        if (!f.open(QIODevice::ReadOnly))
+            return;
+        QString x = QString::fromUtf8(f.readAll());
+        f.close();
+        static const QRegularExpression re(QStringLiteral("(<set>\\s*<name>)([^<]*)(</name>)"));
+        x.replace(re, QStringLiteral("\\1") + setName.toHtmlEscaped() + QStringLiteral("\\3"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(x.toUtf8());
+        return;
+    }
+}
+
 void ReleaseScheduler::moveToLibrary(int id)
 {
     SchedItem *it = find(id);
     if (!it)
         return;
     const QString library = libraryDir(), work = workDir();
-    if (library.isEmpty() || !QDir(library).exists()) {
+    QString tgt = target();
+    if (tgt != QLatin1String("local")
+        && !QSettings(CloudUploadPage::configFile(), QSettings::IniFormat).childGroups().contains(QStringLiteral("aristo-") + tgt))
+        tgt = QStringLiteral("local");   // облако не подключено — в папку на диске
+    const QString studio = Release::cleanStudio(nfoValue(it->dir, QStringLiteral("studio")));
+    const QString orig = nfoValue(it->dir, QStringLiteral("originaltitle"));
+
+    // [Серия «…»/]Релиз — относительно рабочей папки
+    QString rel = QDir(work).relativeFilePath(it->dir);
+    if (rel.startsWith(QLatin1String("..")))
+        rel = QFileInfo(it->dir).fileName();
+    const bool hasLib = !library.isEmpty() && QDir(library).exists();
+    const QString studioDir = hasLib ? studioFolder(library, studio) : QString();
+
+    // Серия уже есть в библиотеке (по английским оригиналам) — та же папка и то же название коллекции
+    if (rel.contains(QLatin1Char('/'))) {
+        const QString seriesNow = rel.section(QLatin1Char('/'), 0, 0);
+        QString existing = hasLib ? Release::findSeriesFolder(QDir(library).filePath(studioDir), orig) : QString();
+        if (existing.isEmpty())
+            existing = Release::findSeriesFolder(QString(), orig);
+        if (!existing.isEmpty() && existing != seriesNow) {
+            setNfoSet(it->dir, existing);
+            rel = existing + QLatin1Char('/') + rel.section(QLatin1Char('/'), 1);
+        }
+        Release::rememberSeriesFolder(orig, existing.isEmpty() ? seriesNow : existing);
+    }
+
+    if (tgt != QLatin1String("local")) {   // облако — через rclone, как во «Выгрузить»
+        if (hasLib) {
+            uploadTo(id, studioDir, rel);
+            return;
+        }
+        // Библиотеки на диске нет — папки студий смотрим прямо в облаке
+        auto *p = new QProcess(this);
+        const QString remote = QStringLiteral("aristo-%1:%2").arg(tgt, remoteRoot());
+        connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, p, id, studio, rel](int, QProcess::ExitStatus) {
+            p->deleteLater();
+            const QStringList dirs = QString::fromUtf8(p->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            QTemporaryDir tmp;
+            for (const QString &d : dirs)
+                QDir(tmp.path()).mkdir(QString(d).remove(QLatin1Char('/')).trimmed());
+            uploadTo(id, studioFolder(tmp.path(), studio), rel);
+        });
+        p->start(Tools::rclone(), {QStringLiteral("lsf"), remote, QStringLiteral("--dirs-only"), QStringLiteral("--config"), CloudUploadPage::configFile()});
+        return;
+    }
+
+    // Папка на диске
+    if (!hasLib) {
         it->dest = it->dir;
         finishItem(id, true, T("библиотека не указана — релиз в рабочей папке"));
         return;
     }
-    // Студия — из NFO
-    QString studio;
-    for (const QString &nfo : QDir(it->dir).entryList({QStringLiteral("*.nfo")}, QDir::Files)) {
-        QFile f(QDir(it->dir).filePath(nfo));
-        if (f.open(QIODevice::ReadOnly)) {
-            static const QRegularExpression re(QStringLiteral("<studio>([^<]+)</studio>"));
-            studio = re.match(QString::fromUtf8(f.readAll())).captured(1).trimmed();
-        }
-        break;
-    }
-    // Относительный путь сохраняется: [Серия «…»/]Релиз
-    QString rel = QDir(work).relativeFilePath(it->dir);
-    if (rel.startsWith(QLatin1String("..")))
-        rel = QFileInfo(it->dir).fileName();
-    const QString dest = QDir(QDir(library).filePath(studioFolder(library, studio))).filePath(rel);
+    const QString dest = QDir(QDir(library).filePath(studioDir)).filePath(rel);
     it->state = SchedItem::Moving;
+    it->message.clear();
     it->dest = dest;
     save();
     emit changed();
@@ -371,13 +518,83 @@ void ReleaseScheduler::moveToLibrary(int id)
             return;
         }
         QDir(src).removeRecursively();
-        // пустая папка серии в рабочей папке — тоже
         const QDir parent = QFileInfo(src).dir();
         if (QDir::cleanPath(parent.absolutePath()) != QDir::cleanPath(QDir(work).absolutePath()) && parent.isEmpty())
             QDir().rmdir(parent.absolutePath());
         QSettings().setValue(QStringLiteral("ae/lastRelease"), dest);
         finishItem(id, true, QString());
     });
+}
+
+// Выгрузка в облако через rclone (подключение из «Выгрузить»): Корень/Студия/[Серия «…»/]Релиз
+void ReleaseScheduler::uploadTo(int id, const QString &studioDir, const QString &rel)
+{
+    SchedItem *it = find(id);
+    if (!it)
+        return;
+    const QString tgt = target();
+    const QString remotePath = remoteRoot() + QLatin1Char('/') + studioDir + QLatin1Char('/') + rel;
+    const QString dst = QStringLiteral("aristo-%1:%2").arg(tgt, remotePath);
+    it->state = SchedItem::Moving;
+    it->message = T("выгрузка в облако…");
+    it->dest = remotePath;
+    save();
+    emit changed();
+    QStringList args{QStringLiteral("copy"), it->dir, dst, QStringLiteral("--stats"), QStringLiteral("2s"), QStringLiteral("--stats-one-line"),
+                     QStringLiteral("--stats-log-level"), QStringLiteral("NOTICE"), QStringLiteral("--transfers"), QStringLiteral("4"),
+                     QStringLiteral("--checkers"), QStringLiteral("8"), QStringLiteral("--buffer-size"), QStringLiteral("64M"),
+                     QStringLiteral("--exclude"), QStringLiteral(".aristocrat-temp/**"),
+                     QStringLiteral("--config"), CloudUploadPage::configFile()};
+    if (tgt == QLatin1String("mailru"))
+        args << QStringLiteral("--mailru-speedup-enable=false");
+    else if (tgt == QLatin1String("google"))
+        args << QStringLiteral("--drive-chunk-size") << QStringLiteral("128M");
+    else if (tgt == QLatin1String("onedrive"))
+        args << QStringLiteral("--onedrive-chunk-size") << QStringLiteral("100M");
+    auto *p = new QProcess(this);
+    p->setProcessChannelMode(QProcess::MergedChannels);
+    connect(p, &QProcess::readyRead, this, [this, p, id] {
+        static const QRegularExpression pct(QStringLiteral("(\\d+)%")), speed(QStringLiteral("([0-9.]+\\s*[KMG]i?B/s)")),
+            eta(QStringLiteral("ETA\\s+([0-9hms]+)"));
+        const QStringList lines = QString::fromUtf8(p->readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        const QString line = lines.isEmpty() ? QString() : lines.constLast();
+        const auto m = pct.match(line);
+        if (!m.hasMatch())
+            return;
+        if (SchedItem *x = find(id)) {
+            x->message = T("выгрузка в облако: %1%, %2, осталось %3").arg(m.captured(1), speed.match(line).captured(1), eta.match(line).captured(1));
+            emit changed();
+        }
+    });
+    connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, p, id](int code, QProcess::ExitStatus st) {
+        p->deleteLater();
+        SchedItem *x = find(id);
+        if (!x)
+            return;
+        if (st != QProcess::NormalExit || code != 0) {
+            finishItem(id, false, T("выгрузка в облако не удалась — релиз в рабочей папке, можно выгрузить во «Выгрузить»"));
+            return;
+        }
+        // Анкеты и изображения на сервер читают NFO и картинки релиза. Локальную копию удаляем, только если
+        // тот же релиз виден через библиотеку на диске (диск облака, X:\XXX) — тогда анкеты открываются оттуда.
+        const QString library = libraryDir();
+        const QString mirror = library.isEmpty() ? QString()
+                                                 : QDir(library).filePath(x->dest.section(QLatin1Char('/'), 1));
+        if (deleteLocal() && !library.isEmpty() && QDir(library).exists()) {
+            x->dest = mirror;
+            QSettings().setValue(QStringLiteral("ae/lastRelease"), mirror);
+            const QString src = x->dir, work = workDir();
+            QDir(src).removeRecursively();
+            const QDir parent = QFileInfo(src).dir();
+            if (QDir::cleanPath(parent.absolutePath()) != QDir::cleanPath(QDir(work).absolutePath()) && parent.isEmpty())
+                QDir().rmdir(parent.absolutePath());
+        } else {
+            x->dest = x->dir;
+            QSettings().setValue(QStringLiteral("ae/lastRelease"), x->dir);
+        }
+        finishItem(id, true, QString());
+    });
+    p->start(Tools::rclone(), args);
 }
 
 void ReleaseScheduler::finishItem(int id, bool ok, const QString &message)
@@ -494,7 +711,7 @@ SchedulerPage::SchedulerPage(QWidget *parent) : QWidget(parent)
     root->addLayout(btns);
 
     auto *g = new QHBoxLayout;
-    g->addWidget(new QLabel(T("Библиотека (куда выгружать):"), this));
+    g->addWidget(new QLabel(T("Библиотека на диске:"), this));
     m_lib = new QLineEdit(QDir::toNativeSeparators(ReleaseScheduler::libraryDir()), this);
     m_lib->setPlaceholderText(QStringLiteral("X:\\XXX"));
     auto *libBtn = new QPushButton(T("Изменить…"), this);
@@ -507,6 +724,52 @@ SchedulerPage::SchedulerPage(QWidget *parent) : QWidget(parent)
     g->addWidget(m_work, 1);
     g->addWidget(workBtn);
     root->addLayout(g);
+
+    // Куда выгружать готовый релиз: облако через rclone (как во «Выгрузить») или папка на диске
+    auto *u = new QHBoxLayout;
+    u->addWidget(new QLabel(T("Выгружать в:"), this));
+    m_target = new QComboBox(this);
+    {
+        const QSettings conf(CloudUploadPage::configFile(), QSettings::IniFormat);
+        const QStringList groups = conf.childGroups();
+        const QList<QPair<QString, QString>> clouds = {{QStringLiteral("mailru"), T("Облако Mail.ru")},
+                                                       {QStringLiteral("yandex"), T("Яндекс Диск")},
+                                                       {QStringLiteral("google"), T("Google Диск")},
+                                                       {QStringLiteral("onedrive"), QStringLiteral("OneDrive")}};
+        for (const auto &c : clouds)
+            if (groups.contains(QStringLiteral("aristo-") + c.first))
+                m_target->addItem(T("%1 (через утилиту, как во «Выгрузить»)").arg(c.second), c.first);
+        m_target->addItem(T("Папка на диске (библиотека)"), QStringLiteral("local"));
+        const int i = m_target->findData(ReleaseScheduler::target());
+        m_target->setCurrentIndex(i >= 0 ? i : 0);
+        if (m_target->count() == 1)
+            m_target->setToolTip(T("Облако не подключено — подключите его на вкладке «Выгрузить»"));
+    }
+    u->addWidget(m_target, 1);
+    u->addSpacing(12);
+    u->addWidget(new QLabel(T("Папка в облаке:"), this));
+    m_root = new QLineEdit(ReleaseScheduler::remoteRoot(), this);
+    m_root->setPlaceholderText(QStringLiteral("XXX"));
+    m_root->setMaximumWidth(160);
+    u->addWidget(m_root);
+    m_delete = new QCheckBox(T("Удалять локальную копию после выгрузки"), this);
+    m_delete->setChecked(ReleaseScheduler::deleteLocal());
+    u->addWidget(m_delete);
+    root->addLayout(u);
+    auto syncTarget = [this] {
+        const bool cloud = m_target->currentData().toString() != QLatin1String("local");
+        m_root->setEnabled(cloud);
+        m_delete->setEnabled(cloud);
+    };
+    syncTarget();
+    connect(m_target, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, syncTarget] {
+        ReleaseScheduler::setTarget(m_target->currentData().toString());
+        syncTarget();
+    });
+    connect(m_root, &QLineEdit::editingFinished, this, [this] { ReleaseScheduler::setRemoteRoot(m_root->text()); });
+    connect(m_delete, &QCheckBox::toggled, this, [](bool on) { ReleaseScheduler::setDeleteLocal(on); });
+    m_lib->setToolTip(T("По этой папке ищутся существующие студии и серии; при выгрузке в облако туда ничего не копируется"));
+
     m_state = new QLabel(this);
     m_state->setObjectName(QStringLiteral("StatusLabel"));
     m_state->setWordWrap(true);
@@ -532,6 +795,8 @@ SchedulerPage::SchedulerPage(QWidget *parent) : QWidget(parent)
     connect(now, &QPushButton::clicked, this, [this, s] {
         ReleaseScheduler::setLibraryDir(m_lib->text().trimmed());
         ReleaseScheduler::setWorkDir(m_work->text().trimmed());
+        ReleaseScheduler::setTarget(m_target->currentData().toString());
+        ReleaseScheduler::setRemoteRoot(m_root->text());
         s->startNow();
         m_state->setText(T("Запущено. Окно можно закрыть или свернуть — работа продолжится."));
     });

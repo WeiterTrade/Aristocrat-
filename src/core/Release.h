@@ -71,6 +71,11 @@ struct AudioPending { QString dir, base, title, lang; };
 void addAudioPending(const QString &pageUrl, const AudioPending &a);
 bool peekAudioPending(const QString &pageUrl, AudioPending *a);
 bool takeAudioPending(const QString &pageUrl, AudioPending *a);
+// Серии: английский оригинал без номера части («My Friend's Hot Mom Vol. 104» → «myfriendshotmom»)
+QString seriesBase(const QString &englishTitle);
+// Уже существующая папка серии в parentDir (сравнение английских оригиналов из NFO частей) или из памяти; пусто — нет
+QString findSeriesFolder(const QString &parentDir, const QString &englishTitle);
+void rememberSeriesFolder(const QString &englishTitle, const QString &folder);
 // «Dorcel (English)» → «Dorcel»: всё в скобках в конце названия студии убирается
 QString cleanStudio(const QString &studio);
 // Язык из скобок студии/названия: «(Spanish)» → {"Испанский", "spa"}; пусто — не найден

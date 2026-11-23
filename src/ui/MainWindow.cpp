@@ -110,6 +110,8 @@ MainWindow::MainWindow(QWidget *parent)
     {
         auto *sched = ReleaseScheduler::instance();
         sched->requestDownload = [download](const QString &page) { download->grabAndAdd(page, true, 720); };
+        sched->downloadStatus = [download](const QString &page) { return download->pageStatus(page); };
+        sched->convertStatus = [this](const QString &dir) { return m_convert->releaseStatus(dir); };
         connect(m_convert, &ConvertPage::releaseVideoDone, sched, &ReleaseScheduler::onVideoDone);
         connect(download, &DownloadPage::downloadFailed, sched, &ReleaseScheduler::onDownloadFailed);
         connect(sched, &ReleaseScheduler::batchFinished, this, [this](const QList<SchedItem> &done) { schedulerDone(done); });

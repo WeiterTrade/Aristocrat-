@@ -1692,6 +1692,8 @@ ReleaseInfo ReleaseManagerDialog::collect() const
         r.setName = m_setName->text().trimmed();
         r.setOverview = m_setOverview->toPlainText().simplified();
         // Серия с сайта: название и описание (с вашими правками) — для следующих релизов этой серии
+        if (m_useSet->isChecked() && !m_orig->text().trimmed().isEmpty())
+            Release::rememberSeriesFolder(m_orig->text(), Release::safeName(m_setName->text()));
         const QString skey = property("seriesKey").toString();
         if (!skey.isEmpty() && !r.setOverview.isEmpty()) {
             QSettings ss;
@@ -1721,7 +1723,15 @@ static QImage placeholderPhoto()
 
 void ReleaseManagerDialog::create()
 {
-    const ReleaseInfo r = collect();
+    ReleaseInfo r = collect();
+    // Серия уже есть (в основной папке или известна раньше) — та же папка и то же название, что вы задавали
+    if (m_useSet->isChecked() && !m_orig->text().trimmed().isEmpty()) {
+        const QString existing = Release::findSeriesFolder(QDir::fromNativeSeparators(m_base->text().trimmed()), m_orig->text());
+        if (!existing.isEmpty() && existing != Release::safeName(m_setName->text())) {
+            m_setName->setText(existing);
+            r.setName = existing;
+        }
+    }
     if (r.title.isEmpty() || m_base->text().trimmed().isEmpty()) {
         m_state->setText(T("Заполните название и основную папку."));
         if (m_autoMode)

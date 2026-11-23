@@ -28,6 +28,9 @@ struct SchedItem {
     QString dest;             // где релиз в итоге (библиотека)
     QString message;
     bool notified = false;
+    QString dlUrl;            // какую страницу попросили скачать (видео)
+    int retries = 0;          // повторы загрузки видео
+    int idle = 0;             // проверок подряд, когда видео нигде не видно
 };
 
 class ReleaseScheduler : public QObject
@@ -38,6 +41,8 @@ public:
 
     // Подключение к программе (MainWindow): как попросить скачать видео релиза
     std::function<void(const QString &pageUrl)> requestDownload;
+    std::function<QString(const QString &pageUrl)> downloadStatus;   // что с загрузкой (пусто — её нет)
+    std::function<QString(const QString &dir)> convertStatus;        // что с обработкой видео релиза
 
     const QList<SchedItem> &items() const { return m_items; }
     void add(const QString &url);
@@ -45,7 +50,13 @@ public:
     void startNow();                         // все ожидающие — сразу
     void startAt(const QDateTime &when);     // все ожидающие — в указанное время
 
-    static QString libraryDir();             // куда выгружать (X:/XXX)
+    static QString libraryDir();             // библиотека на диске (X:/XXX) — для выбора папок студии и серии
+    static QString target();                 // куда выгружать: id облака из «Выгрузить» (mailru…) или "local"
+    static QString remoteRoot();             // папка в облаке (XXX)
+    static bool deleteLocal();               // после выгрузки в облако удалить релиз из рабочей папки
+    static void setTarget(const QString &t);
+    static void setRemoteRoot(const QString &r);
+    static void setDeleteLocal(bool on);
     static QString workDir();                // где собирается релиз
     static void setLibraryDir(const QString &d);
     static void setWorkDir(const QString &d);
@@ -65,6 +76,8 @@ private:
     void tick();
     void process(SchedItem &it);
     void moveToLibrary(int id);
+    void uploadTo(int id, const QString &studioFolder, const QString &rel);
+    void watch(SchedItem &it);
     void finishItem(int id, bool ok, const QString &message);
     SchedItem *find(int id);
     void save();
@@ -93,7 +106,9 @@ private:
 
     QVBoxLayout *m_rows;
     QTableWidget *m_table;
-    QLineEdit *m_lib, *m_work;
+    QLineEdit *m_lib, *m_work, *m_root;
+    class QComboBox *m_target;
+    class QCheckBox *m_delete;
     QDateTimeEdit *m_when;
     QLabel *m_state;
 };

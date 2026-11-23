@@ -1251,6 +1251,32 @@ void DownloadPage::pauseResume(const DownloadPtr &item)
     startNext();
 }
 
+QString DownloadPage::pageStatus(const QString &pageUrl) const
+{
+    auto norm = [](const QString &u) {
+        QUrl x(u.trimmed());
+        x.setQuery(QString());
+        x.setFragment(QString());
+        QString h = x.host();
+        if (h.startsWith(QLatin1String("www.")))
+            h = h.mid(4);
+        return h + x.path();
+    };
+    const QString want = norm(pageUrl);
+    for (const DownloadPtr &d : m_items) {
+        if (d->audioTrack || norm(d->pageUrl) != want)
+            continue;
+        switch (d->status) {
+        case DownloadItem::Queued: return T("в очереди загрузок");
+        case DownloadItem::Downloading: return T("качается %1%").arg(int(d->progress * 100));
+        case DownloadItem::Paused: return d->retryWait ? T("ждёт связи (%1%)").arg(int(d->progress * 100)) : T("загрузка на паузе");
+        case DownloadItem::Done: return QString();
+        case DownloadItem::Failed: return T("загрузка не удалась");
+        }
+    }
+    return {};
+}
+
 void DownloadPage::showStatus(const QString &text)
 {
     m_status->setText(text);

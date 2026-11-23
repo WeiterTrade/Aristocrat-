@@ -130,6 +130,8 @@ public:
     void showExtensionHelp();
     void openBrowser(const QString &url = QString());
     void showStatus(const QString &text);
+    // Что сейчас с загрузкой этой страницы (для планировщика): пусто — такой загрузки нет
+    QString pageStatus(const QString &pageUrl) const;
     void grabAndAdd(const QString &url, bool loginSite, int autoHeight = 0);   // найти видео на странице (с входом в аккаунт);
                                                                               // autoHeight — без вопросов (планировщик)
 

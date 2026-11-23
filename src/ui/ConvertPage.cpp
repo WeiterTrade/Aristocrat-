@@ -748,6 +748,24 @@ void ConvertPage::reloadSettings()
     m_hw->setChecked(Settings::hardwareAccel());
 }
 
+QString ConvertPage::releaseStatus(const QString &dir) const
+{
+    const QString want = QDir::cleanPath(QFileInfo(dir).absoluteFilePath());
+    for (const TaskPtr &t : m_tasks) {
+        if (!t->deleteInputAfter || QDir::cleanPath(QFileInfo(t->outputDir).absoluteFilePath()) != want)
+            continue;
+        switch (t->status) {
+        case ConversionTask::Ready:
+        case ConversionTask::Waiting: return T("видео ждёт обработки");
+        case ConversionTask::Running:
+            return t->upscale.mode == UpscaleOptions::Fast720 ? T("улучшение до 720p: %1%").arg(int(t->progress * 100))
+                                                              : T("сцены и MKV: %1%").arg(int(t->progress * 100));
+        default: break;
+        }
+    }
+    return {};
+}
+
 void ConvertPage::addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless,
                                   const QString &chaptersMeta, bool deleteSource)
 {

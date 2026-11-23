@@ -37,6 +37,9 @@ protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
     void dropEvent(QDropEvent *e) override;
 
+public:
+    QString releaseStatus(const QString &dir) const;   // видео релиза в обработке (для планировщика)
+
 signals:
     void releaseVideoDone(const QString &dir, bool ok);   // видео релиза обработано (для планировщика)
 

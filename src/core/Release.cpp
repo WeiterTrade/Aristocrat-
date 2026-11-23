@@ -1,4 +1,5 @@
 #include "Release.h"
+#include <QDir>
 
 #include <QDateTime>
 #include <QFile>
@@ -448,6 +449,69 @@ QPair<QString, QString> languageOf(const QString &text)
             if (t.contains(w))
                 return m.second;
     return {};
+}
+
+} // namespace Release
+
+namespace Release {
+
+QString seriesBase(const QString &englishTitle)
+{
+    QString t = englishTitle.toLower();
+    t.remove(QRegularExpression(QStringLiteral("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]")));   // (2025), (English)
+    t.remove(QRegularExpression(QStringLiteral("\\b(?:vol(?:ume)?|part|episode|chapter|ep|no)\\.?\\s*\\d+\\b.*$")));
+    t.remove(QRegularExpression(QStringLiteral("#\\s*\\d+.*$")));
+    t.remove(QRegularExpression(QStringLiteral("\\s+\\d+\\s*$")));
+    t.remove(QRegularExpression(QStringLiteral("\\b(?:the|a|an)\\b")));
+    t.remove(QRegularExpression(QStringLiteral("'s\\b")));
+    // слова без окончания -s: «MILF» и «MILFs», «Mom» и «Moms» — одна серия
+    QString out;
+    for (QString w : t.split(QRegularExpression(QStringLiteral("[^a-z0-9]+")), Qt::SkipEmptyParts)) {
+        if (w.size() > 3 && w.endsWith(QLatin1Char('s')))
+            w.chop(1);
+        out += w;
+    }
+    return out;
+}
+
+QString findSeriesFolder(const QString &parentDir, const QString &englishTitle)
+{
+    const QString want = seriesBase(englishTitle);
+    if (want.size() < 4)
+        return {};
+    const QDir parent(parentDir);
+    if (parent.exists()) {
+        static const QRegularExpression orig(QStringLiteral("<originaltitle>([^<]+)</originaltitle>"));
+        for (const QString &series : parent.entryList({QStringLiteral("Серия*")}, QDir::Dirs | QDir::NoDotAndDotDot)) {
+            const QDir sd(parent.filePath(series));
+            int checked = 0;
+            for (const QString &rel : sd.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+                const QDir rd(sd.filePath(rel));
+                const QStringList nfos = rd.entryList({QStringLiteral("*.nfo")}, QDir::Files);
+                if (nfos.isEmpty())
+                    continue;
+                QFile f(rd.filePath(nfos.first()));
+                if (!f.open(QIODevice::ReadOnly))
+                    continue;
+                const QString o = orig.match(QString::fromUtf8(f.read(65536))).captured(1);
+                QString oo = o;
+                oo.replace(QStringLiteral("&amp;"), QStringLiteral("&")).replace(QStringLiteral("&apos;"), QStringLiteral("'"))
+                  .replace(QStringLiteral("&#39;"), QStringLiteral("'")).replace(QStringLiteral("&quot;"), QStringLiteral("\""));
+                if (!oo.isEmpty() && seriesBase(oo) == want)
+                    return series;
+                if (++checked >= 2)   // двух частей хватает
+                    break;
+            }
+        }
+    }
+    return QSettings().value(QStringLiteral("aeSeriesFolder/") + want).toString();
+}
+
+void rememberSeriesFolder(const QString &englishTitle, const QString &folder)
+{
+    const QString key = seriesBase(englishTitle);
+    if (key.size() >= 4 && !folder.isEmpty())
+        QSettings().setValue(QStringLiteral("aeSeriesFolder/") + key, folder);
 }
 
 } // namespace Release
