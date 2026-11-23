@@ -294,7 +294,11 @@ void AnalyzeDialog::onAnalyzed(int code)
     first->setChecked(true);
     m_ok->setEnabled(true);
     adjustSize();
-    if (m_autoPick > 0 && !hs.isEmpty()) {
+    if (m_autoPick == -100) {   // только звук (дорожка для релиза)
+        if (QAbstractButton *b = m_group->button(-100))
+            b->setChecked(true);
+        QTimer::singleShot(300, m_ok, &QPushButton::click);
+    } else if (m_autoPick > 0 && !hs.isEmpty()) {
         int pick = 0;
         for (int h : hs)   // точно нужная (с допуском) или ближайшая выше
             if (h >= m_autoPick - m_autoPick / 12 && (pick == 0 || h < pick))
@@ -797,6 +801,10 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite, int autoHe
 #ifdef HAVE_WEBENGINE
     const QUrl url = QUrl::fromUserInput(urlText);
     QString user, pass, error;
+    Release::AudioPending audio;
+    const bool audioTrack = Release::peekAudioPending(urlText, &audio);
+    if (audioTrack)
+        autoHeight = -100;   // звуковая дорожка: только звук, без вопросов
     bool forceLogin = loginSite && !Sites::isLoggedIn(url);
     for (int attempt = 0; attempt < 4; ++attempt) {
         if (loginSite && forceLogin) {
@@ -812,7 +820,7 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite, int autoHe
             AnalyzeDialog dlg(gd.media().toString(), baseArgs(false), QStringList(), window(), gd.headers());
             dlg.setAutoPick(autoHeight);
             if (dlg.exec() != QDialog::Accepted) {
-                if (autoHeight > 0)
+                if (autoHeight != 0)
                     emit downloadFailed(urlText, T("не удалось определить качество видео"));
                 return;
             }
@@ -831,13 +839,20 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite, int autoHe
                 if (!rel.dir.isEmpty())
                     item->outDir = QDir(rel.dir).filePath(QStringLiteral(".aristocrat-temp"));
             }
+            if (audioTrack) {   // звук другой версии фильма — во временную папку релиза, потом вшивается в MKV
+                item->audioOnly = true;
+                item->audioTrack = true;
+                item->title = safeFileName(audio.base + QStringLiteral(" - ") + audio.title);
+                if (!audio.dir.isEmpty())
+                    item->outDir = QDir(audio.dir).filePath(QStringLiteral(".aristocrat-temp"));
+            }
             if (!gd.thumb().isEmpty())
                 item->thumbUrl = gd.thumb();
             addItem(item);
             return;
         }
         if (r != 2) {
-            if (autoHeight > 0)
+            if (autoHeight != 0)
                 emit downloadFailed(urlText, T("поиск видео отменён"));
             return;   // отменено
         }
@@ -850,7 +865,7 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite, int autoHe
             pass.clear();
             continue;
         }
-        if (autoHeight > 0) {   // планировщик: без вопросов
+        if (autoHeight != 0) {   // планировщик / звуковая дорожка: без вопросов
             emit downloadFailed(urlText, gd.error());
             return;
         }
@@ -974,7 +989,9 @@ void DownloadPage::startItem(const DownloadPtr &item)
                      : QStringLiteral("%(title).120B [%(id)s].%(ext)s"));
     if (m_fast->isChecked())
         a << "--concurrent-fragments" << "8";
-    if (item->audioOnly) {
+    if (item->audioTrack) {   // дорожка для MKV релиза — без пережатия, если звук уже AAC
+        a << "-f" << "ba/b" << "-x" << "--audio-format" << "m4a";
+    } else if (item->audioOnly) {
         a << "-f" << "ba/b" << "-x" << "--audio-format" << "mp3" << "--audio-quality" << "0";
     } else {
         a << "-f" << "bv*+ba/b" << "--merge-output-format" << "mp4/mkv";
@@ -1234,6 +1251,11 @@ void DownloadPage::pauseResume(const DownloadPtr &item)
     startNext();
 }
 
+void DownloadPage::showStatus(const QString &text)
+{
+    m_status->setText(text);
+}
+
 void DownloadPage::removeLeftovers(const DownloadPtr &item)
 {
     const QString title = item->title.trimmed();
@@ -1278,7 +1300,7 @@ void DownloadPage::saveQueue() const
             continue;
         QJsonObject o;
         o["url"] = d->url; o["title"] = d->title; o["site"] = d->site; o["duration"] = d->duration;
-        o["thumb"] = d->thumbUrl; o["height"] = d->height; o["audio"] = d->audioOnly; o["noCookies"] = d->noCookies;
+        o["thumb"] = d->thumbUrl; o["height"] = d->height; o["audio"] = d->audioOnly; o["audioTrack"] = d->audioTrack; o["noCookies"] = d->noCookies;
         o["progress"] = d->progress;
         o["external"] = d->external;
         o["page"] = d->pageUrl;
@@ -1304,7 +1326,7 @@ void DownloadPage::loadQueue()
         auto d = DownloadPtr::create();
         d->url = o["url"].toString(); d->title = o["title"].toString(); d->site = o["site"].toString();
         d->duration = o["duration"].toDouble(); d->thumbUrl = o["thumb"].toString(); d->height = o["height"].toInt();
-        d->audioOnly = o["audio"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
+        d->audioOnly = o["audio"].toBool(); d->audioTrack = o["audioTrack"].toBool(); d->noCookies = o["noCookies"].toBool(); d->progress = o["progress"].toDouble();
         d->external = o["external"].toBool();
         d->pageUrl = o["page"].toString();
         d->outDir = o["outDir"].toString();

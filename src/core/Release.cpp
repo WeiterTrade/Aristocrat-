@@ -375,3 +375,80 @@ bool takePending(const QString &pageUrl, Pending *p)
 }
 
 } // namespace Release
+
+namespace Release {
+
+static QString audioKey(const QString &pageUrl)
+{
+    QUrl u(pageUrl.trimmed());
+    u.setQuery(QString());
+    u.setFragment(QString());
+    if (u.host().startsWith(QLatin1String("www.")))
+        u.setHost(u.host().mid(4));
+    return QString::fromLatin1(u.toString().toUtf8().toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+void addAudioPending(const QString &pageUrl, const AudioPending &a)
+{
+    QSettings st;
+    const QString g = QStringLiteral("aeAudio/") + audioKey(pageUrl);
+    st.setValue(g + QStringLiteral("/dir"), a.dir);
+    st.setValue(g + QStringLiteral("/base"), a.base);
+    st.setValue(g + QStringLiteral("/title"), a.title);
+    st.setValue(g + QStringLiteral("/lang"), a.lang);
+}
+
+bool peekAudioPending(const QString &pageUrl, AudioPending *a)
+{
+    QSettings st;
+    const QString g = QStringLiteral("aeAudio/") + audioKey(pageUrl);
+    if (!st.contains(g + QStringLiteral("/dir")))
+        return false;
+    a->dir = st.value(g + QStringLiteral("/dir")).toString();
+    a->base = st.value(g + QStringLiteral("/base")).toString();
+    a->title = st.value(g + QStringLiteral("/title")).toString();
+    a->lang = st.value(g + QStringLiteral("/lang")).toString();
+    return true;
+}
+
+bool takeAudioPending(const QString &pageUrl, AudioPending *a)
+{
+    if (!peekAudioPending(pageUrl, a))
+        return false;
+    QSettings().remove(QStringLiteral("aeAudio/") + audioKey(pageUrl));
+    return true;
+}
+
+QString cleanStudio(const QString &studio)
+{
+    QString s = studio.simplified();
+    static const QRegularExpression tail(QStringLiteral("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]\\s*$"));
+    while (tail.match(s).hasMatch())
+        s.remove(tail);
+    return s.trimmed();
+}
+
+QPair<QString, QString> languageOf(const QString &text)
+{
+    static const QList<QPair<QStringList, QPair<QString, QString>>> map = {
+        {{"english", "anglais", "inglés", "ingles", "englisch"}, {"Английский", "eng"}},
+        {{"french", "français", "francais", "francés", "frances", "französisch"}, {"Французский", "fre"}},
+        {{"spanish", "español", "espanol", "espagnol", "spanisch"}, {"Испанский", "spa"}},
+        {{"italian", "italiano", "italien", "italienisch"}, {"Итальянский", "ita"}},
+        {{"german", "deutsch", "allemand", "alemán", "aleman"}, {"Немецкий", "ger"}},
+        {{"portuguese", "português", "portugues"}, {"Португальский", "por"}},
+        {{"russian", "русский"}, {"Русский", "rus"}},
+        {{"czech", "česky", "cesky"}, {"Чешский", "cze"}},
+        {{"dutch", "nederlands"}, {"Нидерландский", "dut"}},
+        {{"polish", "polski"}, {"Польский", "pol"}},
+        {{"hungarian", "magyar"}, {"Венгерский", "hun"}}};
+    const QString t = text.toLower();
+    for (const auto &m : map)
+        for (const QString &w : m.first)
+            if (t.contains(w))
+                return m.second;
+    return {};
+}
+
+} // namespace Release
+

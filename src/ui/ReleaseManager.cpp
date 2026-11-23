@@ -1,6 +1,7 @@
 #include "ReleaseManager.h"
 #include "core/MediaInfo.h"
 #include "CoverArt.h"
+#include "AudioTracks.h"
 #include "ReleaseScheduler.h"
 #include <QSharedPointer>
 #include <QSet>
@@ -879,7 +880,28 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_downloadVideo = new QCheckBox(T("Скачать видео с Adult Empire (вход в аккаунт и выбор качества — как в разделе «Загрузить»)"), this);
     m_downloadVideo->setObjectName(QStringLiteral("PlainCheck"));
     m_downloadVideo->setChecked(video.isEmpty() && st.value(QStringLiteral("ae/downloadVideo"), true).toBool());
-    bottom->addWidget(m_downloadVideo, 3, 1);
+    {
+        // Звук других версий фильма (французская, испанская…) — дорожками в MKV релиза
+        auto *dlRow = new QHBoxLayout;
+        dlRow->setContentsMargins(0, 0, 0, 0);
+        dlRow->addWidget(m_downloadVideo);
+        dlRow->addStretch();
+        auto *audioBtn = new QPushButton(T("Звуковые дорожки…"), this);
+        audioBtn->setToolTip(T("Добавить звук из версий фильма на других языках (французская, испанская…)"));
+        dlRow->addWidget(audioBtn);
+        bottom->addLayout(dlRow, 3, 1);
+        connect(audioBtn, &QPushButton::clicked, this, [this] {
+            const ReleaseInfo r = collect();
+            if (r.title.isEmpty()) {
+                m_state->setText(T("Сначала загрузите данные релиза."));
+                return;
+            }
+            const QString dir = m_createdDir.isEmpty() ? releaseDir() : m_createdDir;
+            AudioTracksDialog d(dir, Release::baseName(r), [this](const QString &url) { emit downloadRequested(url); }, this);
+            if (d.exec() == QDialog::Accepted)
+                m_state->setText(T("Звук других версий скачивается в разделе «Загрузить» — он сам вшьётся в MKV релиза."));
+        });
+    }
     connect(m_video, &QLineEdit::textChanged, this, [this](const QString &t) {
         if (!t.trimmed().isEmpty())
             m_downloadVideo->setChecked(false);
@@ -1199,7 +1221,10 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
     const QString py = d.value("year").toString().left(4);
     if (!py.isEmpty() && !rel.isValid())
         m_year->setText(py);
-    const QString studio = d.value("studio").toString().simplified();
+    // «Dorcel (English)» → «Dorcel»; язык из скобок — подсказка для звуковых дорожек
+    const QString studioRaw = d.value("studio").toString().simplified();
+    setProperty("studioLang", Release::languageOf(studioRaw).first);
+    const QString studio = Release::cleanStudio(studioRaw);
     m_studio->setText(studio);
     applyStudioCountry(studio);
     const QString rating = d.value("rating").toString();

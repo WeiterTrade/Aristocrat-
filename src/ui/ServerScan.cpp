@@ -638,7 +638,7 @@ void ServerScanDialog::movieFromPage(int row, const QJsonObject &d)
                     done << T("жанры");
                 }
             }
-            const QString studio = d.value("studio").toString().simplified();
+            const QString studio = Release::cleanStudio(d.value("studio").toString());
             if (e.needStudio && !studio.isEmpty()) {
                 item.insert("Studios", QJsonArray{QJsonObject{{"Name", studio}}});
                 done << T("студия");

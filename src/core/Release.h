@@ -4,6 +4,7 @@
 #include <QDate>
 #include <QImage>
 #include <QList>
+#include <QPair>
 #include <QString>
 #include <QStringList>
 
@@ -65,6 +66,15 @@ QImage cropTo16x9(const QImage &img);
 
 // Релиз, который ждёт скачивания видео: после загрузки видео переупаковывается в папку релиза
 struct Pending { QString name, dir, chaptersMeta; bool lossless = true; bool k4 = false; };
+// Звуковая дорожка из другой версии фильма (другой язык) — вшить в MKV релиза
+struct AudioPending { QString dir, base, title, lang; };
+void addAudioPending(const QString &pageUrl, const AudioPending &a);
+bool peekAudioPending(const QString &pageUrl, AudioPending *a);
+bool takeAudioPending(const QString &pageUrl, AudioPending *a);
+// «Dorcel (English)» → «Dorcel»: всё в скобках в конце названия студии убирается
+QString cleanStudio(const QString &studio);
+// Язык из скобок студии/названия: «(Spanish)» → {"Испанский", "spa"}; пусто — не найден
+QPair<QString, QString> languageOf(const QString &text);
 void addPending(const QString &pageUrl, const Pending &p);
 bool takePending(const QString &pageUrl, Pending *p);
 bool peekPending(const QString &pageUrl, Pending *p);   // не удаляя

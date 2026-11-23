@@ -5,6 +5,7 @@
 #include "CoverArt.h"
 #ifdef HAVE_WEBENGINE
 #include "ReleaseScheduler.h"
+#include "AudioTracks.h"
 #endif
 #include "core/Theme.h"
 #include "ConvertPage.h"
@@ -113,6 +114,15 @@ MainWindow::MainWindow(QWidget *parent)
         connect(download, &DownloadPage::downloadFailed, sched, &ReleaseScheduler::onDownloadFailed);
         connect(sched, &ReleaseScheduler::batchFinished, this, [this](const QList<SchedItem> &done) { schedulerDone(done); });
     }
+#endif
+#ifdef HAVE_WEBENGINE
+    // Звук другой версии фильма скачан — вшить в MKV релиза
+    connect(AudioMuxer::instance(), &AudioMuxer::message, download, &DownloadPage::showStatus);
+    connect(download, &DownloadPage::downloadFinished, this, [](const QString &file, const QString &page) {
+        Release::AudioPending a;
+        if (Release::takeAudioPending(page, &a))
+            AudioMuxer::instance()->add(file, a);
+    });
 #endif
     connect(download, &DownloadPage::downloadFinished, this, [this](const QString &file, const QString &page) {
         Release::Pending p;

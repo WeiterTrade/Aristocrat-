@@ -46,6 +46,7 @@ struct DownloadItem {
     bool pausing = false;
     bool noCookies = false;    // вход из браузера не удался — качаем без него
     int autoRetries = 0;       // автоповторы после обрыва связи
+    bool audioTrack = false;   // звуковая дорожка другой версии фильма — вшить в MKV релиза
     bool retryWait = false;    // ждёт автоповтора (не ручная пауза)
     bool external = false;     // пришло из расширения браузера
     QStringList headers;       // заголовки запроса из браузера (Referer, Cookie…)
@@ -128,6 +129,7 @@ public:
     void addExternal(const QJsonObject &media);   // видео из расширения браузера
     void showExtensionHelp();
     void openBrowser(const QString &url = QString());
+    void showStatus(const QString &text);
     void grabAndAdd(const QString &url, bool loginSite, int autoHeight = 0);   // найти видео на странице (с входом в аккаунт);
                                                                               // autoHeight — без вопросов (планировщик)
 
