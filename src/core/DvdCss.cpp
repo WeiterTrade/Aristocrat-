@@ -385,8 +385,8 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
         const quint32 vobs = vtsLba[t.vts] + be32(v, 0xC4);   // начало VOB фильмов этого набора
         t.keySector = vobs;
         // Дорожки
-        for (int a = 0; a < qMin<int>(be16(v, 0x200), 8); ++a) {
-            const int o = 0x202 + a * 8;
+        for (int a = 0; a < qMin<int>(be16(v, 0x202), 8); ++a) {
+            const int o = 0x204 + a * 8;
             t.audio << langOf(v, o + 2);
             static const char *fmt[] = {"AC3", "?", "MPEG", "MPEG", "LPCM", "?", "DTS", "?"};
             const int ch = (uchar(v[o + 1]) & 7) + 1;
@@ -479,9 +479,9 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
     QFile out(outFile);
     if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return fail(T("не удалось записать %1").arg(outFile));
-    // Ключ CSS фильма — по началу его VOB
+    // Ключ CSS фильма — по началу его VOB. Не получен — диск без защиты (или образ без ключей): читаем как есть
     if (l.seek(h, int(title.keySector), kSeekKey) < 0)
-        return fail(T("ошибка чтения диска (%1): %2").arg(QStringLiteral("key"), errorText(l, h)));
+        l.seek(h, int(title.keySector), kNoFlags);
 
     const qint64 total = qMax<qint64>(1, title.bytes / kBlock);
     qint64 done = 0;
