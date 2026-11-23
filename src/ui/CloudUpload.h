@@ -21,6 +21,7 @@ public:
     explicit CloudUploadPage(QWidget *parent = nullptr);
     void setRelease(const QString &dir);
     bool isBusy() const;
+    static QString configFile();   // rclone.conf программы (им пользуется и планировщик)
 
 private:
     struct Provider {
@@ -33,7 +34,6 @@ private:
     void openWeb();
     QString remote() const { return QStringLiteral("aristo-") + current().id; }
     QString remotePath(const QString &path) const;
-    static QString configFile();
     QStringList rc(const QStringList &args) const;   // аргументы + --config
     bool isConnected() const;
 
