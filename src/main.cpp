@@ -129,8 +129,13 @@ int main(int argc, char *argv[])
             int bad = 0;
             for (const auto &t : ts)
                 if (t.main)
-                    ok = DvdCss::rip(p.value(0), t, p.value(2), {}, &err, &bad);
+                    ok = DvdCss::rip(p.value(0), t, p.value(2), 0, {}, &err, &bad);
             fprintf(stderr, "dvdrip: titles=%d ok=%d bad=%d err=%s\n", int(ts.size()), ok, bad, qPrintable(err));
+            if (p.size() > 3) {   // и полная копия в ISO
+                const bool iok = DvdCss::isoBackup(p.value(0), p.value(3), 0, {}, &err, &bad);
+                fprintf(stderr, "dvdiso: ok=%d bad=%d err=%s\n", iok, bad, qPrintable(err));
+                ok = ok && iok;
+            }
             return ok ? 0 : 1;
         }
 

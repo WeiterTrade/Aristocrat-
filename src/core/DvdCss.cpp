@@ -12,6 +12,16 @@
 #include <QStorageInfo>
 #include <QVector>
 #include <cstring>
+#include <QElapsedTimer>
+#include <QThread>
+#include <algorithm>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 namespace DvdCss {
 
@@ -456,68 +466,406 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
     return out;
 }
 
-bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
+// ======================= Надёжное чтение диска =======================
+// Как у DVDFab/ImgBurn/ddrescue: сбой — пауза и повтор (привод раскручивается заново), затем снижение скорости
+// привода, затем пропуск по нарастающей с нулями на месте нечитаемого. Длинная полоса сбоев — «перезапуск»
+// привода (закрыть/открыть, пауза, минимальная скорость). В конце — второй проход по пропущенному на 2x.
+
+namespace {
+
+// Скорость привода: 0 — максимум; иначе кратность DVD (1x = 1385 КБ/с)
+bool setDriveSpeed(const QString &device, int dvdX)
+{
+#ifdef Q_OS_WIN
+    if (device.size() != 2 || device.at(1) != QLatin1Char(':'))
+        return false;
+    const QString path = QStringLiteral("\\\\.\\") + device;
+    HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    struct {
+        int requestType;     // CdromSetSpeed
+        USHORT readSpeed;    // КБ/с
+        USHORT writeSpeed;
+        int rotation;        // CdromDefaultRotation
+    } sp{0, USHORT(dvdX <= 0 ? 0xFFFF : qMin(65534, dvdX * 1385)), 0xFFFF, 0};
+    DWORD got = 0;
+    const BOOL ok = DeviceIoControl(h, 0x24060 /* IOCTL_CDROM_SET_SPEED */, &sp, sizeof(sp), nullptr, 0, &got, nullptr);
+    CloseHandle(h);
+    return ok;
+#else
+    const int fd = ::open(QFile::encodeName(device).constData(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0)
+        return false;
+    const int ok = ::ioctl(fd, 0x5322 /* CDROM_SELECT_SPEED */, dvdX <= 0 ? 0 : dvdX * 8);
+    ::close(fd);
+    return ok == 0;
+#endif
+}
+
+struct Range {
+    quint32 first = 0, last = 0;
+    quint32 key = 0;   // сектор, по которому берётся ключ CSS; 0 — не шифруется (IFO, файловая система)
+};
+
+class Engine
+{
+public:
+    Engine(Lib &l, const QString &device, int maxSpeed, const std::function<bool(int, qint64, int)> &progress)
+        : l(l), device(device), maxSpeed(maxSpeed), progress(progress)
+    {
+    }
+    ~Engine()
+    {
+        if (h)
+            l.close(h);
+        setDriveSpeed(device, 0);   // вернуть приводу обычную скорость
+    }
+    bool open(QString *err)
+    {
+        h = l.open(QFile::encodeName(device).constData());
+        if (!h && err)
+            *err = T("не удалось открыть диск %1").arg(device);
+        if (h && maxSpeed > 0)
+            setDriveSpeed(device, maxSpeed);
+        speed = maxSpeed;
+        return h != nullptr;
+    }
+
+    // ranges подряд записываются в out; total — сумма секторов
+    bool copy(const QVector<Range> &ranges, QFile &out, QString *err, int *badOut)
+    {
+        total = 0;
+        for (const Range &r : ranges)
+            total += qint64(r.last) - r.first + 1;
+        qint64 outPos = 0;
+        QByteArray buf(256 * kBlock, Qt::Uninitialized);
+        for (const Range &r : ranges) {
+            useKey(r.key);
+            quint32 pos = r.first;
+            quint32 skip = 0;
+            qint64 streak = 0;   // секторов сбоя подряд
+            while (pos <= r.last) {
+                const int n = int(qMin<quint32>(skip ? 16 : 256, r.last - pos + 1));
+                bool ok = readAt(pos, n, buf.data(), r.key);
+                if (!ok && !skip) {
+                    // Первый сбой на месте: пауза (привод перераскрутится) и повтор, затем — медленнее
+                    for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+                        QThread::msleep(1500);
+                        ok = readAt(pos, n, buf.data(), r.key);
+                    }
+                    if (!ok && slowDown())
+                        ok = readAt(pos, n, buf.data(), r.key);
+                    if (!ok && n > 16) {
+                        // По 16 секторов: читаемое сохраняем, нечитаемое — нулями
+                        for (int i = 0; i < n; i += 16) {
+                            const int m = qMin(16, n - i);
+                            char *dst = buf.data() + i * kBlock;
+                            if (!readAt(pos + quint32(i), m, dst, r.key)) {
+                                std::memset(dst, 0, size_t(m) * kBlock);
+                                markBad(outPos + i, pos + quint32(i), m, r.key);
+                            }
+                        }
+                        ok = true;   // кусок записан (с нулями на месте плохого)
+                        skip = 16;
+                    }
+                }
+                if (ok) {
+                    if (!writeAt(out, outPos, buf.constData(), n))
+                        return fail(err, T("не хватает места на диске"));
+                    pos += quint32(n);
+                    outPos += n;
+                    done += n;
+                    streak = 0;
+                    if (skip && n == 16)
+                        skip = 0;   // после частично плохого куска — снова большими кусками
+                } else {
+                    // Пропуск по нарастающей; на месте пропуска — нули (второй проход попробует ещё раз)
+                    skip = skip ? qMin<quint32>(skip * 2, 2048) : 16;
+                    const quint32 jump = qMin<quint32>(qMax<quint32>(skip, quint32(n)), r.last - pos + 1);
+                    markBad(outPos, pos, int(jump), r.key);
+                    if (!writeZeros(out, outPos, int(jump)))
+                        return fail(err, T("не хватает места на диске"));
+                    pos += jump;
+                    outPos += jump;
+                    done += jump;
+                    streak += jump;
+                    // Длинная полоса сбоев — это не царапина, а «застрявший» привод: перезапуск и повтор с начала полосы
+                    if (streak * kBlock > 48LL * 1024 * 1024 && recoveries < 4) {
+                        ++recoveries;
+                        pos -= quint32(streak);
+                        outPos -= streak;
+                        done -= streak;
+                        unmarkFrom(outPos);
+                        streak = 0;
+                        skip = 0;
+                        if (!recover(r.key))
+                            return fail(err, T("привод перестал отвечать"));
+                    }
+                }
+                if (!report())
+                    return fail(err, T("отменено"));
+            }
+        }
+        // Второй проход: пропущенное — по одному сектору на минимальной скорости (до 10 минут)
+        if (!bad.isEmpty() && badCount() < 50000) {
+            setDriveSpeed(device, 2);
+            QElapsedTimer t;
+            t.start();
+            QVector<Bad> still;
+            QByteArray one(kBlock, Qt::Uninitialized);
+            for (const Bad &b : qAsConst(bad)) {
+                useKey(b.key);
+                for (int i = 0; i < b.count; ++i) {
+                    if (t.elapsed() > 600000 || !report())
+                        still.append({b.out + i, b.lba + quint32(i), 1, b.key});
+                    else if (readAt(b.lba + quint32(i), 1, one.data(), b.key))
+                        writeAt(out, b.out + i, one.constData(), 1);
+                    else
+                        still.append({b.out + i, b.lba + quint32(i), 1, b.key});
+                }
+            }
+            bad = still;
+        }
+        if (badOut)
+            *badOut = badCount();
+        return true;
+    }
+
+private:
+    struct Bad {
+        qint64 out;
+        quint32 lba;
+        int count;
+        quint32 key;
+    };
+    Lib &l;
+    QString device;
+    int maxSpeed;
+    int speed = 0;
+    std::function<bool(int, qint64, int)> progress;
+    void *h = nullptr;
+    quint32 curKey = 0xFFFFFFFF;
+    qint64 total = 0, done = 0;
+    int recoveries = 0;
+    QVector<Bad> bad;
+
+    bool fail(QString *err, const QString &e)
+    {
+        if (err)
+            *err = e;
+        return false;
+    }
+    int badCount() const
+    {
+        int c = 0;
+        for (const Bad &b : bad)
+            c += b.count;
+        return c;
+    }
+    bool report() { return !progress || progress(total ? int(done * 100 / total) : 100, done * kBlock, badCount()); }
+    void useKey(quint32 key)
+    {
+        if (key && key != curKey && l.seek(h, int(key), kSeekKey) >= 0)
+            curKey = key;
+    }
+    bool readAt(quint32 lba, int n, char *dst, quint32 key)
+    {
+        if (l.seek(h, int(lba), kNoFlags) != int(lba))
+            return false;
+        return l.read(h, dst, n, key ? kReadDecrypt : kNoFlags) == n;
+    }
+    static bool writeAt(QFile &out, qint64 sector, const char *data, int n)
+    {
+        return out.seek(sector * kBlock) && out.write(data, qint64(n) * kBlock) == qint64(n) * kBlock;
+    }
+    static bool writeZeros(QFile &out, qint64 sector, int n)
+    {
+        static const QByteArray zeros(256 * kBlock, '\0');
+        while (n > 0) {
+            const int m = qMin(n, 256);
+            if (!writeAt(out, sector, zeros.constData(), m))
+                return false;
+            sector += m;
+            n -= m;
+        }
+        return true;
+    }
+    void markBad(qint64 out, quint32 lba, int count, quint32 key) { bad.append({out, lba, count, key}); }
+    void unmarkFrom(qint64 out)
+    {
+        while (!bad.isEmpty() && bad.last().out >= out)
+            bad.removeLast();
+    }
+    // Ступени скорости: максимум → 8x → 4x → 2x
+    bool slowDown()
+    {
+        const int next = speed <= 0 ? 8 : speed > 4 ? 4 : speed > 2 ? 2 : 0;
+        if (next == 0)
+            return false;
+        speed = next;
+        setDriveSpeed(device, speed);
+        QThread::msleep(1000);
+        return true;
+    }
+    bool recover(quint32 key)
+    {
+        l.close(h);
+        h = nullptr;
+        QThread::msleep(8000);   // привод останавливается и раскручивается заново
+        h = l.open(QFile::encodeName(device).constData());
+        if (!h)
+            return false;
+        speed = 2;
+        setDriveSpeed(device, 2);
+        curKey = 0xFFFFFFFF;
+        useKey(key);
+        return true;
+    }
+};
+
+} // namespace
+
+bool rip(const QString &device, const DiscTitle &title, const QString &outFile, int maxSpeed,
          const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors)
 {
     Lib &l = lib();
-    auto fail = [error](const QString &e) {
+    if (!l.ok) {
         if (error)
-            *error = e;
+            *error = T("libdvdcss не найдена");
         return false;
-    };
-    if (!l.ok)
-        return fail(T("libdvdcss не найдена"));
-    void *h = l.open(QFile::encodeName(device).constData());
-    if (!h)
-        return fail(T("не удалось открыть диск %1").arg(device));
-    struct Closer {
-        Lib &l;
-        void *h;
-        ~Closer() { l.close(h); }
-    } closer{l, h};
+    }
+    Engine e(l, device, maxSpeed, progress);
+    if (!e.open(error))
+        return false;
     QDir().mkpath(QFileInfo(outFile).absolutePath());
     QFile out(outFile);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return fail(T("не удалось записать %1").arg(outFile));
-    // Ключ CSS фильма — по началу его VOB. Не получен — диск без защиты (или образ без ключей): читаем как есть
-    if (l.seek(h, int(title.keySector), kSeekKey) < 0)
-        l.seek(h, int(title.keySector), kNoFlags);
-
-    const qint64 total = qMax<qint64>(1, title.bytes / kBlock);
-    qint64 done = 0;
-    int bad = 0;
-    quint32 skip = 0;   // как у ddrescue: после сбоя перескакиваем участок, при подряд идущих сбоях — вдвое больше
-    QByteArray buf(256 * kBlock, Qt::Uninitialized);
-    auto report = [&]() { return !progress || progress(int(done * 100 / total), done * kBlock, bad); };
-    for (const auto &cell : title.cells) {
-        quint32 pos = cell.first;
-        while (pos <= cell.second) {
-            const int n = int(qMin<quint32>(skip ? 16 : 256, cell.second - pos + 1));
-            const bool ok = l.seek(h, int(pos), kNoFlags) == int(pos) && l.read(h, buf.data(), n, kReadDecrypt) == n;
-            if (ok) {
-                if (out.write(buf.constData(), qint64(n) * kBlock) != qint64(n) * kBlock)
-                    return fail(T("не хватает места на диске для %1").arg(QFileInfo(outFile).fileName()));
-                pos += quint32(n);
-                done += n;
-                skip = 0;
-            } else {
-                // Плохое место: не мучаем привод повторами — пропускаем участок (в MPEG-PS его можно просто не писать)
-                skip = skip ? qMin<quint32>(skip * 2, 4096) : 32;
-                const quint32 jump = qMin<quint32>(qMax<quint32>(skip, quint32(n)), cell.second - pos + 1);
-                pos += jump;
-                done += jump;
-                bad += int(jump);
-            }
-            if (!report())
-                return fail(T("отменено"));
-        }
+    if (!out.open(QIODevice::ReadWrite | QIODevice::Truncate)) {
+        if (error)
+            *error = T("не удалось записать %1").arg(outFile);
+        return false;
     }
-    if (badSectors)
-        *badSectors = bad;
+    QVector<Range> ranges;
+    for (const auto &c : title.cells)
+        ranges.append({c.first, c.second, title.keySector});
+    if (!e.copy(ranges, out, error, badSectors))
+        return false;
     out.close();
-    if (out.size() < 1024 * 1024)
-        return fail(T("с диска ничего не прочиталось"));
+    if (out.size() < 1024 * 1024) {
+        if (error)
+            *error = T("с диска ничего не прочиталось");
+        return false;
+    }
     return true;
+}
+
+bool isoBackup(const QString &device, const QString &outIso, int maxSpeed,
+               const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors)
+{
+    Lib &l = lib();
+    if (!l.ok) {
+        if (error)
+            *error = T("libdvdcss не найдена");
+        return false;
+    }
+    // Размер диска и расположение VOB — по ISO 9660 (отдельное короткое открытие)
+    quint32 volume = 0;
+    QVector<Entry> vobs;
+    {
+        void *h = l.open(QFile::encodeName(device).constData());
+        if (!h) {
+            if (error)
+                *error = T("не удалось открыть диск %1").arg(device);
+            return false;
+        }
+        QByteArray pvd;
+        if (readRaw(l, h, 16, 1, pvd) && pvd.at(0) == 1 && pvd.mid(1, 5) == "CD001") {
+            volume = le32(reinterpret_cast<const unsigned char *>(pvd.constData()) + 80);
+            const auto *root = reinterpret_cast<const unsigned char *>(pvd.constData()) + 156;
+            for (const Entry &d : listDir(l, h, le32(root + 2), le32(root + 10), true))
+                if (d.name == QLatin1String("VIDEO_TS"))
+                    for (const Entry &f : listDir(l, h, d.lba, d.size, false))
+                        if (f.name.endsWith(QLatin1String(".VOB")) && f.size > 0)
+                            vobs.append(f);
+        }
+        l.close(h);
+    }
+    if (volume < 1000) {
+        if (error)
+            *error = T("на диске нет файловой системы ISO 9660: %1").arg(device);
+        return false;
+    }
+    std::sort(vobs.begin(), vobs.end(), [](const Entry &a, const Entry &b) { return a.lba < b.lba; });
+    // Весь диск по порядку: VOB — с ключом своего файла (расшифровка), остальное — как есть
+    QVector<Range> ranges;
+    quint32 pos = 0;
+    for (const Entry &v : vobs) {
+        if (v.lba >= volume || v.lba < pos)
+            continue;   // ловушки защиты: файлы «за краем» или внахлёст
+        const quint32 last = qMin<quint32>(volume - 1, v.lba + (v.size + kBlock - 1) / kBlock - 1);
+        if (v.lba > pos)
+            ranges.append({pos, v.lba - 1, 0});
+        ranges.append({v.lba, last, v.lba});
+        pos = last + 1;
+    }
+    if (pos < volume)
+        ranges.append({pos, volume - 1, 0});
+
+    Engine e(l, device, maxSpeed, progress);
+    if (!e.open(error))
+        return false;
+    QDir().mkpath(QFileInfo(outIso).absolutePath());
+    QFile out(outIso);
+    if (!out.open(QIODevice::ReadWrite | QIODevice::Truncate)) {
+        if (error)
+            *error = T("не удалось записать %1").arg(outIso);
+        return false;
+    }
+    return e.copy(ranges, out, error, badSectors);
+}
+
+
+QString regionInfo(const QString &device)
+{
+#ifdef Q_OS_WIN
+    if (device.size() != 2 || device.at(1) != QLatin1Char(':'))
+        return {};
+    const QString path = QStringLiteral("\\\\.\\") + device;
+    HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return {};
+    struct {
+        UCHAR copySystem, regionData, systemRegion, resetCount;
+    } r{};
+    DWORD got = 0;
+    const BOOL ok = DeviceIoControl(h, 0x335014 /* IOCTL_DVD_GET_REGION */, nullptr, 0, &r, sizeof(r), &got, nullptr);
+    CloseHandle(h);
+    if (!ok)
+        return {};
+    // Маски «запрещённых» регионов: бит i = регион i+1
+    auto list = [](UCHAR mask) {
+        QStringList out;
+        for (int i = 0; i < 8; ++i)
+            if (!(mask & (1 << i)))
+                out << QString::number(i + 1);
+        return out;
+    };
+    const QStringList disc = list(r.regionData), drive = list(r.systemRegion);
+    const QString d = disc.size() >= 8 ? T("все") : disc.join(QStringLiteral(", "));
+    const QString v = drive.isEmpty() || drive.size() >= 8 ? T("не задан") : drive.join(QStringLiteral(", "));
+    QString text = T("Регион диска: %1 · регион привода: %2 (смен осталось: %3)").arg(d, v).arg(int(r.resetCount));
+    bool match = disc.size() >= 8 || drive.isEmpty() || drive.size() >= 8;
+    for (const QString &x : drive)
+        match = match || disc.contains(x);
+    if (!match)
+        text += T(" — регионы не совпадают: привод может не отдавать зашифрованные сектора");
+    return text;
+#else
+    Q_UNUSED(device)
+    return {};
+#endif
 }
 
 } // namespace DvdCss

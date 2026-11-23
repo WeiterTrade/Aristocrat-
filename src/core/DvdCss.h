@@ -45,8 +45,17 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
 
 // Записать фильм (его ячейки по порядку) в один файл MPEG-PS со снятой защитой.
 // Битые сектора пропускаются быстро, без многократных повторов.
-// progress(процент, прочитано байт, пропущено секторов) — после каждого куска (до 512 КБ)
-bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
+// progress(процент, прочитано байт, нечитаемых секторов) — после каждого куска (до 512 КБ).
+// maxSpeed — скорость привода (кратность DVD), 0 — максимальная; при сбоях снижается сама до 2x.
+bool rip(const QString &device, const DiscTitle &title, const QString &outFile, int maxSpeed,
          const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors = nullptr);
+
+// Полная копия диска в ISO: меню, все фильмы, дорожки, субтитры, бонусы — со снятой защитой CSS.
+// Нечитаемые сектора-ловушки записываются нулями (структура диска сохраняется).
+bool isoBackup(const QString &device, const QString &outIso, int maxSpeed,
+               const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors = nullptr);
+
+// Регионы: «диск: 2 · привод: 5 (смен осталось 4)». Пусто — не удалось узнать (только Windows).
+QString regionInfo(const QString &device);
 
 } // namespace DvdCss

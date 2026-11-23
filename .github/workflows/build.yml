@@ -268,8 +268,9 @@ jobs:
           VIDEO_FORMAT=PAL dvdauthor -o realdvd -t real.vob 2>/dev/null && VIDEO_FORMAT=PAL dvdauthor -o realdvd -T 2>/dev/null
           ls -la realdvd/VIDEO_TS
           genisoimage -quiet -dvd-video -V REALDVD -o real.iso realdvd
-          xvfb-run -a "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-rip-test=$PWD/real.iso|$PWD/realdvd/VIDEO_TS|$PWD/ripped.vob" > rip.log 2>&1 || true
-          grep -a -E "dvdtitle|dvdrip" rip.log || tail -20 rip.log
+          xvfb-run -a "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-rip-test=$PWD/real.iso|$PWD/realdvd/VIDEO_TS|$PWD/ripped.vob|$PWD/copy.iso" > rip.log 2>&1 || true
+          grep -a -E "dvdtitle|dvdrip|dvdiso" rip.log || tail -20 rip.log
+          cmp real.iso copy.iso && echo "DVDISO_OK" || { echo "::error::ISO-копия диска не совпала с оригиналом"; exit 1; }
           ls -la ripped.vob realdvd/VIDEO_TS/VTS_01_1.VOB || true
           $T/ffprobe -v error -show_entries format=duration -of csv=p=0 ripped.vob && grep -q "dvdrip: titles=1 ok=1" rip.log && echo "DVDRIP_OK" \
             || { echo "::error::оглавление/чтение DVD по IFO не работает"; exit 1; }

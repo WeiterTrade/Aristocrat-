@@ -32,6 +32,9 @@
 #include <QAtomicInt>
 #include <QPointer>
 #include <QEventLoop>
+#include <QUrl>
+#include <QDesktopServices>
+#include <QSettings>
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QProgressBar>
@@ -442,10 +445,32 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
     auto *lossless = new QRadioButton(T("Копия без потерь (MKV, все звуковые дорожки и субтитры) — для VLC, Jellyfin, MPC"), &d);
     auto *compat = new QRadioButton(T("MP4 для любого плеера, включая Windows Media Player и телевизоры (H.264 + AAC)"), &d);
     auto *convert = new QRadioButton(T("Конвертировать в формат, выбранный в разделе «Конвертировать»"), &d);
+    auto *iso = new QRadioButton(T("ISO-образ всего диска — полная копия: меню, все фильмы, дорожки, субтитры и бонусы"), &d);
     lossless->setChecked(true);
     lay->addWidget(lossless);
     lay->addWidget(compat);
     lay->addWidget(convert);
+    lay->addWidget(iso);
+    connect(iso, &QRadioButton::toggled, list, [list](bool on) { list->setEnabled(!on); });
+    // Скорость привода: на медленной меньше сбоев (особенно у переносных приводов с питанием по USB)
+    auto *speedRow = new QHBoxLayout;
+    speedRow->addWidget(new QLabel(T("Скорость привода:"), &d));
+    auto *speedBox = new QComboBox(&d);
+    speedBox->addItem(T("Максимальная (снижается сама при сбоях)"), 0);
+    speedBox->addItem(QStringLiteral("8x"), 8);
+    speedBox->addItem(T("4x — для переносных приводов"), 4);
+    speedBox->addItem(T("2x — для проблемных дисков"), 2);
+    speedBox->setCurrentIndex(qBound(0, QSettings().value(QStringLiteral("dvd/speedIndex"), 0).toInt(), 3));
+    connect(speedBox, QOverload<int>::of(&QComboBox::currentIndexChanged), &d, [](int i) { QSettings().setValue(QStringLiteral("dvd/speedIndex"), i); });
+    speedRow->addWidget(speedBox);
+    speedRow->addStretch();
+    lay->addLayout(speedRow);
+    auto *region = new QLabel(&d);
+    region->setObjectName(QStringLiteral("HintLabel"));
+    region->setWordWrap(true);
+    region->hide();
+    lay->addWidget(region);
+    auto regionText = QSharedPointer<QString>::create();
     auto *bar = new QProgressBar(&d);
     bar->setRange(0, 100);
     bar->hide();
@@ -487,8 +512,15 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
         }
     };
     connect(showAll, &QCheckBox::toggled, &d, fill);
-    Ui::runAsync(&d, [device, videoTs, titles, err] { *titles = DvdCss::discTitles(device, videoTs, err.data()); },
-                 [&d, titles, err, state, go, fill] {
+    Ui::runAsync(&d, [device, videoTs, titles, err, regionText] {
+        *titles = DvdCss::discTitles(device, videoTs, err.data());
+        *regionText = DvdCss::regionInfo(device);
+    },
+                 [&d, titles, err, state, go, fill, region, regionText] {
+                     if (!regionText->isEmpty()) {
+                         region->setText(*regionText);
+                         region->show();
+                     }
                      if (titles->isEmpty()) {
                          state->setText(T("Не удалось прочитать оглавление диска: %1").arg(*err));
                          return;
@@ -507,29 +539,56 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
     QList<QPair<QString, QString>> chosen;
     QString tempDir;
     connect(go, &QPushButton::clicked, &d, [&] {
-        QList<int> picks;
-        for (int i = 0; i < list->count(); ++i)
-            if (list->item(i)->checkState() == Qt::Checked)
-                picks << list->item(i)->data(Qt::UserRole).toInt();
-        if (picks.isEmpty())
-            return;
-        tempDir = QDir(Settings::outputDir()).filePath(QStringLiteral(".aristocrat-temp/") + Release::safeName(disc));
-        QDir().mkpath(tempDir);
+        // Что читаем: выбранные фильмы (во временную папку, дальше — конвертер) или весь диск в ISO
+        struct Job {
+            QString name, file;
+            qint64 total = 0;   // 0 — неизвестно заранее (ISO): остаток считается по проценту
+            DvdCss::DiscTitle title;
+            bool iso = false;
+        };
+        QList<Job> jobs;
+        const int speed = speedBox->currentData().toInt();
+        if (iso->isChecked()) {
+            Job j;
+            j.name = disc;
+            j.iso = true;
+            QString target = QDir(Settings::outputDir()).filePath(Release::safeName(disc) + QStringLiteral(".iso"));
+            for (int n = 2; QFileInfo::exists(target); ++n)
+                target = QDir(Settings::outputDir()).filePath(QStringLiteral("%1 (%2).iso").arg(Release::safeName(disc)).arg(n));
+            j.file = target;
+            jobs << j;
+        } else {
+            QList<int> picks;
+            for (int i = 0; i < list->count(); ++i)
+                if (list->item(i)->checkState() == Qt::Checked)
+                    picks << list->item(i)->data(Qt::UserRole).toInt();
+            if (picks.isEmpty())
+                return;
+            tempDir = QDir(Settings::outputDir()).filePath(QStringLiteral(".aristocrat-temp/") + Release::safeName(disc));
+            QDir().mkpath(tempDir);
 #ifdef Q_OS_WIN
-        SetFileAttributesW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(QFileInfo(tempDir).absolutePath()).utf16()), FILE_ATTRIBUTE_HIDDEN);
+            SetFileAttributesW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(QFileInfo(tempDir).absolutePath()).utf16()), FILE_ATTRIBUTE_HIDDEN);
 #endif
+            for (int k = 0; k < picks.size(); ++k) {
+                Job j;
+                j.title = titles->at(picks[k]);
+                j.name = picks.size() > 1 || !j.title.main ? T("%1 — фильм %2").arg(disc).arg(j.title.number) : disc;
+                j.file = QDir(tempDir).filePath(Release::safeName(j.name) + QStringLiteral(".vob"));
+                j.total = j.title.bytes;
+                jobs << j;
+            }
+        }
         for (QWidget *w : {static_cast<QWidget *>(list), static_cast<QWidget *>(lossless), static_cast<QWidget *>(compat),
-                           static_cast<QWidget *>(convert), static_cast<QWidget *>(go), static_cast<QWidget *>(showAll)})
+                           static_cast<QWidget *>(convert), static_cast<QWidget *>(iso), static_cast<QWidget *>(go),
+                           static_cast<QWidget *>(showAll), static_cast<QWidget *>(speedBox)})
             w->setEnabled(false);
         bar->show();
         auto cancelled = QSharedPointer<QAtomicInt>::create(0);
         auto conn = connect(cancel, &QPushButton::clicked, &d, [cancelled] { cancelled->storeRelaxed(1); });
-        int badTotal = 0;
-        for (int k = 0; k < picks.size(); ++k) {
-            const DvdCss::DiscTitle t = titles->at(picks[k]);
-            const QString name = picks.size() > 1 || !t.main ? T("%1 — фильм %2").arg(disc).arg(t.number) : disc;
-            const QString file = QDir(tempDir).filePath(Release::safeName(name) + QStringLiteral(".vob"));
-            const QString head = T("Чтение с диска со снятием защиты: %1 (%2 из %3).").arg(name).arg(k + 1).arg(picks.size());
+        for (int k = 0; k < jobs.size(); ++k) {
+            const Job job = jobs[k];
+            const QString head = job.iso ? T("Полная копия диска в ISO со снятием защиты: %1").arg(QDir::toNativeSeparators(job.file))
+                                         : T("Чтение с диска со снятием защиты: %1 (%2 из %3).").arg(job.name).arg(k + 1).arg(jobs.size());
             state->setText(head);
             bar->setValue(0);
             auto e = QSharedPointer<QString>::create();
@@ -540,44 +599,50 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
             auto badNow = QSharedPointer<QAtomicInt>::create(0);
             auto pctNow = QSharedPointer<QAtomicInt>::create(0);
             auto finished = QSharedPointer<QAtomicInt>::create(0);
-            const qint64 totalBytes = t.bytes;
             QElapsedTimer clock;
             clock.start();
             qint64 lastBytes = 0, lastChange = 0;
             QTimer tick;
             tick.setInterval(1000);
             QPointer<QEventLoop> loop = new QEventLoop(&d);
-            connect(&tick, &QTimer::timeout, &d, [&, head] {
+            connect(&tick, &QTimer::timeout, &d, [&, head, job] {
                 const qint64 now = doneBytes->loadRelaxed();
                 const qint64 ms = clock.elapsed();
+                const int pct = pctNow->loadRelaxed();
                 if (now != lastBytes) {
                     lastBytes = now;
                     lastChange = ms;
                 }
-                bar->setValue(pctNow->loadRelaxed());
+                bar->setValue(pct);
                 const double mbps = ms > 3000 ? double(now) / 1048576.0 / (ms / 1000.0) : 0;
-                QString line = T("Прочитано %1 из %2").arg(formatSize(now), formatSize(totalBytes));
+                QString line = job.total > 0 ? T("Прочитано %1 из %2").arg(formatSize(now), formatSize(job.total))
+                                             : T("Прочитано %1 (%2%)").arg(formatSize(now)).arg(pct);
                 if (mbps > 0) {
                     line += T(" · %1 МБ/с").arg(QString::number(mbps, 'f', 1));
-                    line += T(" · осталось ≈ %1").arg(formatDuration(double(totalBytes - now) / 1048576.0 / mbps));
+                    const double left = job.total > 0 ? double(job.total - now) / 1048576.0 / mbps
+                                                      : (pct > 0 ? ms / 1000.0 * (100 - pct) / pct : 0);
+                    if (left > 0)
+                        line += T(" · осталось ≈ %1").arg(formatDuration(left));
                 }
                 if (badNow->loadRelaxed() > 0)
-                    line += T(" · пропущено нечитаемого: %1").arg(formatSize(qint64(badNow->loadRelaxed()) * 2048));
+                    line += T(" · нечитаемого: %1").arg(formatSize(qint64(badNow->loadRelaxed()) * 2048));
                 if (ms - lastChange > 60000)
-                    line += QStringLiteral("\n") + T("Привод не отвечает уже %1 мин — он перечитывает повреждённое место или ему не хватает питания по USB. "
+                    line += QStringLiteral("\n") + T("Привод не отвечает уже %1 мин — программа даёт ему паузу, снижает скорость и пробует снова. "
                                                      "Можно подождать или нажать «Отмена».").arg((ms - lastChange) / 60000);
                 state->setText(head + QStringLiteral("\n") + line);
             });
             tick.start();
-            Ui::runAsync(&d, [device, t, file, cancelled, e, bad, ok, doneBytes, badNow, pctNow] {
-                *ok = DvdCss::rip(device, t, file, [cancelled, doneBytes, badNow, pctNow](int pct, qint64 bytes, int b) {
+            Ui::runAsync(&d, [device, job, speed, cancelled, e, bad, ok, doneBytes, badNow, pctNow] {
+                auto cb = [cancelled, doneBytes, badNow, pctNow](int pct, qint64 bytes, int b) {
                     pctNow->storeRelaxed(pct);
                     doneBytes->storeRelaxed(bytes);
                     badNow->storeRelaxed(b);
                     return cancelled->loadRelaxed() == 0;
-                }, e.data(), bad.data());
-                if (!*ok && cancelled->loadRelaxed())
-                    QFile::remove(file);   // отменено — недочитанный файл не нужен
+                };
+                *ok = job.iso ? DvdCss::isoBackup(device, job.file, speed, cb, e.data(), bad.data())
+                              : DvdCss::rip(device, job.title, job.file, speed, cb, e.data(), bad.data());
+                if (!*ok && (cancelled->loadRelaxed() || job.iso))
+                    QFile::remove(job.file);   // отменено/не вышло — недочитанный файл не нужен
             }, [loop, finished] {
                 finished->storeRelaxed(1);
                 if (loop)
@@ -591,21 +656,44 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
             delete loop.data();
             if (!finished->loadRelaxed() || !*ok) {
                 disconnect(conn);
-                if (finished->loadRelaxed())
+                if (finished->loadRelaxed() && !tempDir.isEmpty())
                     QDir(tempDir).removeRecursively();
                 chosen.clear();
                 if (cancelled->loadRelaxed() == 0)
                     Ui::message(this, T("Копирование DVD"), T("Не удалось прочитать диск: %1").arg(*e));
                 return;
             }
-            if (*bad > 0)
-                Ui::message(this, T("Копирование DVD"), T("Фильм прочитан. Нечитаемых мест пропущено: %1 — возможны короткие "
-                                                         "рывки в этих местах. Обычно причина — царапины или пыль на диске.").arg(formatSize(qint64(*bad) * 2048)));
-            badTotal += *bad;
-            chosen.append({file, name});
+            const qint64 badBytes = qint64(*bad) * 2048;
+            const qint64 whole = job.total > 0 ? job.total : QFileInfo(job.file).size();
+            if (whole > 0 && badBytes * 2 > whole) {
+                // Больше половины не прочиталось — это не царапины: привод не отдаёт зашифрованные сектора
+                disconnect(conn);
+                if (!tempDir.isEmpty())
+                    QDir(tempDir).removeRecursively();
+                QFile::remove(job.file);
+                chosen.clear();
+                Ui::message(this, T("Копирование DVD"),
+                            T("Привод почти ничего не отдал (нечитаемо %1 из %2). Так бывает, когда регион привода не совпадает "
+                              "с регионом диска, или приводу не хватает питания по USB. %3\n\nПопробуйте скорость 2x и подключение "
+                              "привода прямо к ноутбуку (оба штекера, если их два).")
+                                .arg(formatSize(badBytes), formatSize(whole), *regionText));
+                return;
+            }
+            if (badBytes > 0)
+                Ui::message(this, T("Копирование DVD"),
+                            job.iso ? T("Образ сохранён. Нечитаемых секторов: %1 — записаны нулями. Если диск чистый, это ловушки "
+                                        "защиты в неиспользуемых местах диска — на просмотр не влияют.").arg(formatSize(badBytes))
+                                    : T("Фильм прочитан. Не прочиталось даже после повторов на малой скорости: %1 — в этих местах "
+                                        "возможны короткие рывки.").arg(formatSize(badBytes)));
+            if (job.iso) {
+                if (badBytes == 0)
+                    Ui::message(this, T("Копирование DVD"), T("ISO-образ сохранён: %1").arg(QDir::toNativeSeparators(job.file)));
+                QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(job.file).absolutePath()));
+            } else {
+                chosen.append({job.file, job.name});
+            }
         }
         disconnect(conn);
-        Q_UNUSED(badTotal)
         d.accept();
     });
 
