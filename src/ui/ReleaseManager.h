@@ -52,6 +52,7 @@ private:
     void shotsOpen(int i);
     void collectShots(int i, int attempt);
     void finishShots();
+    void seriesStep();             // серия (коллекция): название, страница и описания соседних частей
     QJsonArray m_shotButtons;
     QStringList m_shotList;
     bool m_shotsMode = false;
@@ -73,6 +74,7 @@ public:
 
     void showUploadTab();
     void showServerTab();
+    void showTab(int i);
 
 signals:
     // Видео отдаётся в раздел «Конвертировать»: своё имя, своя папка, главы
@@ -82,7 +84,9 @@ signals:
     void downloadRequested(const QString &pageUrl);
 
 private:
-    QString m_coverId;   // номер обложек Adult Empire (на странице видео он отличается от SKU)
+    QString m_coverId;
+    QJsonObject m_series;   // серия с сайта (название, страница, описания других частей)
+    void applySeries();   // номер обложек Adult Empire (на странице видео он отличается от SKU)
     void fetch();
     void fetchScenes(const QString &url);
     void setScenes(const QList<Chapter> &scenes);

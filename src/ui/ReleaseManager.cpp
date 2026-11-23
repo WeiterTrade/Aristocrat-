@@ -2,6 +2,8 @@
 #include "core/MediaInfo.h"
 #include "CoverArt.h"
 #include <QSharedPointer>
+#include <QSet>
+#include <QHash>
 #include "BrowserWindow.h"
 #include "CloudUpload.h"
 #include "ServerPage.h"
@@ -430,9 +432,69 @@ void ReleaseFetcher::finishShots()
     // Нашлись кадры из «Больше скриншотов» — они главнее; иначе остаются миниатюры сцен со страницы
     if (!m_shotList.isEmpty())
         m_data.insert("shots", QJsonArray::fromStringList(m_shotList));
-    m_done = true;
-    m_timeout.stop();
-    emit finished(m_data);
+    seriesStep();
+}
+
+// Серия: блок «"…" Series» на странице релиза → страница серии (до 4 других частей) → если частей мало
+// по сравнению с номерами (Vol. 133 при 13 частях) — поиск по сайту по названию серии. Описания частей — для общего описания.
+void ReleaseFetcher::seriesStep()
+{
+    static const char *info = R"JS((function(){var a=document.querySelector('a[label="Series"][href*="/series/"]');
+if(!a)return '';var txt=a.textContent.replace(/\s+/g,' ');var m=/["“«]([^"”»]+)["”»]\s*Series/i.exec(txt);
+var c=/View All\s+(\d+)\s+Titles/i.exec(txt);var id=/\/(\d+)\/series\//.exec(a.getAttribute('href')||'');
+return JSON.stringify({name:m?m[1].trim():txt.replace(/Series.*$/i,'').replace(/["“”«»]/g,'').trim(),url:a.href,id:id?id[1]:'',count:c?+c[1]:0});})())JS";
+    m_view->page()->runJavaScript(QString::fromUtf8(info), [this](const QVariant &v) {
+        QJsonObject ser = QJsonDocument::fromJson(v.toString().toUtf8()).object();
+        if (ser.value("name").toString().isEmpty()) {
+            m_done = true;
+            m_timeout.stop();
+            emit finished(m_data);
+            return;
+        }
+        // Уже собранная (или исправленная вами) серия — сразу из памяти
+        QSettings st;
+        const QString key = QStringLiteral("aeSeries/") + (ser.value("id").toString().isEmpty() ? ser.value("name").toString() : ser.value("id").toString());
+        if (st.contains(key + QStringLiteral("/desc"))) {
+            ser.insert("cachedName", st.value(key + QStringLiteral("/name")).toString());
+            ser.insert("cachedDesc", st.value(key + QStringLiteral("/desc")).toString());
+            ser.insert("key", key);
+            m_data.insert("series", ser);
+            m_done = true;
+            m_timeout.stop();
+            emit finished(m_data);
+            return;
+        }
+        ser.insert("key", key);
+        emit progress(T("Серия «%1»: читаю описания других частей…").arg(ser.value("name").toString()));
+        m_timeout.start(90000);
+        static const char *more = R"JS((function(url,name){var out={titles:[],plots:[],found:0,maxVol:0};
+function get(u){try{var x=new XMLHttpRequest();x.open('GET',u,false);x.send();return x.status==200?x.responseText:'';}catch(e){return '';}}
+var P=new DOMParser(),list=[],here=location.pathname;
+function collect(html,base){if(!html)return;var d=P.parseFromString(html,'text/html');
+ [].forEach.call(d.querySelectorAll('.product-details__item-title a, .item-title a'),function(a){var h=a.getAttribute('href')||'',t=a.textContent.replace(/\s+/g,' ').trim();
+  if(!h||!/^\/\d+\//.test(h)||list.some(function(x){return x.h==h;}))return;
+  if(base&&t.toLowerCase().indexOf(base.toLowerCase())!==0)return;list.push({h:h,t:t});});}
+collect(get(url));
+list.forEach(function(x){var m=/(?:vol\.?|volume|part|#)\s*(\d+)/i.exec(x.t);if(m)out.maxVol=Math.max(out.maxVol,+m[1]);});
+var others=list.filter(function(x){return x.h!==here;});
+if(others.length<4){collect(get('/vod/search?q='+encodeURIComponent(name)),name);others=list.filter(function(x){return x.h!==here;});}
+out.found=list.length;
+others.slice(0,4).forEach(function(x){var d=P.parseFromString(get(x.h),'text/html');var s=d.querySelector('.synopsis-content');
+ if(s){out.titles.push(x.t);out.plots.push(s.textContent.replace(/\s+/g,' ').trim());}});
+return JSON.stringify(out);}))JS";
+        const QString js = QString::fromUtf8(more) + QStringLiteral("(%1,%2)").arg(
+            QString::fromUtf8(QJsonDocument(QJsonArray{ser.value("url").toString()}).toJson(QJsonDocument::Compact)).mid(1).chopped(1),
+            QString::fromUtf8(QJsonDocument(QJsonArray{ser.value("name").toString()}).toJson(QJsonDocument::Compact)).mid(1).chopped(1));
+        m_view->page()->runJavaScript(js, [this, ser](const QVariant &r) mutable {
+            const QJsonObject o = QJsonDocument::fromJson(r.toString().toUtf8()).object();
+            for (const QString &k : {QStringLiteral("titles"), QStringLiteral("plots"), QStringLiteral("found"), QStringLiteral("maxVol")})
+                ser.insert(k, o.value(k));
+            m_data.insert("series", ser);
+            m_done = true;
+            m_timeout.stop();
+            emit finished(m_data);
+        });
+    });
 }
 
 // ======================= Пол исполнителей (IAFD) =======================
@@ -919,6 +981,11 @@ void ReleaseManagerDialog::showServerTab()
     m_tabs->setCurrentIndex(2);
 }
 
+void ReleaseManagerDialog::showTab(int i)
+{
+    m_tabs->setCurrentIndex(i);
+}
+
 void ReleaseManagerDialog::setBusy(bool busy, const QString &text)
 {
     m_fetch->setEnabled(!busy);
@@ -1002,8 +1069,101 @@ static QString cleanTitle(const QJsonObject &d)
     return t.simplified();
 }
 
+// Общее описание серии: предложения, которые повторяются в описаниях разных частей (обычно это вступление о самой серии);
+// если общих нет — короткая справка: название, студия, число частей и начала описаний частей.
+static QString seriesBlurbEn(const QStringList &plots)
+{
+    static const QRegularExpression split(QStringLiteral("(?<=[.!?])\\s+(?=[A-Z\"“])"));
+    QHash<QString, int> seen;
+    QList<QPair<QString, QString>> order;   // нормализованное, исходное
+    for (int i = 0; i < plots.size(); ++i) {
+        QSet<QString> inThis;
+        for (const QString &sentRaw : plots[i].split(split, Qt::SkipEmptyParts)) {
+            const QString sent = sentRaw.trimmed();
+            const QString key = sent.toLower().remove(QRegularExpression(QStringLiteral("[^a-z0-9 ]"))).simplified();
+            if (key.size() < 25 || inThis.contains(key))
+                continue;
+            inThis.insert(key);
+            if (!seen.contains(key))
+                order << qMakePair(key, sent);
+            seen[key] += 1;
+        }
+    }
+    QStringList common;
+    for (const auto &kv : order)
+        if (seen.value(kv.first) >= 2)
+            common << kv.second;
+    return common.join(QLatin1Char(' '));
+}
+
+void ReleaseManagerDialog::applySeries()
+{
+    if (m_series.isEmpty())
+        return;
+    m_useSet->setChecked(true);
+    const QString key = m_series.value("key").toString();
+    setProperty("seriesKey", key);
+    if (!m_series.value("cachedDesc").toString().isEmpty()) {   // уже собранная серия
+        m_setName->setText(m_series.value("cachedName").toString());
+        m_setOverview->setPlainText(m_series.value("cachedDesc").toString());
+        return;
+    }
+    const QString nameEn = m_series.value("name").toString();
+    QStringList plots;
+    for (const QJsonValue &v : m_series.value("plots").toArray())
+        plots << v.toString();
+    plots << m_plotOrig->toPlainText().simplified();   // и текущая часть
+    QString blurb = seriesBlurbEn(plots);
+    QStringList starts;
+    if (blurb.isEmpty()) {   // общих фраз нет — первые предложения описаний частей
+        static const QRegularExpression first(QStringLiteral("^(.{30,}?[.!?])(\\s|$)"));
+        for (const QString &p : plots) {
+            const QString f = first.match(p).captured(1);
+            if (!f.isEmpty() && starts.size() < 3)
+                starts << f;
+        }
+    }
+    const int total = qMax(m_series.value("count").toInt(), qMax(m_series.value("found").toInt(), m_series.value("maxVol").toInt()));
+    m_setName->setText(QStringLiteral("Серия «%1»").arg(nameEn));
+    m_state->setText(T("Серия «%1»: составляю общее описание…").arg(nameEn));
+    auto *tr = new Translator(this);
+    connect(tr, &Translator::finished, this, [this, tr, total, starts](const QStringList &out) {
+        tr->deleteLater();
+        if (out.isEmpty())
+            return;
+        const QString nameRu = m_caps->isChecked() ? Release::titleCaseRu(out[0]) : out[0];
+        m_setName->setText(QStringLiteral("Серия «%1»").arg(nameRu));
+        QString desc;
+        if (starts.isEmpty() && out.size() > 1) {
+            desc = out[1];
+        } else {
+            const QString studio = m_studio->text().trimmed();
+            desc = studio.isEmpty() ? QStringLiteral("«%1» — серия фильмов для взрослых").arg(nameRu)
+                                    : QStringLiteral("«%1» — серия фильмов для взрослых студии %2").arg(nameRu, studio);
+            if (total > 1)
+                desc += QStringLiteral(" (частей: %1)").arg(total);
+            desc += QStringLiteral(".");
+            QStringList ru = out.mid(1);
+            if (!ru.isEmpty())
+                desc += QLatin1Char(' ') + ru.join(QLatin1Char(' '));
+        }
+        m_setOverview->setPlainText(desc.simplified());
+        m_state->setText(T("Серия: «%1». Общее описание составлено по %2 частям — проверьте, оно запомнится для следующих релизов серии.")
+                             .arg(nameRu).arg(m_series.value("plots").toArray().size() + 1));
+    });
+    connect(tr, &Translator::failed, this, [tr](const QString &) { tr->deleteLater(); });
+    QStringList src{nameEn};
+    if (starts.isEmpty())
+        src << blurb;
+    else
+        src << starts;
+    tr->translate(src);
+}
+
 void ReleaseManagerDialog::apply(const QJsonObject &d)
 {
+    m_series = d.value("series").toObject();
+    setProperty("seriesKey", QString());
     const QString orig = cleanTitle(d);
     m_orig->setText(orig);
     m_title->setText(orig);
@@ -1379,9 +1539,10 @@ void ReleaseManagerDialog::translate()
         }
         for (int r = 0; r < m_scenes->rowCount() && r + 2 < out.size(); ++r)
             m_scenes->item(r, 1)->setText(m_caps->isChecked() ? Chapters::titleCase(out[r + 2]) : out[r + 2]);
-        // Номер в конце названия — часть серии: предлагаем коллекцию
+        // Серия с сайта — коллекция с общим описанием; иначе номер в конце названия — предлагаем коллекцию
+        applySeries();
         const QString series = Release::seriesSuggestion(m_title->text());
-        if (!series.isEmpty() && m_setName->text().isEmpty()) {
+        if (m_series.isEmpty() && !series.isEmpty() && m_setName->text().isEmpty()) {
             m_setName->setText(QStringLiteral("Серия «%1»").arg(series));
             m_useSet->setChecked(true);
         }
@@ -1476,6 +1637,13 @@ ReleaseInfo ReleaseManagerDialog::collect() const
     if (m_useSet->isChecked()) {
         r.setName = m_setName->text().trimmed();
         r.setOverview = m_setOverview->toPlainText().simplified();
+        // Серия с сайта: название и описание (с вашими правками) — для следующих релизов этой серии
+        const QString skey = property("seriesKey").toString();
+        if (!skey.isEmpty() && !r.setOverview.isEmpty()) {
+            QSettings ss;
+            ss.setValue(skey + QStringLiteral("/name"), r.setName);
+            ss.setValue(skey + QStringLiteral("/desc"), m_setOverview->toPlainText().trimmed());
+        }
     }
     r.frontUrl = m_frontUrl->text().trimmed();
     r.backUrl = m_backUrl->text().trimmed();

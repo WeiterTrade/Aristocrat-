@@ -215,6 +215,8 @@ void ToolboxPage::openRelease(const QString &url, const QString &video, const QS
         d->showUploadTab();
     else if (tab == 2)
         d->showServerTab();
+    else if (tab == 3)
+        d->showTab(3);
     d->show();
 #else
     Q_UNUSED(url)
