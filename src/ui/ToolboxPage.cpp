@@ -32,6 +32,8 @@
 #include <QAtomicInt>
 #include <QPointer>
 #include <QEventLoop>
+#include <QTimer>
+#include <QElapsedTimer>
 #include <QProgressBar>
 #include <QDir>
 #include <QSharedPointer>
@@ -527,29 +529,78 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
             const DvdCss::DiscTitle t = titles->at(picks[k]);
             const QString name = picks.size() > 1 || !t.main ? T("%1 — фильм %2").arg(disc).arg(t.number) : disc;
             const QString file = QDir(tempDir).filePath(Release::safeName(name) + QStringLiteral(".vob"));
-            state->setText(T("Чтение с диска со снятием защиты: %1 (%2 из %3)… Это займёт 10–30 минут, зависит от привода.")
-                               .arg(name).arg(k + 1).arg(picks.size()));
+            const QString head = T("Чтение с диска со снятием защиты: %1 (%2 из %3).").arg(name).arg(k + 1).arg(picks.size());
+            state->setText(head);
             bar->setValue(0);
             auto e = QSharedPointer<QString>::create();
             auto bad = QSharedPointer<int>::create(0);
             auto ok = QSharedPointer<bool>::create(false);
-            QPointer<QProgressBar> pb(bar);
-            QEventLoop loop;
-            Ui::runAsync(&d, [device, t, file, cancelled, e, bad, ok, pb] {
-                *ok = DvdCss::rip(device, t, file, [cancelled, pb](int pct) {
-                    QMetaObject::invokeMethod(pb, [pb, pct] { if (pb) pb->setValue(pct); }, Qt::QueuedConnection);
+            // Ход чтения — из рабочего потока; окно раз в секунду показывает скорость, остаток и пропуски
+            auto doneBytes = QSharedPointer<QAtomicInteger<qint64>>::create(0);
+            auto badNow = QSharedPointer<QAtomicInt>::create(0);
+            auto pctNow = QSharedPointer<QAtomicInt>::create(0);
+            auto finished = QSharedPointer<QAtomicInt>::create(0);
+            const qint64 totalBytes = t.bytes;
+            QElapsedTimer clock;
+            clock.start();
+            qint64 lastBytes = 0, lastChange = 0;
+            QTimer tick;
+            tick.setInterval(1000);
+            QPointer<QEventLoop> loop = new QEventLoop(&d);
+            connect(&tick, &QTimer::timeout, &d, [&, head] {
+                const qint64 now = doneBytes->loadRelaxed();
+                const qint64 ms = clock.elapsed();
+                if (now != lastBytes) {
+                    lastBytes = now;
+                    lastChange = ms;
+                }
+                bar->setValue(pctNow->loadRelaxed());
+                const double mbps = ms > 3000 ? double(now) / 1048576.0 / (ms / 1000.0) : 0;
+                QString line = T("Прочитано %1 из %2").arg(formatSize(now), formatSize(totalBytes));
+                if (mbps > 0) {
+                    line += T(" · %1 МБ/с").arg(QString::number(mbps, 'f', 1));
+                    line += T(" · осталось ≈ %1").arg(formatDuration(double(totalBytes - now) / 1048576.0 / mbps));
+                }
+                if (badNow->loadRelaxed() > 0)
+                    line += T(" · пропущено нечитаемого: %1").arg(formatSize(qint64(badNow->loadRelaxed()) * 2048));
+                if (ms - lastChange > 60000)
+                    line += QStringLiteral("\n") + T("Привод не отвечает уже %1 мин — он перечитывает повреждённое место или ему не хватает питания по USB. "
+                                                     "Можно подождать или нажать «Отмена».").arg((ms - lastChange) / 60000);
+                state->setText(head + QStringLiteral("\n") + line);
+            });
+            tick.start();
+            Ui::runAsync(&d, [device, t, file, cancelled, e, bad, ok, doneBytes, badNow, pctNow] {
+                *ok = DvdCss::rip(device, t, file, [cancelled, doneBytes, badNow, pctNow](int pct, qint64 bytes, int b) {
+                    pctNow->storeRelaxed(pct);
+                    doneBytes->storeRelaxed(bytes);
+                    badNow->storeRelaxed(b);
                     return cancelled->loadRelaxed() == 0;
                 }, e.data(), bad.data());
-            }, [&loop] { loop.quit(); });
-            loop.exec();
-            if (!*ok) {
+                if (!*ok && cancelled->loadRelaxed())
+                    QFile::remove(file);   // отменено — недочитанный файл не нужен
+            }, [loop, finished] {
+                finished->storeRelaxed(1);
+                if (loop)
+                    loop->quit();
+            });
+            // «Отмена» закрывает окно сразу, даже если привод завис на чтении: поток доработает сам и бросит файл
+            auto stop = connect(cancel, &QPushButton::clicked, &d, [loop] { if (loop) loop->quit(); });
+            loop->exec();
+            disconnect(stop);
+            tick.stop();
+            delete loop.data();
+            if (!finished->loadRelaxed() || !*ok) {
                 disconnect(conn);
-                QDir(tempDir).removeRecursively();
+                if (finished->loadRelaxed())
+                    QDir(tempDir).removeRecursively();
                 chosen.clear();
                 if (cancelled->loadRelaxed() == 0)
                     Ui::message(this, T("Копирование DVD"), T("Не удалось прочитать диск: %1").arg(*e));
                 return;
             }
+            if (*bad > 0)
+                Ui::message(this, T("Копирование DVD"), T("Фильм прочитан. Нечитаемых мест пропущено: %1 — возможны короткие "
+                                                         "рывки в этих местах. Обычно причина — царапины или пыль на диске.").arg(formatSize(qint64(*bad) * 2048)));
             badTotal += *bad;
             chosen.append({file, name});
         }

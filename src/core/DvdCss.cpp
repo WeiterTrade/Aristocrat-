@@ -457,7 +457,7 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
 }
 
 bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
-         const std::function<bool(int)> &progress, QString *error, int *badSectors)
+         const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors)
 {
     Lib &l = lib();
     auto fail = [error](const QString &e) {
@@ -485,35 +485,31 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
 
     const qint64 total = qMax<qint64>(1, title.bytes / kBlock);
     qint64 done = 0;
-    int bad = 0, lastPct = -1;
+    int bad = 0;
+    quint32 skip = 0;   // как у ddrescue: после сбоя перескакиваем участок, при подряд идущих сбоях — вдвое больше
     QByteArray buf(256 * kBlock, Qt::Uninitialized);
+    auto report = [&]() { return !progress || progress(int(done * 100 / total), done * kBlock, bad); };
     for (const auto &cell : title.cells) {
         quint32 pos = cell.first;
         while (pos <= cell.second) {
-            const int n = int(qMin<quint32>(256, cell.second - pos + 1));
-            bool ok = l.seek(h, int(pos), kNoFlags) == int(pos) && l.read(h, buf.data(), n, kReadDecrypt) == n;
+            const int n = int(qMin<quint32>(skip ? 16 : 256, cell.second - pos + 1));
+            const bool ok = l.seek(h, int(pos), kNoFlags) == int(pos) && l.read(h, buf.data(), n, kReadDecrypt) == n;
             if (ok) {
                 if (out.write(buf.constData(), qint64(n) * kBlock) != qint64(n) * kBlock)
                     return fail(T("не хватает места на диске для %1").arg(QFileInfo(outFile).fileName()));
+                pos += quint32(n);
+                done += n;
+                skip = 0;
             } else {
-                // Плохой участок: по 16 секторов; нечитаемые пропускаем (в MPEG-PS их можно просто не писать)
-                for (int i = 0; i < n; i += 16) {
-                    const int m = qMin(16, n - i);
-                    char *dst = buf.data() + i * kBlock;
-                    if (l.seek(h, int(pos + i), kNoFlags) == int(pos + i) && l.read(h, dst, m, kReadDecrypt) == m)
-                        out.write(dst, qint64(m) * kBlock);
-                    else
-                        bad += m;
-                }
+                // Плохое место: не мучаем привод повторами — пропускаем участок (в MPEG-PS его можно просто не писать)
+                skip = skip ? qMin<quint32>(skip * 2, 4096) : 32;
+                const quint32 jump = qMin<quint32>(qMax<quint32>(skip, quint32(n)), cell.second - pos + 1);
+                pos += jump;
+                done += jump;
+                bad += int(jump);
             }
-            pos += quint32(n);
-            done += n;
-            const int pct = int(done * 100 / total);
-            if (pct != lastPct) {
-                lastPct = pct;
-                if (progress && !progress(pct))
-                    return fail(T("отменено"));
-            }
+            if (!report())
+                return fail(T("отменено"));
         }
     }
     if (badSectors)

@@ -45,7 +45,8 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
 
 // Записать фильм (его ячейки по порядку) в один файл MPEG-PS со снятой защитой.
 // Битые сектора пропускаются быстро, без многократных повторов.
+// progress(процент, прочитано байт, пропущено секторов) — после каждого куска (до 512 КБ)
 bool rip(const QString &device, const DiscTitle &title, const QString &outFile,
-         const std::function<bool(int)> &progress, QString *error, int *badSectors = nullptr);
+         const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors = nullptr);
 
 } // namespace DvdCss
