@@ -23,6 +23,7 @@ set(SOURCES
     src/core/Theme.cpp
     src/core/LocalServer.cpp
     src/core/Dvd.cpp
+    src/core/DvdCss.cpp
     src/core/Chapters.cpp
     src/core/Release.cpp
     src/core/Gender.cpp

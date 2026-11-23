@@ -9,6 +9,8 @@
 #include "core/MediaInfo.h"
 #include "core/FfmpegCommand.h"
 #include "core/Dvd.h"
+#include "core/Release.h"
+#include "core/DvdCss.h"
 #include "Frameless.h"
 #include "core/Settings.h"
 #include "core/Tools.h"
@@ -23,6 +25,13 @@
 #include <QMenu>
 #include <QListWidget>
 #include <QRadioButton>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+#include <QAtomicInt>
+#include <QPointer>
+#include <QEventLoop>
+#include <QProgressBar>
 #include <QDir>
 #include <QSharedPointer>
 #include <QHBoxLayout>
@@ -112,7 +121,8 @@ ToolboxPage::ToolboxPage(QWidget *parent)
                                                                                          "<span style='color:#7E746A'>%1</span>").arg(path.toHtmlEscaped()));
     };
     auto *s = new QLabel(status("FFmpeg", Tools::ffmpeg()) + "<br><br>" + status("ffprobe", Tools::ffprobe()) + "<br><br>"
-                             + status(T("Real-ESRGAN (нейросетевой апскейл)"), Tools::realesrgan()),
+                             + status(T("Real-ESRGAN (нейросетевой апскейл)"), Tools::realesrgan()) + "<br><br>"
+                             + status(T("libdvdcss (копирование защищённых DVD)"), DvdCss::libraryPath()),
                          mods);
     s->setWordWrap(true);
     s->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -122,13 +132,16 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     // ---- Копирование DVD ----
     QVBoxLayout *b3 = nullptr;
     auto *dvd = card(this, "dvd", T("Копирование DVD"),
-                     T("Сохраняет фильмы с DVD на компьютер: копия без потерь в MKV со всеми звуковыми дорожками и субтитрами "
-                       "или конвертация в любой формат. Подходит для дисков с домашним видео, оцифровками кассет и записями с ТВ."),
+                     T("Сохраняет фильмы с DVD на компьютер: копия без потерь в MKV со всеми звуковыми дорожками и субтитрами, "
+                       "MP4 для любого плеера или конвертация в любой формат. Диски с защитой CSS тоже копируются."),
                      b3);
     auto *pickDvd = Ui::primaryButton(T("Выбрать диск или папку…"), dvd);
     b3->addSpacing(6);
     b3->addWidget(pickDvd);
-    auto *dvdNote = new QLabel(T("Диски с защитой от копирования (CSS) программа не копирует — обход защиты запрещён законом."), dvd);
+    auto *dvdNote = new QLabel(DvdCss::available()
+                                   ? T("Защита CSS снимается библиотекой libdvdcss (как в VLC и HandBrake). Копируйте свои диски для личного просмотра.")
+                                   : T("Для дисков с защитой CSS нужна libdvdcss: положите libdvdcss-2.dll в папку tools рядом с программой."),
+                               dvd);
     dvdNote->setObjectName(QStringLiteral("Muted"));
     dvdNote->setWordWrap(true);
     b3->addWidget(dvdNote);
@@ -261,11 +274,17 @@ void ToolboxPage::openDvd(const QString &path)
     lay->addWidget(state);
     auto *list = new QListWidget(&d);
     lay->addWidget(list, 1);
-    auto *lossless = new QRadioButton(T("Копия без потерь (MKV, все звуковые дорожки и субтитры)"), &d);
+    auto *lossless = new QRadioButton(T("Копия без потерь (MKV, все звуковые дорожки и субтитры) — для VLC, Jellyfin, MPC"), &d);
+    auto *compat = new QRadioButton(T("MP4 для любого плеера, включая Windows Media Player и телевизоры (H.264 + AAC)"), &d);
     auto *convert = new QRadioButton(T("Конвертировать в формат, выбранный в разделе «Конвертировать»"), &d);
     lossless->setChecked(true);
     lay->addWidget(lossless);
+    lay->addWidget(compat);
     lay->addWidget(convert);
+    auto *bar = new QProgressBar(&d);
+    bar->setRange(0, 100);
+    bar->hide();
+    lay->addWidget(bar);
     auto *btns = new QHBoxLayout;
     btns->addStretch();
     auto *cancel = new QPushButton(T("Отмена"), &d);
@@ -277,6 +296,7 @@ void ToolboxPage::openDvd(const QString &path)
     connect(cancel, &QPushButton::clicked, &d, &QDialog::reject);
     connect(go, &QPushButton::clicked, &d, &QDialog::accept);
 
+    const QString cssDevice = DvdCss::deviceFor(videoTs);
     // Чтение сведений о фильмах и проверка защиты — в фоне
     auto scanned = QSharedPointer<QList<ScannedTitle>>::create();
     auto encrypted = QSharedPointer<bool>::create(false);
@@ -285,7 +305,7 @@ void ToolboxPage::openDvd(const QString &path)
             scanned->append({t, MediaInfo::probe(t.input())});
         if (!scanned->isEmpty())
             *encrypted = FfmpegCommand::looksEncrypted(scanned->first().title.input(), scanned->first().info.duration);
-    }, [&d, list, state, go, scanned, encrypted] {
+    }, [&d, list, state, go, scanned, encrypted, cssDevice] {
         for (int i = 0; i < scanned->size(); ++i) {
             const ScannedTitle &s = scanned->at(i);
             const QString text = T("Фильм %1 · %2 · %3 · звук: %4, субтитры: %5")
@@ -298,16 +318,84 @@ void ToolboxPage::openDvd(const QString &path)
             it->setData(Qt::UserRole, s.title.input());
             it->setData(Qt::UserRole + 1, s.title.vts);
         }
-        if (*encrypted) {
-            state->setText(T("Этот диск защищён от копирования (CSS). Программа не снимает защиту — копирование такого диска "
-                             "запрещено законом. Диски с домашним видео, оцифровками и записями с ТВ обычно не защищены."));
+        if (*encrypted && !DvdCss::available()) {
+            state->setText(T("Диск защищён от копирования (CSS). Чтобы его скопировать, нужна библиотека libdvdcss "
+                             "(libdvdcss-2.dll в папке tools рядом с программой)."));
             go->setEnabled(false);
+        } else if (*encrypted && cssDevice.isEmpty()) {
+            state->setText(T("Файлы защищены (CSS), но это папка на компьютере, а не диск: ключи защиты есть только на самом диске. "
+                             "Выберите DVD-привод или смонтированный образ."));
+            go->setEnabled(false);
+        } else if (*encrypted) {
+            state->setText(T("Диск защищён от копирования (CSS) — защита будет снята при чтении. Отметьте фильмы, которые нужно сохранить."));
+            go->setEnabled(true);
         } else {
             state->setText(T("Диск без защиты от копирования. Отметьте фильмы, которые нужно сохранить."));
             go->setEnabled(true);
         }
         d.adjustSize();
     });
+
+    // Защищённый диск: выбранные фильмы сначала читаются с диска со снятием защиты во временную папку,
+    // дальше — как обычный диск. Временная папка удаляется после конвертации.
+    QString tempDir;
+    auto run = [&]() -> bool {
+        QStringList sets;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->checkState() == Qt::Checked)
+                sets << list->item(i)->data(Qt::UserRole + 1).toString();
+        if (sets.isEmpty())
+            return false;
+        if (!*encrypted)
+            return true;
+        tempDir = QDir(Settings::outputDir()).filePath(QStringLiteral(".aristocrat-temp/") + Release::safeName(disc));
+        const QString outTs = QDir(tempDir).filePath(QStringLiteral("VIDEO_TS"));
+        QDir().mkpath(outTs);
+#ifdef Q_OS_WIN
+        SetFileAttributesW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(QFileInfo(tempDir).absolutePath()).utf16()), FILE_ATTRIBUTE_HIDDEN);
+#endif
+        for (QWidget *w : {static_cast<QWidget *>(list), static_cast<QWidget *>(lossless), static_cast<QWidget *>(compat),
+                           static_cast<QWidget *>(convert), static_cast<QWidget *>(go)})
+            w->setEnabled(false);
+        bar->show();
+        bar->setValue(0);
+        state->setText(T("Чтение диска со снятием защиты… Это займёт несколько минут (скорость привода)."));
+        auto cancelled = QSharedPointer<QAtomicInt>::create(0);
+        auto err = QSharedPointer<QString>::create();
+        auto bad = QSharedPointer<int>::create(0);
+        auto ok = QSharedPointer<bool>::create(false);
+        QEventLoop loop;
+        auto conn = connect(cancel, &QPushButton::clicked, &d, [cancelled] { cancelled->storeRelaxed(1); });
+        QPointer<QProgressBar> pb(bar);
+        Ui::runAsync(&d, [cssDevice, sets, outTs, cancelled, err, bad, ok, pb] {
+            *ok = DvdCss::backup(cssDevice, sets, outTs, [cancelled, pb](int pct) {
+                QMetaObject::invokeMethod(pb, [pb, pct] { if (pb) pb->setValue(pct); }, Qt::QueuedConnection);
+                return cancelled->loadRelaxed() == 0;
+            }, err.data(), bad.data());
+        }, [&loop] { loop.quit(); });
+        loop.exec();
+        disconnect(conn);
+        if (!*ok) {
+            QDir(tempDir).removeRecursively();
+            if (cancelled->loadRelaxed() == 0)
+                Ui::message(this, T("Копирование DVD"), T("Не удалось прочитать диск: %1").arg(*err));
+            return false;
+        }
+        if (*bad > 0)
+            state->setText(T("Диск прочитан, нечитаемых секторов: %1 (обычно это ловушки защиты, на фильм не влияют).").arg(*bad));
+        // Входы задач — уже расшифрованные файлы
+        const QList<DvdTitle> plain = Dvd::titles(outTs);
+        for (int i = 0; i < list->count(); ++i)
+            for (const DvdTitle &t : plain)
+                if (t.vts == list->item(i)->data(Qt::UserRole + 1).toString())
+                    list->item(i)->setData(Qt::UserRole, t.input());
+        return true;
+    };
+    connect(go, &QPushButton::clicked, &d, [&d, &run] {
+        if (run())
+            d.accept();
+    });
+    disconnect(go, &QPushButton::clicked, &d, &QDialog::accept);
 
     if (d.exec() != QDialog::Accepted)
         return;
@@ -319,5 +407,5 @@ void ToolboxPage::openDvd(const QString &path)
                            list->count() > 1 ? QStringLiteral("%1 — %2").arg(disc, it->data(Qt::UserRole + 1).toString()) : disc});
     }
     if (!chosen.isEmpty())
-        emit dvdRequested(chosen, lossless->isChecked());
+        emit dvdRequested(chosen, lossless->isChecked() ? 0 : compat->isChecked() ? 1 : 2, tempDir);
 }

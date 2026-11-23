@@ -88,6 +88,11 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$out\tools\yt-dlp.exe"
           Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile deno.zip
           Expand-Archive deno.zip -DestinationPath "$out\tools\deno"
+          # libdvdcss — копирование DVD с защитой CSS (как в VLC и HandBrake)
+          try {
+            Invoke-WebRequest -Uri "https://download.videolan.org/pub/libdvdcss/1.2.11/win64/libdvdcss-2.dll" -OutFile "$out\tools\libdvdcss-2.dll"
+            Write-Host "libdvdcss: $((Get-Item "$out\tools\libdvdcss-2.dll").Length) байт"
+          } catch { Write-Host "::warning::libdvdcss не скачана: $_" }
           # OpenSSL 1.1.1 — HTTPS для запросов программы (нейросети, Википедия); Qt 5.15 работает именно с ним
           try {
             Invoke-WebRequest -Uri "https://download.firedaemon.com/FireDaemon-OpenSSL/openssl-1.1.1w.zip" -OutFile openssl.zip
@@ -184,6 +189,11 @@ jobs:
           unzip -q deno.zip -d AppDir/usr/bin/tools/deno
           curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
           unzip -q -j rclone.zip "*/rclone" -d AppDir/usr/bin/tools/ && chmod +x AppDir/usr/bin/tools/rclone
+          # libdvdcss — копирование DVD с защитой CSS
+          curl -fL --retry 3 -o dvdcss.tar.bz2 https://download.videolan.org/pub/libdvdcss/1.4.3/libdvdcss-1.4.3.tar.bz2
+          tar -xf dvdcss.tar.bz2
+          (cd libdvdcss-1.4.3 && ./configure --prefix=/usr --disable-doc -q && make -s -j4)
+          cp -L libdvdcss-1.4.3/.libs/libdvdcss.so.2 AppDir/usr/bin/tools/
           chmod +x AppDir/usr/bin/tools/ffmpeg AppDir/usr/bin/tools/ffprobe AppDir/usr/bin/tools/realesrgan/realesrgan-ncnn-vulkan \
                    AppDir/usr/bin/tools/yt-dlp AppDir/usr/bin/tools/deno/deno
 
@@ -210,7 +220,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
-          sudo apt-get install -y xvfb imagemagick x11-utils > /dev/null
+          sudo apt-get install -y xvfb imagemagick x11-utils genisoimage > /dev/null
           T=AppDir/usr/bin/tools
           $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=440" \
             -t 8 -vf "interlace" -c:v libx264 -flags +ilme+ildct -c:a aac -shortest "$PWD/Кассета 1994.mp4"
@@ -241,6 +251,15 @@ jobs:
           $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=500" \
             -t 30 -target pal-dvd -shortest dvd/VIDEO_TS/VTS_01_1.VOB
           ARISTOCRAT_LANG=ru shot dvd "--demo-dvd=$PWD/dvd"
+          # Чтение DVD через libdvdcss: образ ISO с VIDEO_TS → копия должна совпасть с исходником
+          cp dvd/VIDEO_TS/VTS_01_1.VOB dvd/VIDEO_TS/VTS_01_2.VOB
+          head -c 30720 /dev/urandom > dvd/VIDEO_TS/VTS_01_0.IFO
+          genisoimage -quiet -udf -V TESTDVD -o test-dvd.iso dvd
+          rm -rf css-out
+          QT_QPA_PLATFORM=offscreen "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-css-test=$PWD/test-dvd.iso|$PWD/css-out" 2>&1 | grep dvdcss || true
+          ls -la css-out || true
+          cmp dvd/VIDEO_TS/VTS_01_1.VOB css-out/VTS_01_1.VOB && cmp dvd/VIDEO_TS/VTS_01_2.VOB css-out/VTS_01_2.VOB \
+            && cmp dvd/VIDEO_TS/VTS_01_0.IFO css-out/VTS_01_0.IFO && echo "DVDCSS_OK" || { echo "::error::копия DVD через libdvdcss не совпала"; exit 1; }
           cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
           cp "$PWD/Кассета 1994.mp4" "$PWD/Сцены.mp4"
           ARISTOCRAT_TEST_AUTOCREATE=1 SHOT_WAIT=30 ARISTOCRAT_LANG=ru shot chapters "--demo-chapters=$PWD/Сцены.mp4|http://127.0.0.1:8790/scenes.html"

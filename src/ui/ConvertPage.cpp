@@ -99,6 +99,22 @@ ConvertPage::ConvertPage(QWidget *parent)
             if (t->id == id && t->deleteInputAfter && t->status != ConversionTask::Done)
                 emit releaseVideoDone(t->outputDir, false);
         for (const TaskPtr &t : m_tasks)
+            if (t->id == id && t->status == ConversionTask::Done && !t->tempDir.isEmpty()) {
+                // DVD со снятой защитой: файлы этого фильма больше не нужны; последняя задача — вся временная папка
+                for (const QString &f : QString(t->input).remove(QStringLiteral("concat:")).split(QLatin1Char('|')))
+                    QFile::remove(f);
+                bool more = false;
+                for (const TaskPtr &o : m_tasks)
+                    if (o != t && o->tempDir == t->tempDir && o->status != ConversionTask::Done)
+                        more = true;
+                if (!more) {
+                    QDir(t->tempDir).removeRecursively();
+                    const QDir parent = QFileInfo(t->tempDir).dir();
+                    if (parent.dirName() == QLatin1String(".aristocrat-temp") && parent.isEmpty())
+                        QDir().rmdir(parent.absolutePath());
+                }
+            }
+        for (const TaskPtr &t : m_tasks)
             if (t->id == id && t->status == ConversionTask::Done) {
                 addConvertedEntry(t);
                 if (t->deleteInputAfter)
@@ -793,11 +809,12 @@ void ConvertPage::addReleaseVideo(const QString &input, const QString &name, con
     updateView();
 }
 
-void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless)
+void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, int mode, const QString &tempDir)
 {
     for (const auto &t : titles) {
         TaskPtr task = addTask(t.first, t.second);
-        if (lossless) {
+        task->tempDir = tempDir;
+        if (mode == 0) {
             Preset p;
             p.id = QStringLiteral("dvd-copy");
             p.category = QStringLiteral("video");
@@ -808,9 +825,23 @@ void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, boo
             p.vcodec = QStringLiteral("copy");
             p.acodec = QStringLiteral("copy");
             task->preset = p;
-            if (TaskCard *c = m_cards.value(task->id))
-                c->refresh();
+        } else if (mode == 1) {
+            // Windows Media Player не открывает MPEG-2 (видео DVD) внутри MKV — MP4 с H.264 и AAC открывается везде
+            Preset p;
+            p.id = QStringLiteral("dvd-mp4");
+            p.category = QStringLiteral("video");
+            p.group = QStringLiteral("MP4");
+            p.name = T("Для любого плеера");
+            p.badge = QStringLiteral("MP4");
+            p.ext = QStringLiteral("mp4");
+            p.vcodec = QStringLiteral("libx264");
+            p.acodec = QStringLiteral("aac");
+            p.abitrate = 192;
+            task->preset = p;
+            task->edit.deinterlace = true;   // DVD — чересстрочное видео
         }
+        if (TaskCard *c = m_cards.value(task->id))
+            c->refresh();
         m_autoStart.insert(task->id);   // начать сразу после чтения сведений
     }
     m_segConverting->setChecked(true);

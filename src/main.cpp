@@ -1,6 +1,8 @@
 #include "core/I18n.h"
 #include "core/Theme.h"
 #include "core/Tools.h"
+#include "core/DvdCss.h"
+#include <cstdio>
 #include "ui/MainWindow.h"
 
 #include <QApplication>
@@ -102,6 +104,17 @@ int main(int argc, char *argv[])
         Tools::hardwareH264Encoder();
         Tools::hardwareHevcEncoder();
     });
+
+    // Автопроверка копирования DVD через libdvdcss: --dvd-css-test=<образ или привод>|<папка>
+    for (const QString &a : app.arguments())
+        if (a.startsWith(QLatin1String("--dvd-css-test="))) {
+            const QStringList p = a.mid(15).split(QLatin1Char('|'));
+            QString err;
+            int bad = 0;
+            const bool ok = DvdCss::available() && DvdCss::backup(p.value(0), {QStringLiteral("01")}, p.value(1), {}, &err, &bad);
+            fprintf(stderr, "dvdcss: lib=%s ok=%d bad=%d err=%s\n", qPrintable(DvdCss::libraryPath()), ok, bad, qPrintable(err));
+            return ok ? 0 : 1;
+        }
 
     if (app.arguments().contains(QStringLiteral("--demo-splash"))) {   // снимок заставки для автопроверки
         QSplashScreen *only = makeSplash();

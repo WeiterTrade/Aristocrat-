@@ -28,7 +28,7 @@ public:
     bool isBusy() const { return m_engine->isRunning(); }
     void openFirstTrim();
     void reloadSettings();
-    void addDvdTitles(const QList<QPair<QString, QString>> &titles, bool lossless);
+    void addDvdTitles(const QList<QPair<QString, QString>> &titles, int mode, const QString &tempDir = QString());   // 0 MKV без потерь, 1 MP4 для любого плеера, 2 выбранный формат
     // Видео из Менеджера релизов: своё имя и папка, главы вставляются после конвертации
     void addReleaseVideo(const QString &input, const QString &name, const QString &dir, bool lossless, const QString &chaptersMeta,
                          bool deleteSource = false);   // deleteSource — скачанный файл удалить после успешной обработки

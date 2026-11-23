@@ -92,8 +92,8 @@ MainWindow::MainWindow(QWidget *parent)
     new FrameResizer(this, frame, 4);
 
     connect(m_nav, &QButtonGroup::idClicked, m_pages, &QStackedWidget::setCurrentIndex);
-    connect(toolbox, &ToolboxPage::dvdRequested, this, [this](const QList<QPair<QString, QString>> &titles, bool lossless) {
-        m_convert->addDvdTitles(titles, lossless);
+    connect(toolbox, &ToolboxPage::dvdRequested, this, [this](const QList<QPair<QString, QString>> &titles, int mode, const QString &tempDir) {
+        m_convert->addDvdTitles(titles, mode, tempDir);
         showPage(0);
     });
     connect(toolbox, &ToolboxPage::releaseVideo, this,

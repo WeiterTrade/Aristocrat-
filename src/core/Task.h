@@ -68,6 +68,7 @@ struct ConversionTask {
     QString outputDir;        // своя папка (Менеджер релизов), пусто — общая
     QString chaptersMeta;     // файл глав FFMETADATA — вставить в результат после конвертации
     bool improveLowRes = false;
+    QString tempDir;          // DVD со снятой защитой: временные файлы, удаляются после успешной конвертации
     bool deleteInputAfter = false;  // скачанный исходник видео релиза — удалить после успешной обработки  // видео релиза: если ниже 720p — обрезать рамки, поднять до 720p, сжать в H.265
     EditOptions edit;
     UpscaleOptions upscale;
