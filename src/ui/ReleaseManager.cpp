@@ -1,4 +1,7 @@
 #include "ReleaseManager.h"
+#include "core/MediaInfo.h"
+#include "CoverArt.h"
+#include <QSharedPointer>
 #include "BrowserWindow.h"
 #include "CloudUpload.h"
 #include "ServerPage.h"
@@ -549,6 +552,8 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_tabs->addTab(m_upload, T("Выгрузить"));
     m_server = new ServerPage(m_tabs);
     m_tabs->addTab(m_server, T("Сервер"));
+    // Редко нужное — в конце: общая обложка из нескольких частей (генератор Adult Aristocrat целиком)
+    m_tabs->addTab(new CoverCollagePage(this), T("Общая обложка"));
     auto *root = new QVBoxLayout(createPage);
     root->setContentsMargins(20, 14, 20, 14);
     root->setSpacing(8);
@@ -560,7 +565,19 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     m_fetch = Ui::primaryButton(T("Загрузить данные"), this);
     r1->addWidget(new QLabel(T("Релиз:"), this));
     r1->addWidget(m_url, 1);
+    // Как в генераторе Adult Aristocrat: «4K Релиз» и «DVD Эксклюзив» — значки на постер (4K — ещё и жанр)
+    m_k4 = new QPushButton(T("4K Релиз"), this);
+    m_k4->setCheckable(true);
+    m_k4->setToolTip(T("Значок «4K UHD» на постер и жанр «4K Ultra HD». Включается сам, если видео релиза в 4K."));
+    m_dvd = new QPushButton(T("DVD Эксклюзив"), this);
+    m_dvd->setCheckable(true);
+    m_dvd->setToolTip(T("Полоса «DVD Эксклюзив» сверху на постер"));
+    m_k4->setStyleSheet(QStringLiteral("QPushButton:checked{background:#C9A23A;color:#1B1612;border-color:#E6C570;font-weight:700;}"));
+    m_dvd->setStyleSheet(QStringLiteral("QPushButton:checked{background:#9F111D;color:#F3E3B5;border-color:#E6C570;font-weight:700;}"));
+    r1->addWidget(m_k4);
+    r1->addWidget(m_dvd);
     r1->addWidget(m_fetch);
+    connect(m_k4, &QPushButton::toggled, this, [this](bool on) { set4kGenre(on); });
     root->addLayout(r1);
     m_state = new QLabel(T("Вставьте ссылку на релиз — программа заполнит все поля, их можно проверить и исправить."), this);
     m_state->setObjectName(QStringLiteral("StatusLabel"));
@@ -782,6 +799,8 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     bottom->addWidget(pickBase, 0, 2);
     m_video = edit(this, T("Видео релиза (необязательно)"));
     m_video->setText(QDir::toNativeSeparators(video));
+    if (!video.isEmpty())
+        QTimer::singleShot(0, this, [this, video] { checkVideo4k(video); });
     auto *pickVideo = new QPushButton(T("Выбрать…"), this);
     bottom->addWidget(new QLabel(T("Видео:"), this), 1, 0);
     bottom->addWidget(m_video, 1, 1);
@@ -861,6 +880,7 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
                                                        T("Видео (*.mkv *.mp4 *.m4v *.mov *.avi *.wmv *.ts *.webm);;Все файлы (*)"));
         if (!f.isEmpty()) {
             m_video->setText(QDir::toNativeSeparators(f));
+            checkVideo4k(f);
             Settings::setLastOpenDir(QFileInfo(f).absolutePath());
             updateTarget();
         }
@@ -1081,7 +1101,8 @@ void ReleaseManagerDialog::apply(const QJsonObject &d)
         const QString ru = Release::genreRu(en);
         auto *it = new QListWidgetItem(ru.isEmpty() ? en : ru, m_genres);
         it->setFlags(it->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsEditable);
-        it->setCheckState(ru.isEmpty() ? Qt::Unchecked : Qt::Checked);
+        const bool is4k = en.compare(QLatin1String("4K Ultra HD"), Qt::CaseInsensitive) == 0;
+        it->setCheckState(ru.isEmpty() ? Qt::Unchecked : is4k ? (m_k4->isChecked() ? Qt::Checked : Qt::Unchecked) : Qt::Checked);
         it->setToolTip(en);
         if (ru.isEmpty())
             it->setForeground(Theme::color("#8A7F72"));
@@ -1521,6 +1542,8 @@ void ReleaseManagerDialog::create()
         return;
     }
     m_createdDir = dir;
+    setProperty("posterFile", QDir(dir).filePath(base + QStringLiteral("-poster.jpg")));
+    setProperty("stamped", false);
     QSettings().setValue(QStringLiteral("ae/lastRelease"), dir);
     m_upload->setRelease(dir);
     m_server->setRelease(dir);
@@ -1596,7 +1619,9 @@ void ReleaseManagerDialog::create()
         // После скачивания видео само уйдёт в папку релиза (с главами и кадром для фан-арта)
         // Плеер — на странице просмотра (сцен), на странице релиза видео нет
         const QString dl = m_scenesUrl->text().trimmed().isEmpty() ? r.pageUrl : m_scenesUrl->text().trimmed();
-        Release::addPending(dl, Release::Pending{base, dir, meta, m_lossless->isChecked()});
+        Release::Pending pend{base, dir, meta, m_lossless->isChecked()};
+        pend.k4 = m_k4->isChecked();
+        Release::addPending(dl, pend);
         emit downloadRequested(dl);
     }
 
@@ -1604,9 +1629,54 @@ void ReleaseManagerDialog::create()
     runJobs();
 }
 
+// «4K Релиз»: жанр «4K Ultra HD» в списке — отметить/снять (добавить, если его не было)
+void ReleaseManagerDialog::set4kGenre(bool on)
+{
+    QListWidgetItem *found = nullptr;
+    for (int i = 0; i < m_genres->count(); ++i) {
+        QListWidgetItem *it = m_genres->item(i);
+        if (it->text().compare(QLatin1String("4K Ultra HD"), Qt::CaseInsensitive) == 0
+            || it->toolTip().compare(QLatin1String("4K Ultra HD"), Qt::CaseInsensitive) == 0)
+            found = it;
+    }
+    if (!found && on) {
+        found = new QListWidgetItem(QStringLiteral("4K Ultra HD"), m_genres);
+        found->setFlags(found->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsEditable);
+        found->setToolTip(QStringLiteral("4K Ultra HD"));
+    }
+    if (found)
+        found->setCheckState(on ? Qt::Checked : Qt::Unchecked);
+}
+
+// Видео выбрано вручную: если оно 4K (по высоте от 2000) — «4K Релиз» включается сам
+void ReleaseManagerDialog::checkVideo4k(const QString &file)
+{
+    const QString f = QDir::fromNativeSeparators(file);
+    auto height = QSharedPointer<int>::create(0);
+    Ui::runAsync(this, [f, height] { *height = MediaInfo::probe(f).height; }, [this, height] {
+        if (*height >= 2000 && !m_k4->isChecked()) {
+            m_k4->setChecked(true);
+            m_state->setText(T("Видео релиза в 4K — включён «4K Релиз» (жанр и значок на постер)."));
+        } else if (*height > 0 && *height < 2000 && m_k4->isChecked()) {
+            m_state->setText(T("Видео релиза %1p — «4K Релиз» включён вручную, проверьте.").arg(*height));
+        }
+    });
+}
+
 void ReleaseManagerDialog::runJobs()
 {
     if (m_jobs.isEmpty()) {
+        const QString poster = property("posterFile").toString();
+        if ((m_k4->isChecked() || m_dvd->isChecked()) && QFileInfo::exists(poster) && !property("stamped").toBool()) {
+            setProperty("stamped", true);
+            m_state->setText(T("Рисую значки на постере…"));
+            CoverArt::stampPoster(poster, m_k4->isChecked(), m_dvd->isChecked(), this, [this](bool ok) {
+                if (!ok)
+                    m_errors << T("значки на постере");
+                finishCreate();
+            });
+            return;
+        }
         finishCreate();
         return;
     }

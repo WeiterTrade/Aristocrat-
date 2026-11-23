@@ -1,4 +1,7 @@
 #include "MainWindow.h"
+#include <QSharedPointer>
+#include "core/MediaInfo.h"
+#include "CoverArt.h"
 #include "core/Theme.h"
 #include "ConvertPage.h"
 #include "DownloadPage.h"
@@ -104,6 +107,21 @@ MainWindow::MainWindow(QWidget *parent)
         const QString fanart = QDir(p.dir).filePath(p.name + QStringLiteral("-fanart.jpg"));
         if (!QFileInfo::exists(fanart))
             Release::fanartFromVideo(file, fanart);
+#ifdef HAVE_WEBENGINE
+        // Скачалось в 4K, а «4K Релиз» не был включён — жанр в NFO и значок на постер
+        if (!p.k4) {
+            auto height = QSharedPointer<int>::create(0);
+            Ui::runAsync(this, [file, height] { *height = MediaInfo::probe(file).height; }, [this, p, height] {
+                if (*height < 2000)
+                    return;
+                const QDir d(p.dir);
+                CoverArt::addGenre(d.filePath(p.name + QStringLiteral(".nfo")), QStringLiteral("4K Ultra HD"));
+                const QString poster = d.filePath(p.name + QStringLiteral("-poster.jpg"));
+                if (QFileInfo::exists(poster))
+                    CoverArt::stampPoster(poster, true, false, this, [](bool) {});
+            });
+        }
+#endif
         m_convert->addReleaseVideo(file, p.name, p.dir, p.lossless, p.chaptersMeta, true);   // скачанное — удалить после обработки
     });
     connect(download, &DownloadPage::chaptersConvert, this,

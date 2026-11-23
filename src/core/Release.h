@@ -64,7 +64,7 @@ QImage trimBlackBorders(const QImage &img);
 QImage cropTo16x9(const QImage &img);
 
 // Релиз, который ждёт скачивания видео: после загрузки видео переупаковывается в папку релиза
-struct Pending { QString name, dir, chaptersMeta; bool lossless = true; };
+struct Pending { QString name, dir, chaptersMeta; bool lossless = true; bool k4 = false; };
 void addPending(const QString &pageUrl, const Pending &p);
 bool takePending(const QString &pageUrl, Pending *p);
 bool peekPending(const QString &pageUrl, Pending *p);   // не удаляя

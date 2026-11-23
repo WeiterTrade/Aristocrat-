@@ -107,6 +107,10 @@ private:
     ServerPage *m_server;
     QLineEdit *m_url;
     QPushButton *m_fetch;
+    QPushButton *m_k4 = nullptr;    // «4K Релиз»: жанр «4K Ultra HD» + значок на постер
+    QPushButton *m_dvd = nullptr;   // «DVD Эксклюзив»: полоса на постер
+    void set4kGenre(bool on);
+    void checkVideo4k(const QString &file);
     QLabel *m_state;
 
     QLineEdit *m_title, *m_orig, *m_edition, *m_date, *m_year, *m_studio, *m_director, *m_rating, *m_runtime, *m_uid;

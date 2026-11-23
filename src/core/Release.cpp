@@ -341,6 +341,7 @@ void addPending(const QString &pageUrl, const Pending &p)
     st.setValue(QStringLiteral("dir"), p.dir);
     st.setValue(QStringLiteral("meta"), p.chaptersMeta);
     st.setValue(QStringLiteral("lossless"), p.lossless);
+    st.setValue(QStringLiteral("k4"), p.k4);
     st.endGroup();
 }
 
@@ -354,6 +355,7 @@ bool peekPending(const QString &pageUrl, Pending *p)
     p->dir = st.value(g + QStringLiteral("/dir")).toString();
     p->chaptersMeta = st.value(g + QStringLiteral("/meta")).toString();
     p->lossless = st.value(g + QStringLiteral("/lossless"), true).toBool();
+    p->k4 = st.value(g + QStringLiteral("/k4"), false).toBool();
     return true;
 }
 
@@ -367,6 +369,7 @@ bool takePending(const QString &pageUrl, Pending *p)
     p->dir = st.value(g + QStringLiteral("/dir")).toString();
     p->chaptersMeta = st.value(g + QStringLiteral("/meta")).toString();
     p->lossless = st.value(g + QStringLiteral("/lossless"), true).toBool();
+    p->k4 = st.value(g + QStringLiteral("/k4"), false).toBool();
     st.remove(g);
     return true;
 }
