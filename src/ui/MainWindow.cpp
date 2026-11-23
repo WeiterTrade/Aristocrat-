@@ -250,6 +250,16 @@ void MainWindow::demoUpload()
     QTimer::singleShot(1000, this, [this] { m_toolbox->openRelease(QString(), QString(), QString(), 1); });
 }
 
+void MainWindow::demoCovers(const QString &stampFile)
+{
+    showPage(4);
+    QTimer::singleShot(1000, this, [this] { m_toolbox->openRelease(QString(), QString(), QString(), 3); });
+#ifdef HAVE_WEBENGINE
+    if (!stampFile.isEmpty())   // проверка значков: 4K + DVD функциями генератора
+        CoverArt::stampPoster(stampFile, true, true, this, [](bool ok) { qInfo("STAMP %s", ok ? "ok" : "failed"); });
+#endif
+}
+
 void MainWindow::demoServer()
 {
     showPage(4);
