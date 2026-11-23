@@ -17,6 +17,7 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
+#include <QTimer>
 #include <QDirIterator>
 #include <QDragEnterEvent>
 #include <QFileDialog>
@@ -95,8 +96,13 @@ ConvertPage::ConvertPage(QWidget *parent)
     connect(m_engine, &ConversionEngine::message, this, [this](const QString &m) { m_statusLine->setText(m); });
     connect(m_engine, &ConversionEngine::taskFinished, this, [this](int id) {
         for (const TaskPtr &t : m_tasks)
+            if (t->id == id && t->deleteInputAfter && t->status != ConversionTask::Done)
+                emit releaseVideoDone(t->outputDir, false);
+        for (const TaskPtr &t : m_tasks)
             if (t->id == id && t->status == ConversionTask::Done) {
                 addConvertedEntry(t);
+                if (t->deleteInputAfter)
+                    QTimer::singleShot(0, this, [this, d = t->outputDir] { emit releaseVideoDone(d, true); });
                 // Скачанный исходник видео релиза больше не нужен: результат уже в папке релиза
                 const QFileInfo out(t->outputPath), in(t->input);
                 if (t->deleteInputAfter && out.exists() && out.size() > 1024 * 1024

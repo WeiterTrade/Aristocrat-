@@ -37,6 +37,9 @@ protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
     void dropEvent(QDropEvent *e) override;
 
+signals:
+    void releaseVideoDone(const QString &dir, bool ok);   // видео релиза обработано (для планировщика)
+
 private:
     QWidget *buildSubBar();
     QWidget *buildBottomBar();

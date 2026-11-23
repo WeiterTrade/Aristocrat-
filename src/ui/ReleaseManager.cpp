@@ -1,6 +1,7 @@
 #include "ReleaseManager.h"
 #include "core/MediaInfo.h"
 #include "CoverArt.h"
+#include "ReleaseScheduler.h"
 #include <QSharedPointer>
 #include <QSet>
 #include <QHash>
@@ -611,6 +612,14 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
     auto *createPage = new QWidget(m_tabs);
     m_upload = new CloudUploadPage(m_tabs);
     m_tabs->addTab(createPage, T("Создать релиз"));
+    // Планировщик: очередь релизов, всё делается само — остаются анкеты актрис
+    auto *sched = new SchedulerPage(this);
+    m_tabs->addTab(sched, T("Планировщик"));
+    connect(sched, &SchedulerPage::openServer, this, [this](const QString &dir) {
+        QSettings().setValue(QStringLiteral("ae/lastRelease"), dir);
+        m_server->setRelease(dir);
+        m_tabs->setCurrentWidget(m_server);
+    });
     m_tabs->addTab(m_upload, T("Выгрузить"));
     m_server = new ServerPage(m_tabs);
     m_tabs->addTab(m_server, T("Сервер"));
@@ -973,17 +982,24 @@ ReleaseManagerDialog::ReleaseManagerDialog(const QString &pageUrl, const QString
 
 void ReleaseManagerDialog::showUploadTab()
 {
-    m_tabs->setCurrentIndex(1);
+    m_tabs->setCurrentWidget(m_upload);
 }
 
 void ReleaseManagerDialog::showServerTab()
 {
-    m_tabs->setCurrentIndex(2);
+    m_tabs->setCurrentWidget(m_server);
 }
 
-void ReleaseManagerDialog::showTab(int i)
+void ReleaseManagerDialog::showServerFor(const QString &dir)
 {
-    m_tabs->setCurrentIndex(i);
+    QSettings().setValue(QStringLiteral("ae/lastRelease"), dir);
+    m_server->setRelease(dir);
+    m_tabs->setCurrentWidget(m_server);
+}
+
+void ReleaseManagerDialog::showTab(int i)   // 3 — «Общая обложка» (последняя), 4 — «Планировщик»
+{
+    m_tabs->setCurrentIndex(i == 3 ? m_tabs->count() - 1 : i == 4 ? 1 : i);
 }
 
 void ReleaseManagerDialog::setBusy(bool busy, const QString &text)
@@ -1012,6 +1028,8 @@ void ReleaseManagerDialog::fetch()
     connect(f, &ReleaseFetcher::failed, this, [this, f](const QString &reason) {
         f->deleteLater();
         setBusy(false, reason);
+        if (m_autoMode)
+            emit autoFailed(reason);
     });
     f->start(url);
 }
@@ -1126,9 +1144,11 @@ void ReleaseManagerDialog::applySeries()
     const int total = qMax(m_series.value("count").toInt(), qMax(m_series.value("found").toInt(), m_series.value("maxVol").toInt()));
     m_setName->setText(QStringLiteral("Серия «%1»").arg(nameEn));
     m_state->setText(T("Серия «%1»: составляю общее описание…").arg(nameEn));
+    m_seriesBusy = true;
     auto *tr = new Translator(this);
     connect(tr, &Translator::finished, this, [this, tr, total, starts](const QStringList &out) {
         tr->deleteLater();
+        m_seriesBusy = false;
         if (out.isEmpty())
             return;
         const QString nameRu = m_caps->isChecked() ? Release::titleCaseRu(out[0]) : out[0];
@@ -1151,7 +1171,10 @@ void ReleaseManagerDialog::applySeries()
         m_state->setText(T("Серия: «%1». Общее описание составлено по %2 частям — проверьте, оно запомнится для следующих релизов серии.")
                              .arg(nameRu).arg(m_series.value("plots").toArray().size() + 1));
     });
-    connect(tr, &Translator::failed, this, [tr](const QString &) { tr->deleteLater(); });
+    connect(tr, &Translator::failed, this, [this, tr](const QString &) {
+        tr->deleteLater();
+        m_seriesBusy = false;
+    });
     QStringList src{nameEn};
     if (starts.isEmpty())
         src << blurb;
@@ -1509,7 +1532,9 @@ void ReleaseManagerDialog::fetchScenes(const QString &url)
             for (int r = 0; r < m_scenes->rowCount() && r < out.size(); ++r)
                 m_scenes->item(r, 1)->setText(m_caps->isChecked() ? Chapters::titleCase(out[r]) : out[r]);
             setBusy(false, T("Сцены загружены. Названия можно исправить прямо в таблице."));
-            if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
+            if (m_autoMode)
+                autoCreateWhenReady();
+            else if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
                 QTimer::singleShot(1500, this, &ReleaseManagerDialog::create);
         });
         connect(tr, &Translator::failed, this, [this, tr](const QString &reason) {
@@ -1554,12 +1579,16 @@ void ReleaseManagerDialog::translate()
             fetchScenes(m_scenesUrl->text().trimmed());
             return;
         }
-        if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
+        if (m_autoMode)
+            autoCreateWhenReady();
+        else if (qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE"))   // автопроверка сборки
             QTimer::singleShot(1500, this, &ReleaseManagerDialog::create);
     });
     connect(tr, &Translator::failed, this, [this, tr](const QString &reason) {
         tr->deleteLater();
         setBusy(false, reason);
+        if (m_autoMode)
+            emit autoFailed(reason);
     });
     tr->translate(src);
 }
@@ -1670,6 +1699,8 @@ void ReleaseManagerDialog::create()
     const ReleaseInfo r = collect();
     if (r.title.isEmpty() || m_base->text().trimmed().isEmpty()) {
         m_state->setText(T("Заполните название и основную папку."));
+        if (m_autoMode)
+            emit autoFailed(T("на странице не нашлось названия релиза"));
         return;
     }
     const QString dir = releaseDir();
@@ -1691,7 +1722,8 @@ void ReleaseManagerDialog::create()
                             r.actresses.join(QStringLiteral(", ")).toHtmlEscaped(), r.director.toHtmlEscaped());
     if (QDir(dir).exists())
         html += T("<br><br><span style='color:#E07A6A'>Папка уже существует — файлы с такими же именами будут заменены.</span>");
-    if (!qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE") && !Ui::ask(this, T("Создать релиз?"), html, T("Создать"), T("Изменить")))
+    if (!m_autoMode && !qEnvironmentVariableIsSet("ARISTOCRAT_TEST_AUTOCREATE")
+        && !Ui::ask(this, T("Создать релиз?"), html, T("Создать"), T("Изменить")))
         return;
 
     QSettings st;
@@ -2040,4 +2072,26 @@ void ReleaseManagerDialog::finishCreate()
     if (!m_errors.isEmpty())
         msg += T(" Не скачались: %1 — ссылку можно исправить и нажать «Создать релиз» ещё раз.").arg(m_errors.join(QStringLiteral(", ")));
     m_state->setText(msg);
+    if (m_autoMode)
+        emit autoCreated(m_createdDir, !m_video->text().trimmed().isEmpty() || m_downloadVideo->isChecked());
+}
+
+void ReleaseManagerDialog::startAuto(const QString &workDir)
+{
+    m_autoMode = true;
+    if (!workDir.isEmpty())
+        m_base->setText(QDir::toNativeSeparators(workDir));
+    m_downloadVideo->setChecked(true);
+    m_lossless->setChecked(true);   // 720p и выше — переупаковка со сценами; ниже — улучшение до 720p (само)
+}
+
+// Перед созданием дождаться описания серии и проверки пола (мужчины не должны попасть в релиз)
+void ReleaseManagerDialog::autoCreateWhenReady(int tries)
+{
+    const bool busy = m_seriesBusy || (m_iafd && m_iafd->busy());
+    if (busy && tries < 120) {
+        QTimer::singleShot(500, this, [this, tries] { autoCreateWhenReady(tries + 1); });
+        return;
+    }
+    create();
 }

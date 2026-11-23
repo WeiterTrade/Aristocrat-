@@ -23,6 +23,7 @@ public:
     void demoChapters(const QString &file, const QString &url);
     void demoUpload();
     void demoCovers(const QString &stampFile);
+    void demoScheduler();
     void demoServer();
     void demoRelease(const QString &url, const QString &video, const QString &scenes = QString());
     void openSettings(int tab = 0);
@@ -34,6 +35,9 @@ protected:
     void changeEvent(QEvent *e) override;
 
 private:
+#ifdef HAVE_WEBENGINE
+    void schedulerDone(const QList<struct SchedItem> &done);
+#endif
     QWidget *buildHeader();
 
     QStackedWidget *m_pages;

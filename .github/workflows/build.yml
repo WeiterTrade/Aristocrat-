@@ -278,6 +278,7 @@ jobs:
           convert -size 500x700 gradient:'#7a4a2a'-'#1a1a2a' stamp.jpg
           SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot covers "--demo-covers=$PWD/stamp.jpg"
           identify stamp.jpg || true
+          ARISTOCRAT_LANG=ru shot scheduler --demo-scheduler
           convert stamp.jpg -resize 400x -quality 85 stamp-small.jpg && { echo "SCREENSHOT_BEGIN stamp"; base64 -w 8000 stamp-small.jpg; echo "SCREENSHOT_END"; }
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 

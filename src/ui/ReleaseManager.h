@@ -75,6 +75,7 @@ public:
     void showUploadTab();
     void showServerTab();
     void showTab(int i);
+    void showServerFor(const QString &dir);   // вкладка «Сервер» для этого релиза (анкеты)
 
 signals:
     // Видео отдаётся в раздел «Конвертировать»: своё имя, своя папка, главы
@@ -82,8 +83,18 @@ signals:
                         const QString &chaptersMeta);
     // Видео нужно скачать: раздел «Загрузить» (вход в аккаунт, выбор качества), потом — в папку релиза
     void downloadRequested(const QString &pageUrl);
+    // Планировщик: релиз создан (videoPending — видео ещё качается/обрабатывается) или не получилось
+    void autoCreated(const QString &dir, bool videoPending);
+    void autoFailed(const QString &reason);
+
+public:
+    // Планировщик: всё сам — данные, перевод, серия, проверка пола, создание релиза в рабочей папке, видео
+    void startAuto(const QString &workDir);
 
 private:
+    bool m_autoMode = false;
+    bool m_seriesBusy = false;
+    void autoCreateWhenReady(int tries = 0);
     QString m_coverId;
     QJsonObject m_series;   // серия с сайта (название, страница, описания других частей)
     void applySeries();   // номер обложек Adult Empire (на странице видео он отличается от SKU)

@@ -1,7 +1,11 @@
 #include "MainWindow.h"
 #include <QSharedPointer>
+#include <QPushButton>
 #include "core/MediaInfo.h"
 #include "CoverArt.h"
+#ifdef HAVE_WEBENGINE
+#include "ReleaseScheduler.h"
+#endif
 #include "core/Theme.h"
 #include "ConvertPage.h"
 #include "DownloadPage.h"
@@ -100,6 +104,16 @@ MainWindow::MainWindow(QWidget *parent)
         showPage(1);
         download->grabAndAdd(url, true);
     });
+#ifdef HAVE_WEBENGINE
+    // Планировщик релизов: видео качается в 720p без вопросов, готовность и ошибки — ему же
+    {
+        auto *sched = ReleaseScheduler::instance();
+        sched->requestDownload = [download](const QString &page) { download->grabAndAdd(page, true, 720); };
+        connect(m_convert, &ConvertPage::releaseVideoDone, sched, &ReleaseScheduler::onVideoDone);
+        connect(download, &DownloadPage::downloadFailed, sched, &ReleaseScheduler::onDownloadFailed);
+        connect(sched, &ReleaseScheduler::batchFinished, this, [this](const QList<SchedItem> &done) { schedulerDone(done); });
+    }
+#endif
     connect(download, &DownloadPage::downloadFinished, this, [this](const QString &file, const QString &page) {
         Release::Pending p;
         if (page.isEmpty() || !Release::takePending(page, &p))
@@ -248,6 +262,70 @@ void MainWindow::demoUpload()
 {
     showPage(4);
     QTimer::singleShot(1000, this, [this] { m_toolbox->openRelease(QString(), QString(), QString(), 1); });
+}
+
+#ifdef HAVE_WEBENGINE
+// Очередь планировщика пройдена: сигнал и список релизов с актрисами — остаётся заполнить анкеты
+void MainWindow::schedulerDone(const QList<SchedItem> &done)
+{
+    DoneSound::play();
+    if (isMinimized())
+        showNormal();
+    raise();
+    activateWindow();
+    auto *d = new FramedDialog(this, true);
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    d->setWindowTitle(T("Планировщик: готово"));
+    d->resize(720, 420);
+    auto *lay = d->contentLayout();
+    lay->setContentsMargins(16, 12, 16, 12);
+    lay->addWidget(new QLabel(T("Релизы готовы и лежат в библиотеке. Осталось заполнить анкеты актрис и нажать «Записать на сервер», "
+                                "затем «Изображения релиза → сервер»."), d));
+    for (const SchedItem &it : done) {
+        auto *row = new QHBoxLayout;
+        QString text = QStringLiteral("<b>%1</b>").arg((it.title.isEmpty() ? it.url : it.title).toHtmlEscaped());
+        if (it.state == SchedItem::Done) {
+            const QStringList a = ReleaseScheduler::actressesOf(it.dest);
+            text += QStringLiteral("<br>") + (a.isEmpty() ? T("актрис в NFO нет") : T("Актрисы: %1").arg(a.join(QStringLiteral(", ")).toHtmlEscaped()));
+        } else {
+            text += QStringLiteral("<br><span style='color:#E07A6A'>%1</span>").arg(ReleaseScheduler::stateName(it).toHtmlEscaped());
+        }
+        auto *l = new QLabel(text, d);
+        l->setWordWrap(true);
+        row->addWidget(l, 1);
+        if (it.state == SchedItem::Done) {
+            auto *b = Ui::primaryButton(T("Заполнить анкеты"), d);
+            const QString dest = it.dest;
+            connect(b, &QPushButton::clicked, this, [this, dest] {
+                QSettings().setValue(QStringLiteral("ae/lastRelease"), dest);
+                showPage(4);
+                m_toolbox->openRelease(QString(), QString(), QString(), 2);
+            });
+            row->addWidget(b);
+        }
+        lay->addLayout(row);
+    }
+    lay->addStretch();
+    auto *close = new QPushButton(T("Закрыть"), d);
+    connect(close, &QPushButton::clicked, d, &QDialog::close);
+    auto *br = new QHBoxLayout;
+    br->addStretch();
+    br->addWidget(close);
+    lay->addLayout(br);
+    d->show();
+}
+#endif
+
+void MainWindow::demoScheduler()
+{
+    showPage(4);
+#ifdef HAVE_WEBENGINE
+    if (ReleaseScheduler::instance()->items().isEmpty()) {   // пример для снимка
+        ReleaseScheduler::instance()->add(QStringLiteral("https://www.adultempire.com/5151061/my-friends-hot-mom-vol-104-porn-videos.html"));
+        ReleaseScheduler::instance()->add(QStringLiteral("https://www.adultempire.com/5070099/all-ass-no-brakes-porn-movies.html"));
+    }
+#endif
+    QTimer::singleShot(1000, this, [this] { m_toolbox->openRelease(QString(), QString(), QString(), 4); });
 }
 
 void MainWindow::demoCovers(const QString &stampFile)

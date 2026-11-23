@@ -63,6 +63,8 @@ public:
                   const QStringList &headers = QStringList());   // headers — заголовки из встроенного браузера
     ~AnalyzeDialog() override;
     DownloadPtr result() const { return m_item; }
+    // Планировщик: качество выбирается само — эта высота, иначе ближайшая выше, иначе лучшая из имеющихся
+    void setAutoPick(int height) { m_autoPick = height; }
 
 private:
     void run(bool withCookies);
@@ -75,6 +77,7 @@ private:
     QStringList m_headers;
     QPushButton *m_browserBtn = nullptr;
     bool m_usedCookies = false;
+    int m_autoPick = 0;
     QPlainTextEdit *m_details;
     QLabel *m_thumb;
     QLabel *m_title;
@@ -125,13 +128,15 @@ public:
     void addExternal(const QJsonObject &media);   // видео из расширения браузера
     void showExtensionHelp();
     void openBrowser(const QString &url = QString());
-    void grabAndAdd(const QString &url, bool loginSite);   // найти видео на странице (с входом в аккаунт)
+    void grabAndAdd(const QString &url, bool loginSite, int autoHeight = 0);   // найти видео на странице (с входом в аккаунт);
+                                                                              // autoHeight — без вопросов (планировщик)
 
 signals:
     void convertRequested(const QString &file, bool autoStart);
     void releaseRequested(const QString &file, const QString &pageUrl);
     void chaptersConvert(const QString &input, const QString &name, const QString &dir, const QString &chaptersMeta);
     void downloadFinished(const QString &file, const QString &pageUrl);
+    void downloadFailed(const QString &pageUrl, const QString &reason);   // окончательно (после всех повторов)
 
 private:
     QWidget *buildSubBar();

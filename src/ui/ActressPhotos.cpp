@@ -7,6 +7,8 @@
 
 #include <QDir>
 #include <QDirIterator>
+#include <QSettings>
+#include <QThreadPool>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -109,7 +111,57 @@ bool saveChosen(const QString &name, const QByteArray &data)
     img.loadFromData(data);
     if (img.isNull() || img.width() < 200 || img.height() < 300)
         return false;
-    return fitPortrait(img).save(cacheFile(name), "JPG", 92);
+    if (!fitPortrait(img).save(cacheFile(name), "JPG", 92))
+        return false;
+    propagate(name);
+    return true;
+}
+
+// Новое фото актрисы — во все уже существующие копии в папках .actors (последний релиз, основная папка, библиотека).
+// В последнем релизе — ещё и если актриса есть в его NFO, а фото там пока нет. Идёт в фоне: библиотека может быть в облаке.
+void propagate(const QString &name)
+{
+    QSettings st;
+    const QString src = cacheFile(name), file = Release::actorFile(name) + QStringLiteral(".jpg");
+    QStringList roots;
+    for (const QString &k : {QStringLiteral("ae/baseDir"), QStringLiteral("aeSched/libraryDir"), QStringLiteral("aeSched/workDir")}) {
+        const QString d = QDir::fromNativeSeparators(st.value(k).toString());
+        if (!d.isEmpty() && QDir(d).exists() && !roots.contains(d))
+            roots << d;
+    }
+    const QString lastRel = QDir::fromNativeSeparators(st.value(QStringLiteral("ae/lastRelease")).toString());
+    QThreadPool::globalInstance()->start([src, file, name, roots, lastRel] {
+        auto put = [&src](const QString &dst) {
+            if (QFileInfo(dst).absoluteFilePath() == QFileInfo(src).absoluteFilePath())
+                return;
+            QFile::remove(dst);
+            QFile::copy(src, dst);
+        };
+        // Последний релиз: актриса в NFO — фото в .actors
+        if (!lastRel.isEmpty() && QDir(lastRel).exists()) {
+            const QDir rel(lastRel);
+            for (const QString &nfo : rel.entryList({QStringLiteral("*.nfo")}, QDir::Files)) {
+                QFile f(rel.filePath(nfo));
+                if (f.open(QIODevice::ReadOnly) && QString::fromUtf8(f.readAll()).contains(QStringLiteral("<name>%1</name>").arg(name.toHtmlEscaped()))) {
+                    rel.mkpath(QStringLiteral(".actors"));
+                    put(rel.filePath(QStringLiteral(".actors/") + file));
+                    break;
+                }
+            }
+        }
+        for (const QString &root : roots) {
+            QDirIterator it(root, QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDirIterator::Subdirectories);
+            int guard = 0;
+            while (it.hasNext() && ++guard < 50000) {
+                const QString d = it.next();
+                if (QFileInfo(d).fileName() != QLatin1String(".actors"))
+                    continue;
+                const QString dst = QDir(d).filePath(file);
+                if (QFileInfo::exists(dst))
+                    put(dst);
+            }
+        }
+    });
 }
 
 } // namespace ActressPhotos

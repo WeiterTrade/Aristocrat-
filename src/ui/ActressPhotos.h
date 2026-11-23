@@ -27,9 +27,11 @@ struct Candidate {
 QImage fitPortrait(const QImage &src);                       // обрезка до 2:3 (голова сохраняется) → 1000×1500
 QString cacheFile(const QString &name);                      // выбранное фото (общее для всех релизов)
 QString findInLibrary(const QString &name, const QString &baseDir);
-QString query(const QString &name);                          // «Имя Фамилия lingerie»
+QString query(const QString &name);                          // «Имя Фамилия порно-актриса»
 int score(const Candidate &c);                               // пригодность для автовыбора (0 — не подходит)
-bool saveChosen(const QString &name, const QByteArray &data);   // подогнать и сохранить в кэш
+bool saveChosen(const QString &name, const QByteArray &data);   // подогнать, сохранить в кэш и разнести по .actors
+// Фото из кэша — во все существующие копии в папках .actors (в фоне)
+void propagate(const QString &name);
 }
 
 // Поиск картинок в скрытом окне (Bing: вертикальные, от 1000×1500, безопасный поиск «умеренный»)

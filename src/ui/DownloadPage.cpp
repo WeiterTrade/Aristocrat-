@@ -30,6 +30,7 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDateTime>
+#include <QAbstractButton>
 #include <QDir>
 #include <QTimer>
 #include <QFileDialog>
@@ -293,6 +294,17 @@ void AnalyzeDialog::onAnalyzed(int code)
     first->setChecked(true);
     m_ok->setEnabled(true);
     adjustSize();
+    if (m_autoPick > 0 && !hs.isEmpty()) {
+        int pick = 0;
+        for (int h : hs)   // точно нужная (с допуском) или ближайшая выше
+            if (h >= m_autoPick - m_autoPick / 12 && (pick == 0 || h < pick))
+                pick = h;
+        if (pick == 0)
+            pick = hs.first();   // выше нет — лучшая из имеющихся (потом улучшится до 720p)
+        if (QAbstractButton *b = m_group->button(pick))
+            b->setChecked(true);
+        QTimer::singleShot(300, m_ok, &QPushButton::click);
+    }
 
     const QString url = m_item->thumbUrl;
     auto img = QSharedPointer<QImage>::create();
@@ -780,7 +792,7 @@ void DownloadPage::addUrl(const QString &url)
     addItem(dlg.result());
 }
 
-void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
+void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite, int autoHeight)
 {
 #ifdef HAVE_WEBENGINE
     const QUrl url = QUrl::fromUserInput(urlText);
@@ -798,8 +810,12 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
         const int r = gd.exec();
         if (r == QDialog::Accepted) {
             AnalyzeDialog dlg(gd.media().toString(), baseArgs(false), QStringList(), window(), gd.headers());
-            if (dlg.exec() != QDialog::Accepted)
+            dlg.setAutoPick(autoHeight);
+            if (dlg.exec() != QDialog::Accepted) {
+                if (autoHeight > 0)
+                    emit downloadFailed(urlText, T("не удалось определить качество видео"));
                 return;
+            }
             DownloadPtr item = dlg.result();
             item->external = true;
             item->headers = gd.headers();
@@ -820,8 +836,11 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
             addItem(item);
             return;
         }
-        if (r != 2)
+        if (r != 2) {
+            if (autoHeight > 0)
+                emit downloadFailed(urlText, T("поиск видео отменён"));
             return;   // отменено
+        }
         if (loginSite && (gd.loginFailed() || !forceLogin)) {
             // Вход не удался или старый вход устарел — просим войти ещё раз
             Sites::setLoggedIn(url, false);
@@ -830,6 +849,10 @@ void DownloadPage::grabAndAdd(const QString &urlText, bool loginSite)
             forceLogin = true;
             pass.clear();
             continue;
+        }
+        if (autoHeight > 0) {   // планировщик: без вопросов
+            emit downloadFailed(urlText, gd.error());
+            return;
         }
         if (Ui::ask(this, T("Загрузка видео"), gd.error() + QStringLiteral("<br><br>") + T("Открыть страницу во встроенном браузере?"),
                     T("Открыть"), T("Отмена")))
@@ -1171,6 +1194,8 @@ void DownloadPage::onFinished(const DownloadPtr &item, int code, QProcess::ExitS
         });
     } else {
         item->status = DownloadItem::Failed;
+        if (!item->pageUrl.isEmpty())
+            QTimer::singleShot(0, this, [this, page = item->pageUrl] { emit downloadFailed(page, T("загрузка видео не удалась")); });
         QStringList lines;
         for (const QString &l : item->log.split('\n', Qt::SkipEmptyParts))
             if (l.startsWith(QLatin1String("ERROR")))
