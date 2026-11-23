@@ -256,7 +256,9 @@ jobs:
           head -c 30720 /dev/urandom > dvd/VIDEO_TS/VTS_01_0.IFO
           genisoimage -quiet -udf -V TESTDVD -o test-dvd.iso dvd
           rm -rf css-out
-          QT_QPA_PLATFORM=offscreen "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-css-test=$PWD/test-dvd.iso|$PWD/css-out" 2>&1 | grep dvdcss || true
+          ls -la test-dvd.iso; isoinfo -l -i test-dvd.iso 2>/dev/null | head -20 || true
+          xvfb-run -a "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-css-test=$PWD/test-dvd.iso|$PWD/css-out" > css.log 2>&1 || true
+          grep -a -i -E "dvdcss|error|fatal" css.log | head -20 || true
           ls -la css-out || true
           cmp dvd/VIDEO_TS/VTS_01_1.VOB css-out/VTS_01_1.VOB && cmp dvd/VIDEO_TS/VTS_01_2.VOB css-out/VTS_01_2.VOB \
             && cmp dvd/VIDEO_TS/VTS_01_0.IFO css-out/VTS_01_0.IFO && echo "DVDCSS_OK" || { echo "::error::копия DVD через libdvdcss не совпала"; exit 1; }
