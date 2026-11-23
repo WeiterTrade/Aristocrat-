@@ -116,6 +116,24 @@ int main(int argc, char *argv[])
             return ok ? 0 : 1;
         }
 
+    // Автопроверка: оглавление DVD по IFO и чтение основного фильма: --dvd-rip-test=<образ>|<папка VIDEO_TS>|<файл>
+    for (const QString &a : app.arguments())
+        if (a.startsWith(QLatin1String("--dvd-rip-test="))) {
+            const QStringList p = a.mid(15).split(QLatin1Char('|'));
+            QString err;
+            const QList<DvdCss::DiscTitle> ts = DvdCss::discTitles(p.value(0), p.value(1), &err);
+            for (const auto &t : ts)
+                fprintf(stderr, "dvdtitle: %d vts=%d sec=%.1f cells=%d jumps=%d bytes=%lld main=%d audio=%s\n", t.number, t.vts, t.seconds,
+                        int(t.cells.size()), t.jumps, (long long)t.bytes, int(t.main), qPrintable(t.audioFormat.join(QLatin1Char(','))));
+            bool ok = false;
+            int bad = 0;
+            for (const auto &t : ts)
+                if (t.main)
+                    ok = DvdCss::rip(p.value(0), t, p.value(2), {}, &err, &bad);
+            fprintf(stderr, "dvdrip: titles=%d ok=%d bad=%d err=%s\n", int(ts.size()), ok, bad, qPrintable(err));
+            return ok ? 0 : 1;
+        }
+
     if (app.arguments().contains(QStringLiteral("--demo-splash"))) {   // снимок заставки для автопроверки
         QSplashScreen *only = makeSplash();
         only->show();

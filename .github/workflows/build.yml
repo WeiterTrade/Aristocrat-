@@ -220,7 +220,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
-          sudo apt-get install -y xvfb imagemagick x11-utils genisoimage > /dev/null
+          sudo apt-get install -y xvfb imagemagick x11-utils genisoimage dvdauthor > /dev/null
           T=AppDir/usr/bin/tools
           $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=440" \
             -t 8 -vf "interlace" -c:v libx264 -flags +ilme+ildct -c:a aac -shortest "$PWD/Кассета 1994.mp4"
@@ -262,6 +262,17 @@ jobs:
           ls -la css-out || true
           cmp dvd/VIDEO_TS/VTS_01_1.VOB css-out/VTS_01_1.VOB && cmp dvd/VIDEO_TS/VTS_01_2.VOB css-out/VTS_01_2.VOB \
             && cmp dvd/VIDEO_TS/VTS_01_0.IFO css-out/VTS_01_0.IFO && echo "DVDCSS_OK" || { echo "::error::копия DVD через libdvdcss не совпала"; exit 1; }
+          # Настоящая структура DVD (dvdauthor): оглавление по IFO и чтение фильма в один файл
+          mkdir -p realdvd && $T/ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=720x576:rate=25" -f lavfi -i "sine=frequency=600" \
+            -t 40 -target pal-dvd -aspect 16:9 -shortest real.vob
+          VIDEO_FORMAT=PAL dvdauthor -q -o realdvd -t real.vob && VIDEO_FORMAT=PAL dvdauthor -q -o realdvd -T
+          ls -la realdvd/VIDEO_TS
+          genisoimage -quiet -dvd-video -V REALDVD -o real.iso realdvd
+          xvfb-run -a "./Aristocrat Видеоконвертер-x86_64.AppImage" "--dvd-rip-test=$PWD/real.iso|$PWD/realdvd/VIDEO_TS|$PWD/ripped.vob" > rip.log 2>&1 || true
+          grep -a -E "dvdtitle|dvdrip" rip.log || tail -20 rip.log
+          ls -la ripped.vob realdvd/VIDEO_TS/VTS_01_1.VOB || true
+          $T/ffprobe -v error -show_entries format=duration -of csv=p=0 ripped.vob && grep -q "dvdrip: titles=1 ok=1" rip.log && echo "DVDRIP_OK" \
+            || { echo "::error::оглавление/чтение DVD по IFO не работает"; exit 1; }
           cp tests/scenes.html . ; (python3 -m http.server 8790 >/dev/null 2>&1 &) ; sleep 1
           cp "$PWD/Кассета 1994.mp4" "$PWD/Сцены.mp4"
           ARISTOCRAT_TEST_AUTOCREATE=1 SHOT_WAIT=30 ARISTOCRAT_LANG=ru shot chapters "--demo-chapters=$PWD/Сцены.mp4|http://127.0.0.1:8790/scenes.html"

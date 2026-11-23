@@ -25,6 +25,7 @@
 #include <QMenu>
 #include <QListWidget>
 #include <QRadioButton>
+#include <QCheckBox>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -255,6 +256,15 @@ void ToolboxPage::openDvd(const QString &path)
         Ui::message(this, T("Копирование DVD"), T("В выбранной папке нет папки VIDEO_TS."));
         return;
     }
+    // Диск в приводе или смонтированный образ: фильмы — по таблицам IFO, чтение — напрямую с диска (как DVDFab).
+    // Так не трогаются «ловушки» защиты, из-за которых чтение через файлы тянется десятки минут.
+    if (DvdCss::available()) {
+        const QString device = DvdCss::deviceFor(videoTs);
+        if (!device.isEmpty()) {
+            openDisc(device, videoTs);
+            return;
+        }
+    }
     const QString disc = Dvd::discName(videoTs);
     const QList<DvdTitle> titles = Dvd::titles(videoTs);
     if (titles.isEmpty()) {
@@ -408,4 +418,147 @@ void ToolboxPage::openDvd(const QString &path)
     }
     if (!chosen.isEmpty())
         emit dvdRequested(chosen, lossless->isChecked() ? 0 : compat->isChecked() ? 1 : 2, tempDir);
+}
+
+void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
+{
+    const QString disc = Dvd::discName(videoTs);
+    FramedDialog d(this);
+    d.setWindowTitle(T("Копирование DVD — %1").arg(disc));
+    d.setMinimumSize(720, 540);
+    auto *lay = d.contentLayout();
+    lay->setContentsMargins(24, 18, 24, 18);
+    lay->setSpacing(12);
+    auto *state = new QLabel(T("Чтение оглавления диска…"), &d);
+    state->setObjectName(QStringLiteral("StatusLabel"));
+    state->setWordWrap(true);
+    lay->addWidget(state);
+    auto *list = new QListWidget(&d);
+    lay->addWidget(list, 1);
+    auto *showAll = new QCheckBox(T("Показать короткие ролики (меньше 2 минут)"), &d);
+    lay->addWidget(showAll);
+    auto *lossless = new QRadioButton(T("Копия без потерь (MKV, все звуковые дорожки и субтитры) — для VLC, Jellyfin, MPC"), &d);
+    auto *compat = new QRadioButton(T("MP4 для любого плеера, включая Windows Media Player и телевизоры (H.264 + AAC)"), &d);
+    auto *convert = new QRadioButton(T("Конвертировать в формат, выбранный в разделе «Конвертировать»"), &d);
+    lossless->setChecked(true);
+    lay->addWidget(lossless);
+    lay->addWidget(compat);
+    lay->addWidget(convert);
+    auto *bar = new QProgressBar(&d);
+    bar->setRange(0, 100);
+    bar->hide();
+    lay->addWidget(bar);
+    auto *btns = new QHBoxLayout;
+    btns->addStretch();
+    auto *cancel = new QPushButton(T("Отмена"), &d);
+    auto *go = Ui::primaryButton(T("Начать"), &d);
+    go->setEnabled(false);
+    btns->addWidget(cancel);
+    btns->addWidget(go);
+    lay->addLayout(btns);
+    connect(cancel, &QPushButton::clicked, &d, &QDialog::reject);
+
+    auto titles = QSharedPointer<QList<DvdCss::DiscTitle>>::create();
+    auto err = QSharedPointer<QString>::create();
+    auto fill = [list, titles, showAll] {
+        list->clear();
+        for (int i = 0; i < titles->size(); ++i) {
+            const DvdCss::DiscTitle &t = titles->at(i);
+            if (t.seconds < 120 && !t.main && !showAll->isChecked())
+                continue;
+            QStringList audio;
+            for (int a = 0; a < t.audio.size(); ++a)
+                audio << QStringLiteral("%1 %2").arg(t.audio[a], t.audioFormat.value(a));
+            QString text = T("Фильм %1 · %2 · %3 · глав: %4").arg(t.number).arg(formatDuration(t.seconds)).arg(formatSize(t.bytes)).arg(t.chapters);
+            if (!audio.isEmpty())
+                text += T(" · звук: %1").arg(audio.join(QStringLiteral(", ")));
+            if (!t.subs.isEmpty())
+                text += T(" · субтитры: %1").arg(t.subs.join(QStringLiteral(", ")));
+            if (t.main)
+                text = T("★ Основной фильм — ") + text;
+            else if (t.jumps > 2)
+                text += T(" · ложный (защита диска)");
+            auto *it = new QListWidgetItem(text, list);
+            it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+            it->setCheckState(t.main ? Qt::Checked : Qt::Unchecked);
+            it->setData(Qt::UserRole, i);
+        }
+    };
+    connect(showAll, &QCheckBox::toggled, &d, fill);
+    Ui::runAsync(&d, [device, videoTs, titles, err] { *titles = DvdCss::discTitles(device, videoTs, err.data()); },
+                 [&d, titles, err, state, go, fill] {
+                     if (titles->isEmpty()) {
+                         state->setText(T("Не удалось прочитать оглавление диска: %1").arg(*err));
+                         return;
+                     }
+                     fill();
+                     int fakes = 0;
+                     for (const auto &t : *titles)
+                         fakes += (!t.main && t.jumps > 2) ? 1 : 0;
+                     state->setText(fakes > 0 ? T("На диске защита: %1 ложных фильмов. Основной фильм определён и отмечен — "
+                                                  "он будет прочитан напрямую с диска со снятием защиты.").arg(fakes)
+                                              : T("Основной фильм отмечен. Он будет прочитан напрямую с диска (защита CSS снимается при чтении)."));
+                     go->setEnabled(true);
+                     d.adjustSize();
+                 });
+
+    QList<QPair<QString, QString>> chosen;
+    QString tempDir;
+    connect(go, &QPushButton::clicked, &d, [&] {
+        QList<int> picks;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->checkState() == Qt::Checked)
+                picks << list->item(i)->data(Qt::UserRole).toInt();
+        if (picks.isEmpty())
+            return;
+        tempDir = QDir(Settings::outputDir()).filePath(QStringLiteral(".aristocrat-temp/") + Release::safeName(disc));
+        QDir().mkpath(tempDir);
+#ifdef Q_OS_WIN
+        SetFileAttributesW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(QFileInfo(tempDir).absolutePath()).utf16()), FILE_ATTRIBUTE_HIDDEN);
+#endif
+        for (QWidget *w : {static_cast<QWidget *>(list), static_cast<QWidget *>(lossless), static_cast<QWidget *>(compat),
+                           static_cast<QWidget *>(convert), static_cast<QWidget *>(go), static_cast<QWidget *>(showAll)})
+            w->setEnabled(false);
+        bar->show();
+        auto cancelled = QSharedPointer<QAtomicInt>::create(0);
+        auto conn = connect(cancel, &QPushButton::clicked, &d, [cancelled] { cancelled->storeRelaxed(1); });
+        int badTotal = 0;
+        for (int k = 0; k < picks.size(); ++k) {
+            const DvdCss::DiscTitle t = titles->at(picks[k]);
+            const QString name = picks.size() > 1 || !t.main ? T("%1 — фильм %2").arg(disc).arg(t.number) : disc;
+            const QString file = QDir(tempDir).filePath(Release::safeName(name) + QStringLiteral(".vob"));
+            state->setText(T("Чтение с диска со снятием защиты: %1 (%2 из %3)… Это займёт 10–30 минут, зависит от привода.")
+                               .arg(name).arg(k + 1).arg(picks.size()));
+            bar->setValue(0);
+            auto e = QSharedPointer<QString>::create();
+            auto bad = QSharedPointer<int>::create(0);
+            auto ok = QSharedPointer<bool>::create(false);
+            QPointer<QProgressBar> pb(bar);
+            QEventLoop loop;
+            Ui::runAsync(&d, [device, t, file, cancelled, e, bad, ok, pb] {
+                *ok = DvdCss::rip(device, t, file, [cancelled, pb](int pct) {
+                    QMetaObject::invokeMethod(pb, [pb, pct] { if (pb) pb->setValue(pct); }, Qt::QueuedConnection);
+                    return cancelled->loadRelaxed() == 0;
+                }, e.data(), bad.data());
+            }, [&loop] { loop.quit(); });
+            loop.exec();
+            if (!*ok) {
+                disconnect(conn);
+                QDir(tempDir).removeRecursively();
+                chosen.clear();
+                if (cancelled->loadRelaxed() == 0)
+                    Ui::message(this, T("Копирование DVD"), T("Не удалось прочитать диск: %1").arg(*e));
+                return;
+            }
+            badTotal += *bad;
+            chosen.append({file, name});
+        }
+        disconnect(conn);
+        Q_UNUSED(badTotal)
+        d.accept();
+    });
+
+    if (d.exec() != QDialog::Accepted || chosen.isEmpty())
+        return;
+    emit dvdRequested(chosen, lossless->isChecked() ? 0 : compat->isChecked() ? 1 : 2, tempDir);
 }

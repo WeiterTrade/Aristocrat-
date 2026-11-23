@@ -20,6 +20,7 @@ signals:
 
 public:
     void openDvd(const QString &path);
+    void openDisc(const QString &device, const QString &videoTs);   // диск в приводе: фильмы по IFO, чтение через libdvdcss
     void openRelease(const QString &url = QString(), const QString &video = QString(), const QString &scenesUrl = QString(),
                      int tab = 0);
 };
