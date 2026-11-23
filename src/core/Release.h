@@ -76,6 +76,11 @@ QString seriesBase(const QString &englishTitle);
 // Уже существующая папка серии в parentDir (сравнение английских оригиналов из NFO частей) или из памяти; пусто — нет
 QString findSeriesFolder(const QString &parentDir, const QString &englishTitle);
 void rememberSeriesFolder(const QString &englishTitle, const QString &folder);
+// Название новой части — по образцу уже лежащей в папке серии (самой старой, обычно заданной вручную):
+// «Домашний Гэнг-Бэнг #10» + «Homemade Gangbang 5» → «Домашний Гэнг-Бэнг #5». Пусто — образца нет.
+QString titleLikeSeries(const QString &seriesDir, const QString &englishTitle);
+// Переименовать готовый релиз: папку, файлы «Старое имя*» и <title> в NFO. Возвращает новый путь (или старый при ошибке)
+QString renameRelease(const QString &dir, const QString &newTitle);
 // «Dorcel (English)» → «Dorcel»: всё в скобках в конце названия студии убирается
 QString cleanStudio(const QString &studio);
 // Язык из скобок студии/названия: «(Spanish)» → {"Испанский", "spa"}; пусто — не найден

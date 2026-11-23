@@ -1731,6 +1731,14 @@ void ReleaseManagerDialog::create()
             m_setName->setText(existing);
             r.setName = existing;
         }
+        // Часть уже существующей серии — название по образцу уже лежащих частей («#10» → «#5», а не «№5»)
+        if (!existing.isEmpty()) {
+            const QString like = Release::titleLikeSeries(QDir(QDir::fromNativeSeparators(m_base->text().trimmed())).filePath(existing), m_orig->text());
+            if (!like.isEmpty() && like != r.title) {
+                m_title->setText(like);
+                r.title = like;
+            }
+        }
     }
     if (r.title.isEmpty() || m_base->text().trimmed().isEmpty()) {
         m_state->setText(T("Заполните название и основную папку."));

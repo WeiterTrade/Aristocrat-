@@ -1,4 +1,5 @@
 #include "Release.h"
+#include <algorithm>
 #include <QDir>
 
 #include <QDateTime>
@@ -516,3 +517,105 @@ void rememberSeriesFolder(const QString &englishTitle, const QString &folder)
 
 } // namespace Release
 
+namespace Release {
+
+static QString nfoTag(const QString &dir, const QString &tag)
+{
+    const QDir d(dir);
+    const QStringList nfos = d.entryList({QStringLiteral("*.nfo")}, QDir::Files);
+    if (nfos.isEmpty())
+        return {};
+    QFile f(d.filePath(nfos.first()));
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const QRegularExpression re(QStringLiteral("<%1>([^<]*)</%1>").arg(tag));
+    QString v = re.match(QString::fromUtf8(f.read(65536))).captured(1).trimmed();
+    v.replace(QStringLiteral("&amp;"), QStringLiteral("&")).replace(QStringLiteral("&apos;"), QStringLiteral("'"))
+        .replace(QStringLiteral("&#39;"), QStringLiteral("'")).replace(QStringLiteral("&quot;"), QStringLiteral("\""))
+        .replace(QStringLiteral("&lt;"), QStringLiteral("<")).replace(QStringLiteral("&gt;"), QStringLiteral(">"));
+    return v;
+}
+
+// Номер части в английском названии: последнее число («Vol. 10», «#10», «10»), годы в скобках не считаются
+static QString partNumber(const QString &english)
+{
+    QString t = english;
+    t.remove(QRegularExpression(QStringLiteral("\\((19|20)\\d\\d\\)")));
+    static const QRegularExpression num(QStringLiteral("(\\d+)"));
+    QString last;
+    auto it = num.globalMatch(t);
+    while (it.hasNext())
+        last = it.next().captured(1);
+    return last;
+}
+
+QString titleLikeSeries(const QString &seriesDir, const QString &englishTitle)
+{
+    const QString want = partNumber(englishTitle);
+    if (want.isEmpty() || !QDir(seriesDir).exists())
+        return {};
+    // Образец — самая старая часть (её обычно называли вручную)
+    QFileInfoList parts = QDir(seriesDir).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    std::sort(parts.begin(), parts.end(), [](const QFileInfo &a, const QFileInfo &b) {
+        const QDateTime x = a.birthTime().isValid() ? a.birthTime() : a.lastModified();
+        const QDateTime y = b.birthTime().isValid() ? b.birthTime() : b.lastModified();
+        return x < y;
+    });
+    for (const QFileInfo &p : parts) {
+        const QString orig = nfoTag(p.absoluteFilePath(), QStringLiteral("originaltitle"));
+        if (orig.isEmpty() || seriesBase(orig) != seriesBase(englishTitle))
+            continue;
+        const QString num = partNumber(orig);
+        QString ru = nfoTag(p.absoluteFilePath(), QStringLiteral("title"));
+        if (ru.isEmpty())   // NFO без названия — берём имя папки без года
+            ru = p.fileName().remove(QRegularExpression(QStringLiteral("\\s*\\((19|20)\\d\\d\\)\\s*$")));
+        if (num.isEmpty() || ru.isEmpty())
+            continue;
+        const QRegularExpression at(QStringLiteral("(?<!\\d)0*%1(?!\\d)").arg(QString::number(num.toLongLong())));
+        QRegularExpressionMatch m, last;
+        auto it = at.globalMatch(ru);
+        while (it.hasNext())
+            last = it.next();
+        if (!last.hasMatch())
+            continue;
+        if (num == want)
+            return ru;   // та же часть — то же название
+        return ru.left(last.capturedStart()) + want + ru.mid(last.capturedEnd());
+    }
+    return {};
+}
+
+QString renameRelease(const QString &dir, const QString &newTitle)
+{
+    const QFileInfo fi(dir);
+    const QString oldName = fi.fileName();
+    const QString year = QRegularExpression(QStringLiteral("\\(((19|20)\\d\\d)\\)\\s*$")).match(oldName).captured(1);
+    ReleaseInfo r;
+    r.title = newTitle;
+    r.year = year;
+    const QString newName = baseName(r);
+    if (newName == oldName || newName.isEmpty())
+        return dir;
+    QDir d(dir);
+    // Файлы релиза: «Старое имя.mkv», «Старое имя-poster.jpg», NFO…
+    for (const QString &f : d.entryList(QDir::Files))
+        if (f.startsWith(oldName))
+            d.rename(f, newName + f.mid(oldName.size()));
+    for (const QString &nfo : d.entryList({QStringLiteral("*.nfo")}, QDir::Files)) {
+        QFile f(d.filePath(nfo));
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        QString x = QString::fromUtf8(f.readAll());
+        f.close();
+        static const QRegularExpression t(QStringLiteral("<title>[^<]*</title>"));
+        x.replace(t, QStringLiteral("<title>") + newTitle.toHtmlEscaped() + QStringLiteral("</title>"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(x.toUtf8());
+    }
+    const QString target = fi.dir().filePath(newName);
+    if (QFileInfo::exists(target) || !QDir().rename(dir, target))
+        return dir;
+    return target;
+}
+
+} // namespace Release

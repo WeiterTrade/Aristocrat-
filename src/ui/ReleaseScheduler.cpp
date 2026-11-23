@@ -476,6 +476,18 @@ void ReleaseScheduler::moveToLibrary(int id)
             rel = existing + QLatin1Char('/') + rel.section(QLatin1Char('/'), 1);
         }
         Release::rememberSeriesFolder(orig, existing.isEmpty() ? seriesNow : existing);
+        // Название части — по образцу уже лежащих в библиотеке частей этой серии
+        if (hasLib && !existing.isEmpty()) {
+            const QString like = Release::titleLikeSeries(QDir(QDir(library).filePath(studioDir)).filePath(existing), orig);
+            if (!like.isEmpty()) {
+                const QString renamed = Release::renameRelease(it->dir, like);
+                if (renamed != it->dir) {
+                    it->dir = renamed;
+                    rel = rel.section(QLatin1Char('/'), 0, 0) + QLatin1Char('/') + QFileInfo(renamed).fileName();
+                    save();
+                }
+            }
+        }
     }
 
     if (tgt != QLatin1String("local")) {   // облако — через rclone, как во «Выгрузить»
