@@ -45,6 +45,10 @@ private:
 // Сервер Jellyfin для других частей программы (вход берётся из вкладки «Сервер»)
 namespace Jellyfin {
 bool loggedIn();
+// Карточка элемента без «обновления по запросу»: /Users/…/Items/{id} для ещё не обновлённой персоны заставляет
+// Jellyfin сначала искать её в TMDb — с именами из одного слова («Samantha») это тянется минутами
+QString itemQuery(const QString &id);
+QJsonObject itemFrom(const QByteArray &json);
 QNetworkReply *request(QNetworkAccessManager *net, const QString &method, const QString &path,
                        const QByteArray &body = QByteArray(), const QByteArray &type = "application/json");
 // Исполнитель по точному имени (Id, Overview, PremiereDate, ProductionLocations, ImageTags); пусто — не найден

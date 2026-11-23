@@ -990,13 +990,33 @@ void findPerson(QNetworkAccessManager *net, QObject *ctx, const QString &name, s
     });
 }
 
+QString itemQuery(const QString &id)
+{
+    const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
+    return QStringLiteral("/Items?ids=%1&userId=%2&fields=Overview,Genres,Tags,Studios,People,ProductionLocations,ProviderIds,"
+                          "Taglines,OriginalTitle,SortName,DateCreated,ExternalUrls,RemoteTrailers,CustomRating")
+        .arg(id, uid);
+}
+
+QJsonObject itemFrom(const QByteArray &json)
+{
+    const QJsonObject o = QJsonDocument::fromJson(json).object();
+    if (o.contains(QStringLiteral("Items")))
+    {
+        const QJsonArray a = o.value(QStringLiteral("Items")).toArray();
+        return a.isEmpty() ? QJsonObject() : a.at(0).toObject();
+    }
+    return o;
+}
+
 void lockItem(QNetworkAccessManager *net, QObject *ctx, const QString &id, std::function<void()> done)
 {
     const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
-    QNetworkReply *g = request(net, QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+    Q_UNUSED(uid)
+    QNetworkReply *g = request(net, QStringLiteral("GET"), itemQuery(id));
     QObject::connect(g, &QNetworkReply::finished, ctx, [net, ctx, g, id, done] {
         g->deleteLater();
-        QJsonObject item = QJsonDocument::fromJson(g->readAll()).object();
+        QJsonObject item = itemFrom(g->readAll());
         if (item.isEmpty() || item.value("LockData").toBool()) {
             done();
             return;
@@ -1881,10 +1901,11 @@ void ServerPage::editActress(int row)
     // Что сейчас на сервере (если в таблице пусто)
     if (!id.isEmpty() && loggedIn()) {
         const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
-        QNetworkReply *rep = api(QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+        Q_UNUSED(uid)
+        QNetworkReply *rep = api(QStringLiteral("GET"), Jellyfin::itemQuery(id));
         connect(rep, &QNetworkReply::finished, &d, [=] {
             rep->deleteLater();
-            const QJsonObject it = QJsonDocument::fromJson(rep->readAll()).object();
+            const QJsonObject it = Jellyfin::itemFrom(rep->readAll());
             if (it.isEmpty())
                 return;
             const QSignalBlocker block(edit);
@@ -2084,10 +2105,11 @@ void ServerPage::writeNext()
     }
     const QString uid = QSettings().value(QStringLiteral("server/userId")).toString();
     // Jellyfin требует полную карточку: берём, меняем нужные поля, отправляем обратно
-    QNetworkReply *r = api(QStringLiteral("GET"), QStringLiteral("/Users/%1/Items/%2").arg(uid, id));
+    Q_UNUSED(uid)
+    QNetworkReply *r = api(QStringLiteral("GET"), Jellyfin::itemQuery(id));
     connect(r, &QNetworkReply::finished, this, [this, r, row, n, id] {
         r->deleteLater();
-        QJsonObject item = QJsonDocument::fromJson(r->readAll()).object();
+        QJsonObject item = Jellyfin::itemFrom(r->readAll());
         if (r->error() != QNetworkReply::NoError || item.isEmpty()) {
             if (retryRow(row, r))
                 return;
