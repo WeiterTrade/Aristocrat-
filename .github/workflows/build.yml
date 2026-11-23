@@ -275,7 +275,7 @@ jobs:
           ARISTOCRAT_LANG=ru shot toolbox --page=4
           ARISTOCRAT_LANG=ru shot uploadtab --demo-upload
           # Генератор Adult Aristocrat: вкладка «Общая обложка» и значки 4K + DVD на тестовом постере
-          convert -size 500x700 gradient:'#7a4a2a'-'#1a1a2a' -fill '#e8d9b0' -pointsize 48 -gravity center -annotate 0 'POSTER' stamp.jpg
+          convert -size 500x700 gradient:'#7a4a2a'-'#1a1a2a' stamp.jpg
           SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot covers "--demo-covers=$PWD/stamp.jpg"
           identify stamp.jpg || true
           convert stamp.jpg -resize 400x -quality 85 stamp-small.jpg && { echo "SCREENSHOT_BEGIN stamp"; base64 -w 8000 stamp-small.jpg; echo "SCREENSHOT_END"; }
