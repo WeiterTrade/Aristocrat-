@@ -963,7 +963,8 @@ QNetworkReply *request(QNetworkAccessManager *net, const QString &method, const 
     if (!token.isEmpty())
         req.setRawHeader("X-Emby-Token", token.toUtf8());
     req.setHeader(QNetworkRequest::ContentTypeHeader, QString::fromLatin1(type));
-    req.setTransferTimeout(30000);
+    // Jellyfin во время сканирования библиотеки отвечает медленно: ждём до 2 минут тишины
+    req.setTransferTimeout(120000);
     if (method == QLatin1String("GET"))
         return net->get(req);
     return net->sendCustomRequest(req, method.toLatin1(), body);
@@ -2014,15 +2015,48 @@ void ServerPage::writeAll()
     writeNext();
 }
 
+// Сервер не ответил или оборвал связь — до 3 попыток с паузой (Jellyfin бывает занят сканированием)
+bool ServerPage::retryRow(int row, QNetworkReply *r)
+{
+    const auto e = r->error();
+    const bool transient = e == QNetworkReply::OperationCanceledError || e == QNetworkReply::TimeoutError
+                           || e == QNetworkReply::RemoteHostClosedError || e == QNetworkReply::TemporaryNetworkFailureError
+                           || e == QNetworkReply::NetworkSessionFailedError || e == QNetworkReply::ServiceUnavailableError
+                           || e == QNetworkReply::UnknownNetworkError || e == QNetworkReply::ProxyTimeoutError
+                           || e == QNetworkReply::InternalServerError;
+    QTableWidgetItem *n = m_table->item(row, ColName);
+    const int tries = n->data(Qt::UserRole + 5).toInt();
+    if (!transient || tries >= 2) {
+        n->setData(Qt::UserRole + 5, 0);
+        return false;
+    }
+    n->setData(Qt::UserRole + 5, tries + 1);
+    m_table->item(row, ColStatus)->setText(T("сервер долго не отвечает — повтор %1 из 2 через 10 с…").arg(tries + 1));
+    QTimer::singleShot(10000, this, [this, row] {
+        m_queue.prepend(row);
+        writeNext();
+    });
+    return true;
+}
+
+QString ServerPage::serverError(QNetworkReply *r)
+{
+    if (r->error() == QNetworkReply::OperationCanceledError || r->error() == QNetworkReply::TimeoutError)
+        return T("сервер не ответил за 2 минуты (возможно, занят сканированием библиотеки) — попробуйте позже");
+    return r->errorString();
+}
+
 void ServerPage::writeNext()
 {
     if (m_queue.isEmpty()) {
+        const int errors = m_writeErrors;
+        m_writeErrors = 0;
         if (m_single) {
             m_single = false;
-            setBusy(false, T("Анкета записана на сервер."));
+            setBusy(false, errors ? T("Анкета не записана — причина в столбце «Состояние».") : T("Анкета записана на сервер."));
             return;
         }
-        setBusy(false, T("Анкеты записаны на сервер."));
+        setBusy(false, errors ? T("Записано с ошибками: %1 — причина в столбце «Состояние».").arg(errors) : T("Анкеты записаны на сервер."));
         if (m_source->currentIndex() == 0)   // релиз: заодно изображения, которые Jellyfin сам не берёт
             QTimer::singleShot(300, this, [this] { pushReleaseImages(0); });
         return;
@@ -2055,7 +2089,10 @@ void ServerPage::writeNext()
         r->deleteLater();
         QJsonObject item = QJsonDocument::fromJson(r->readAll()).object();
         if (r->error() != QNetworkReply::NoError || item.isEmpty()) {
-            m_table->item(row, ColStatus)->setText(T("ошибка: %1").arg(r->errorString()));
+            if (retryRow(row, r))
+                return;
+            m_table->item(row, ColStatus)->setText(T("ошибка: %1").arg(serverError(r)));
+            ++m_writeErrors;
             writeNext();
             return;
         }
@@ -2096,10 +2133,14 @@ void ServerPage::writeNext()
         connect(u, &QNetworkReply::finished, this, [this, u, row, n, id] {
             u->deleteLater();
             if (u->error() != QNetworkReply::NoError) {
-                m_table->item(row, ColStatus)->setText(T("ошибка записи: %1").arg(u->errorString()));
+                if (retryRow(row, u))
+                    return;
+                m_table->item(row, ColStatus)->setText(T("ошибка записи: %1").arg(serverError(u)));
+                ++m_writeErrors;
                 writeNext();
                 return;
             }
+            n->setData(Qt::UserRole + 5, 0);
             m_table->item(row, ColStatus)->setText(T("записано"));
             m_table->item(row, ColCheck)->setCheckState(Qt::Unchecked);
             n->setData(Qt::UserRole + 1, true);

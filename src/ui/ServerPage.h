@@ -84,6 +84,9 @@ private:
                        const QByteArray &type = "application/json");
     bool loggedIn() const;
     void login();
+    bool retryRow(int row, QNetworkReply *r);   // временная ошибка сети — повторить строку
+    QString serverError(QNetworkReply *r);      // понятный текст ошибки
+    int m_writeErrors = 0;
     void logout();
     void updateLogin();
     void loadList();
