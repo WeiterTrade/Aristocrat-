@@ -269,6 +269,7 @@ bool backup(const QString &device, const QStringList &vtsSets, const QString &ou
 
 namespace {
 
+uchar at(const QByteArray &b, int o) { return (o >= 0 && o < b.size()) ? uchar(b[o]) : 0; }
 quint16 be16(const QByteArray &b, int o) { return (o + 2 <= b.size()) ? quint16((uchar(b[o]) << 8) | uchar(b[o + 1])) : 0; }
 quint32 be32(const QByteArray &b, int o)
 {
@@ -286,7 +287,7 @@ double bcdTime(const QByteArray &b, int o)
 
 QString langOf(const QByteArray &b, int o)
 {
-    const char c1 = b.value(o), c2 = b.value(o + 1);
+    const char c1 = char(at(b, o)), c2 = char(at(b, o + 1));
     if (c1 >= 'a' && c1 <= 'z' && c2 >= 'a' && c2 <= 'z')
         return QString(QLatin1Char(c1)) + QLatin1Char(c2);
     return QStringLiteral("?");
@@ -366,8 +367,8 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
         const int e = tt + 8 + i * 12;
         DiscTitle t;
         t.number = i + 1;
-        t.vts = uchar(vmg.value(e + 6));
-        const int ttn = uchar(vmg.value(e + 7));
+        t.vts = at(vmg, e + 6);
+        const int ttn = at(vmg, e + 7);
         const quint32 lba = be32(vmg, e + 8);
         if (t.vts <= 0 || ttn <= 0)
             continue;
@@ -415,7 +416,7 @@ QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QStri
                 continue;
             const int pgc = pgcit + int(be32(v, pgcit + 8 + (pgcn - 1) * 8 + 4));
             t.seconds += bcdTime(v, pgc + 4);
-            const int cells = uchar(v.value(pgc + 3));
+            const int cells = at(v, pgc + 3);
             const int cp = pgc + be16(v, pgc + 0xE8);
             for (int c = 0; c < cells; ++c) {
                 const int o = cp + c * 24;
