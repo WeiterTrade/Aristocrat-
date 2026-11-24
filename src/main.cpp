@@ -121,7 +121,8 @@ int main(int argc, char *argv[])
         if (a.startsWith(QLatin1String("--dvd-rip-test="))) {
             const QStringList p = a.mid(15).split(QLatin1Char('|'));
             QString err;
-            const QList<DvdCss::DiscTitle> ts = DvdCss::discTitles(p.value(0), p.value(1), &err);
+            QList<DvdCss::DiscTitle> ts = DvdCss::discTitles(p.value(0), p.value(1), &err);
+            const DvdCss::Cells traps = DvdCss::probeTraps(p.value(0), ts, {});
             for (const auto &t : ts)
                 fprintf(stderr, "dvdtitle: %d vts=%d sec=%.1f cells=%d jumps=%d bytes=%lld main=%d audio=%s\n", t.number, t.vts, t.seconds,
                         int(t.cells.size()), t.jumps, (long long)t.bytes, int(t.main), qPrintable(t.audioFormat.join(QLatin1Char(','))));
@@ -132,7 +133,7 @@ int main(int argc, char *argv[])
                     ok = DvdCss::rip(p.value(0), t, p.value(2), 0, {}, &err, &bad);
             fprintf(stderr, "dvdrip: titles=%d ok=%d bad=%d err=%s\n", int(ts.size()), ok, bad, qPrintable(err));
             if (p.size() > 3) {   // и полная копия в ISO
-                const bool iok = DvdCss::isoBackup(p.value(0), p.value(3), 0, {}, &err, &bad);
+                const bool iok = DvdCss::isoBackup(p.value(0), p.value(3), 0, ts, traps, {}, &err, &bad);
                 fprintf(stderr, "dvdiso: ok=%d bad=%d err=%s\n", iok, bad, qPrintable(err));
                 ok = ok && iok;
             }

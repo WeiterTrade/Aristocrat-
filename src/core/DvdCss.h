@@ -38,10 +38,17 @@ struct DiscTitle {
     qint64 bytes = 0;
     int jumps = 0;         // переходы назад/вразнобой между ячейками (у фальшивых много)
     bool main = false;     // вероятно, основной фильм
+    bool fake = false;     // проверкой найдена ячейка-ловушка — ложный фильм защиты
 };
 
 // Таблица фильмов диска. Читает только IFO (несколько секунд), сами VOB не трогает.
 QList<DiscTitle> discTitles(const QString &device, const QString &videoTs, QString *error);
+
+// Защита вроде Disney X-Project: десятки фильмов одной длины, в ложных — ячейки с битыми секторами.
+// Проверка чтением одного сектора из каждой «спорной» ячейки (как в DVDFab): основной — первый без ловушек.
+// Возвращает найденные ячейки-ловушки (абсолютные сектора). status(проверено, всего) — ход проверки.
+using Cells = QVector<QPair<quint32, quint32>>;
+Cells probeTraps(const QString &device, QList<DiscTitle> &titles, const std::function<void(int, int)> &status);
 
 // Записать фильм (его ячейки по порядку) в один файл MPEG-PS со снятой защитой.
 // Битые сектора пропускаются быстро, без многократных повторов.
@@ -52,7 +59,9 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile, 
 
 // Полная копия диска в ISO: меню, все фильмы, дорожки, субтитры, бонусы — со снятой защитой CSS.
 // Нечитаемые сектора-ловушки записываются нулями (структура диска сохраняется).
-bool isoBackup(const QString &device, const QString &outIso, int maxSpeed,
+// titles/traps — из discTitles/probeTraps: ячейки основного фильма читаются с повторами, ловушки не читаются,
+// остальное — без долгих повторов (сбой → нули).
+bool isoBackup(const QString &device, const QString &outIso, int maxSpeed, const QList<DiscTitle> &titles, const Cells &traps,
                const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors = nullptr);
 
 // Регионы: «диск: 2 · привод: 5 (смен осталось 4)». Пусто — не удалось узнать (только Windows).

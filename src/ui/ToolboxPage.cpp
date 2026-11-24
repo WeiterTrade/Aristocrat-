@@ -503,7 +503,7 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
                 text += T(" · субтитры: %1").arg(t.subs.join(QStringLiteral(", ")));
             if (t.main)
                 text = T("★ Основной фильм — ") + text;
-            else if (t.jumps > 2)
+            else if (t.fake || t.jumps > 2)
                 text += T(" · ложный (защита диска)");
             auto *it = new QListWidgetItem(text, list);
             it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
@@ -512,9 +512,19 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
         }
     };
     connect(showAll, &QCheckBox::toggled, &d, fill);
-    Ui::runAsync(&d, [device, videoTs, titles, err, regionText] {
+    auto traps = QSharedPointer<DvdCss::Cells>::create();
+    QPointer<QLabel> stateP(state);
+    Ui::runAsync(&d, [device, videoTs, titles, err, regionText, traps, stateP] {
         *titles = DvdCss::discTitles(device, videoTs, err.data());
         *regionText = DvdCss::regionInfo(device);
+        // Много фильмов одной длины — защита Disney/ARccOS: проверяем, в каких есть ловушки
+        *traps = DvdCss::probeTraps(device, *titles, [stateP](int done, int total) {
+            QMetaObject::invokeMethod(stateP, [stateP, done, total] {
+                if (stateP)
+                    stateP->setText(T("На диске много фильмов одной длины — это защита. Ищу настоящий фильм: проверено ячеек %1 из %2…")
+                                         .arg(done).arg(total));
+            }, Qt::QueuedConnection);
+        });
     },
                  [&d, titles, err, state, go, fill, region, regionText] {
                      if (!regionText->isEmpty()) {
@@ -528,7 +538,7 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
                      fill();
                      int fakes = 0;
                      for (const auto &t : *titles)
-                         fakes += (!t.main && t.jumps > 2) ? 1 : 0;
+                         fakes += (!t.main && (t.fake || t.jumps > 2)) ? 1 : 0;
                      state->setText(fakes > 0 ? T("На диске защита: %1 ложных фильмов. Основной фильм определён и отмечен — "
                                                   "он будет прочитан напрямую с диска со снятием защиты.").arg(fakes)
                                               : T("Основной фильм отмечен. Он будет прочитан напрямую с диска (защита CSS снимается при чтении)."));
@@ -632,14 +642,16 @@ void ToolboxPage::openDisc(const QString &device, const QString &videoTs)
                 state->setText(head + QStringLiteral("\n") + line);
             });
             tick.start();
-            Ui::runAsync(&d, [device, job, speed, cancelled, e, bad, ok, doneBytes, badNow, pctNow] {
+            const QList<DvdCss::DiscTitle> titleList = *titles;
+            const DvdCss::Cells trapList = *traps;
+            Ui::runAsync(&d, [device, job, speed, titleList, trapList, cancelled, e, bad, ok, doneBytes, badNow, pctNow] {
                 auto cb = [cancelled, doneBytes, badNow, pctNow](int pct, qint64 bytes, int b) {
                     pctNow->storeRelaxed(pct);
                     doneBytes->storeRelaxed(bytes);
                     badNow->storeRelaxed(b);
                     return cancelled->loadRelaxed() == 0;
                 };
-                *ok = job.iso ? DvdCss::isoBackup(device, job.file, speed, cb, e.data(), bad.data())
+                *ok = job.iso ? DvdCss::isoBackup(device, job.file, speed, titleList, trapList, cb, e.data(), bad.data())
                               : DvdCss::rip(device, job.title, job.file, speed, cb, e.data(), bad.data());
                 if (!*ok && (cancelled->loadRelaxed() || job.iso))
                     QFile::remove(job.file);   // отменено/не вышло — недочитанный файл не нужен

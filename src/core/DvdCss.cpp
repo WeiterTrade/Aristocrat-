@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QSet>
 #include <QLibrary>
 #include <QMutex>
 #include <QStandardPaths>
@@ -507,6 +508,10 @@ bool setDriveSpeed(const QString &device, int dvdX)
 struct Range {
     quint32 first = 0, last = 0;
     quint32 key = 0;   // сектор, по которому берётся ключ CSS; 0 — не шифруется (IFO, файловая система)
+    // 0 — важное (фильм, IFO): повторы, снижение скорости, второй проход;
+    // 1 — второстепенное (ложные фильмы, меню): при первом сбое остаток участка — нулями, без мучений привода;
+    // 2 — известная ловушка защиты: не читать вовсе, сразу нули
+    int mode = 0;
 };
 
 class Engine
@@ -542,6 +547,17 @@ public:
         qint64 outPos = 0;
         QByteArray buf(256 * kBlock, Qt::Uninitialized);
         for (const Range &r : ranges) {
+            if (r.mode == 2) {
+                const qint64 cnt = qint64(r.last) - r.first + 1;
+                if (!writeZeros(out, outPos, int(cnt)))
+                    return fail(err, T("не хватает места на диске"));
+                outPos += cnt;
+                done += cnt;
+                traps += cnt;
+                if (!report())
+                    return fail(err, T("отменено"));
+                continue;
+            }
             useKey(r.key);
             quint32 pos = r.first;
             quint32 skip = 0;
@@ -549,6 +565,16 @@ public:
             while (pos <= r.last) {
                 const int n = int(qMin<quint32>(skip ? 16 : 256, r.last - pos + 1));
                 bool ok = readAt(pos, n, buf.data(), r.key);
+                if (!ok && r.mode == 1) {
+                    // Второстепенный участок: ловушка — остаток нулями, дальше
+                    const qint64 cnt = qint64(r.last) - pos + 1;
+                    if (!writeZeros(out, outPos, int(cnt)))
+                        return fail(err, T("не хватает места на диске"));
+                    outPos += cnt;
+                    done += cnt;
+                    traps += cnt;
+                    break;
+                }
                 if (!ok && !skip) {
                     // Первый сбой на месте: пауза (привод перераскрутится) и повтор, затем — медленнее
                     for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
@@ -649,6 +675,11 @@ private:
     quint32 curKey = 0xFFFFFFFF;
     qint64 total = 0, done = 0;
     int recoveries = 0;
+
+public:
+    qint64 traps = 0;   // секторов ловушек, записанных нулями без чтения/после первого сбоя
+
+private:
     QVector<Bad> bad;
 
     bool fail(QString *err, const QString &e)
@@ -727,6 +758,90 @@ private:
 
 } // namespace
 
+
+Cells probeTraps(const QString &device, QList<DiscTitle> &titles, const std::function<void(int, int)> &status)
+{
+    Cells traps;
+    Lib &l = lib();
+    double longest = 0;
+    for (const DiscTitle &t : titles)
+        longest = qMax(longest, t.seconds);
+    QList<int> cand;
+    for (int i = 0; i < titles.size(); ++i)
+        if (titles[i].seconds >= longest * 0.9)
+            cand << i;
+    if (!l.ok || cand.size() < 2)
+        return traps;
+    std::sort(cand.begin(), cand.end(), [&](int a, int b) {
+        if (titles[a].main != titles[b].main)
+            return titles[a].main;
+        if (titles[a].jumps != titles[b].jumps)
+            return titles[a].jumps < titles[b].jumps;
+        return titles[a].cells.size() < titles[b].cells.size();
+    });
+    // Ячейки, общие для всех кандидатов, ничего не решают — проверяем только «спорные»
+    auto keyOf = [](const QPair<quint32, quint32> &c) { return (quint64(c.first) << 32) | c.second; };
+    QHash<quint64, int> seen;
+    for (int i : cand) {
+        QSet<quint64> once;
+        for (const auto &c : titles[i].cells)
+            once.insert(keyOf(c));
+        for (quint64 k : once)
+            seen[k] += 1;
+    }
+    int toCheck = 0;
+    for (auto it = seen.cbegin(); it != seen.cend(); ++it)
+        toCheck += it.value() < cand.size() ? 1 : 0;
+    void *h = l.open(QFile::encodeName(device).constData());
+    if (!h)
+        return traps;
+    QHash<quint64, bool> ok;
+    QElapsedTimer clock;
+    clock.start();
+    int checked = 0, mainIdx = -1;
+    QByteArray buf;
+    for (int i : cand) {
+        bool clean = true;
+        for (const auto &c : titles[i].cells) {
+            const quint64 k = keyOf(c);
+            if (seen.value(k) >= cand.size())
+                continue;
+            if (!ok.contains(k)) {
+                // Начало и середина ячейки: ловушки бывают не с первого сектора
+                const bool good = readRaw(l, h, c.first, 1, buf) && readRaw(l, h, c.first + (c.second - c.first) / 2, 1, buf);
+                ok.insert(k, good);
+                if (!good)
+                    traps.append(c);
+                if (status)
+                    status(++checked, toCheck);
+            }
+            if (!ok.value(k)) {
+                clean = false;
+                break;
+            }
+        }
+        if (clean) {
+            mainIdx = i;
+            break;
+        }
+        if (clock.elapsed() > 8 * 60 * 1000)
+            break;   // не дольше 8 минут
+    }
+    l.close(h);
+    // Ложные — с найденной ловушкой; основной — первый чистый (по порядку правдоподобия)
+    for (int i : cand) {
+        for (const auto &c : titles[i].cells)
+            if (ok.contains(keyOf(c)) && !ok.value(keyOf(c)))
+                titles[i].fake = true;
+    }
+    if (mainIdx >= 0) {
+        for (DiscTitle &t : titles)
+            t.main = false;
+        titles[mainIdx].main = true;
+    }
+    return traps;
+}
+
 bool rip(const QString &device, const DiscTitle &title, const QString &outFile, int maxSpeed,
          const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors)
 {
@@ -748,7 +863,7 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile, 
     }
     QVector<Range> ranges;
     for (const auto &c : title.cells)
-        ranges.append({c.first, c.second, title.keySector});
+        ranges.append({c.first, c.second, title.keySector, 0});
     if (!e.copy(ranges, out, error, badSectors))
         return false;
     out.close();
@@ -760,7 +875,7 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile, 
     return true;
 }
 
-bool isoBackup(const QString &device, const QString &outIso, int maxSpeed,
+bool isoBackup(const QString &device, const QString &outIso, int maxSpeed, const QList<DiscTitle> &titles, const Cells &traps,
                const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors)
 {
     Lib &l = lib();
@@ -797,20 +912,51 @@ bool isoBackup(const QString &device, const QString &outIso, int maxSpeed,
         return false;
     }
     std::sort(vobs.begin(), vobs.end(), [](const Entry &a, const Entry &b) { return a.lba < b.lba; });
-    // Весь диск по порядку: VOB — с ключом своего файла (расшифровка), остальное — как есть
+    // Ячейки фильмов: основной — важные (с повторами), ловушки — не читаем, остальное — без долгих повторов
+    Cells important;
+    for (const DiscTitle &t : titles)
+        if (t.main)
+            important += t.cells;
+    auto inside = [](const Cells &cs, quint32 a) {
+        for (const auto &c : cs)
+            if (a >= c.first && a <= c.second)
+                return true;
+        return false;
+    };
+    // Весь диск по порядку: VOB — с ключом своего файла (расшифровка), режим — по ячейкам; остальное — важное
     QVector<Range> ranges;
+    auto addVob = [&](quint32 a, quint32 b, quint32 key) {
+        QVector<quint32> cuts{a, b + 1};
+        for (const Cells *cs : {&important, &traps})
+            for (const auto &c : *cs) {
+                if (c.first > a && c.first <= b)
+                    cuts << c.first;
+                if (c.second >= a && c.second < b)
+                    cuts << c.second + 1;
+            }
+        std::sort(cuts.begin(), cuts.end());
+        cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+        for (int i = 0; i + 1 < cuts.size(); ++i) {
+            const quint32 x = cuts[i], y = cuts[i + 1] - 1;
+            const int mode = inside(important, x) ? 0 : inside(traps, x) ? 2 : 1;
+            if (!ranges.isEmpty() && ranges.last().mode == mode && ranges.last().key == key && ranges.last().last + 1 == x)
+                ranges.last().last = y;
+            else
+                ranges.append({x, y, key, mode});
+        }
+    };
     quint32 pos = 0;
     for (const Entry &v : vobs) {
         if (v.lba >= volume || v.lba < pos)
             continue;   // ловушки защиты: файлы «за краем» или внахлёст
         const quint32 last = qMin<quint32>(volume - 1, v.lba + (v.size + kBlock - 1) / kBlock - 1);
         if (v.lba > pos)
-            ranges.append({pos, v.lba - 1, 0});
-        ranges.append({v.lba, last, v.lba});
+            ranges.append({pos, v.lba - 1, 0, 0});
+        addVob(v.lba, last, v.lba);
         pos = last + 1;
     }
     if (pos < volume)
-        ranges.append({pos, volume - 1, 0});
+        ranges.append({pos, volume - 1, 0, 0});
 
     Engine e(l, device, maxSpeed, progress);
     if (!e.open(error))

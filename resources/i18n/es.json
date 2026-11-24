@@ -433,6 +433,7 @@
  "Модуль загрузки (yt-dlp) не найден.": "No se encontró el módulo de descarga (yt-dlp).",
  "Модуль загрузки yt-dlp, версия ": "Módulo de descarga yt-dlp, versión ",
  "На диске защита: %1 ложных фильмов. Основной фильм определён и отмечен — он будет прочитан напрямую с диска со снятием защиты.": "El disco está protegido: %1 títulos falsos. La película principal se ha identificado y marcado; se leerá directamente del disco quitando la protección.",
+ "На диске много фильмов одной длины — это защита. Ищу настоящий фильм: проверено ячеек %1 из %2…": "El disco tiene muchos títulos de la misma duración: es una protección. Buscando la película real: celdas comprobadas %1 de %2…",
  "На диске не найдено фильмов (файлов VTS_xx_x.VOB).": "No se encontraron películas en el disco (archivos VTS_xx_x.VOB).",
  "На сервере стоит дата смерти %1 и рождения %2 — скорее всего, Jellyfin взял их у однофамильца (TMDb). При записи дата смерти будет удалена, если поле пустое.": "El servidor tiene fecha de fallecimiento %1 y de nacimiento %2: probablemente Jellyfin las tomó de un homónimo (TMDb). Al escribir, la fecha de fallecimiento se borra si el campo está vacío.",
  "На сервере уже есть все изображения релиза.": "El servidor ya tiene todas las imágenes del lanzamiento.",
