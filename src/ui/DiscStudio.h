@@ -54,6 +54,7 @@ private:
     void loadPage(int index);
     void addText();
     void addCover();
+    void replaceButtonText(const QRectF &area);
     void replaceBackground();
     void resetMenu();
     void deleteSelected();

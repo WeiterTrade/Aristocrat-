@@ -32,6 +32,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariantAnimation>
+#include <algorithm>
+#include <functional>
 
 // ============================== Раздел с выдвижной панелью ==============================
 
@@ -180,6 +182,106 @@ private:
 
 constexpr int kButtonTag = 1;   // элементы-подсказки (рамки кнопок) не попадают в итоговую картинку
 
+// Рамка кнопки диска: щелчок — заменить надпись на этой кнопке
+class ButtonFrame : public QGraphicsRectItem
+{
+public:
+    ButtonFrame(const QRectF &r, std::function<void(const QRectF &)> click)
+        : QGraphicsRectItem(r), m_click(std::move(click))
+    {
+        setPen(QPen(QColor(232, 190, 90), 2, Qt::DashLine));
+        setAcceptHoverEvents(true);
+        setCursor(Qt::PointingHandCursor);
+        setToolTip(T("Щёлкните, чтобы заменить надпись на этой кнопке"));
+        setData(0, kButtonTag);
+        setZValue(1);
+    }
+
+protected:
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *) override { setBrush(QColor(232, 190, 90, 50)); }
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent *) override { setBrush(Qt::NoBrush); }
+    void mousePressEvent(QGraphicsSceneMouseEvent *e) override
+    {
+        if (e->button() == Qt::LeftButton && m_click)
+            m_click(rect());
+    }
+
+private:
+    std::function<void(const QRectF &)> m_click;
+};
+
+// Заплатка-картинка: фон под старой надписью восстановлен по краям (переход цвета сохраняется)
+class PatchItem : public QGraphicsPixmapItem
+{
+public:
+    explicit PatchItem(const QPixmap &p)
+        : QGraphicsPixmapItem(p)
+    {
+        setFlags(ItemIsMovable | ItemIsSelectable);
+        setZValue(5);
+    }
+};
+
+// Фон без надписи: каждая строка — плавный переход между цветами слева и справа от области,
+// затем лёгкое размытие по вертикали (как «заливка с учётом содержимого», только проще)
+QImage healBackground(const QImage &bg, const QRect &r0)
+{
+    const QRect r = r0.adjusted(-2, -2, 2, 2).intersected(bg.rect().adjusted(3, 3, -3, -3));
+    QImage out(r.size(), QImage::Format_RGB32);
+    for (int y = 0; y < r.height(); ++y) {
+        const QColor a = bg.pixelColor(qMax(0, r.left() - 3), r.top() + y);
+        const QColor b = bg.pixelColor(qMin(bg.width() - 1, r.right() + 3), r.top() + y);
+        for (int x = 0; x < r.width(); ++x) {
+            const double t = r.width() > 1 ? double(x) / (r.width() - 1) : 0.0;
+            out.setPixelColor(x, y, QColor(int(a.red() + (b.red() - a.red()) * t), int(a.green() + (b.green() - a.green()) * t),
+                                           int(a.blue() + (b.blue() - a.blue()) * t)));
+        }
+    }
+    // Сглаживание по вертикали — убирает полосы от шума в краевых пикселях
+    QImage smooth = out;
+    const int k = 3;
+    for (int y = 0; y < out.height(); ++y)
+        for (int x = 0; x < out.width(); ++x) {
+            int R = 0, G = 0, B = 0, n = 0;
+            for (int dy = -k; dy <= k; ++dy) {
+                const int yy = qBound(0, y + dy, out.height() - 1);
+                const QRgb c = out.pixel(x, yy);
+                R += qRed(c);
+                G += qGreen(c);
+                B += qBlue(c);
+                ++n;
+            }
+            smooth.setPixel(x, y, qRgb(R / n, G / n, B / n));
+        }
+    return smooth;
+}
+
+// Цвет старой надписи: пиксели, сильнее всего отличающиеся от фона вокруг
+QColor textColorIn(const QImage &bg, const QRect &r, const QColor &around)
+{
+    QVector<QPair<int, QRgb>> px;
+    const QRect rr = r.intersected(bg.rect());
+    for (int y = rr.top(); y <= rr.bottom(); ++y)
+        for (int x = rr.left(); x <= rr.right(); ++x) {
+            const QRgb c = bg.pixel(x, y);
+            const int d = qAbs(qRed(c) - around.red()) + qAbs(qGreen(c) - around.green()) + qAbs(qBlue(c) - around.blue());
+            px.append({d, c});
+        }
+    if (px.isEmpty())
+        return Qt::white;
+    std::sort(px.begin(), px.end(), [](const QPair<int, QRgb> &a, const QPair<int, QRgb> &b) { return a.first > b.first; });
+    const int n = qMax(1, int(px.size() / 12));
+    if (px.first().first < 60)   // надписи почти не видно — берём контрастный цвет
+        return qGray(around.rgb()) > 128 ? Qt::black : Qt::white;
+    qint64 R = 0, G = 0, B = 0;
+    for (int i = 0; i < n; ++i) {
+        R += qRed(px[i].second);
+        G += qGreen(px[i].second);
+        B += qBlue(px[i].second);
+    }
+    return QColor(int(R / n), int(G / n), int(B / n));
+}
+
 QColor averageColor(const QImage &img, const QRect &r)
 {
     const QRect rr = r.intersected(img.rect());
@@ -227,7 +329,8 @@ MenuEditor::MenuEditor(QWidget *parent)
     m_hint = new QLabel(T("Откройте образ DVD (например, сделанный в «Инструменты → Копирование DVD»). Слева — все меню диска. "
                           "Добавляйте надписи на русском, закрашивайте старый текст или замените фон своей картинкой. "
                           "Кнопки, переходы и подсветка кнопок остаются как на диске; движущееся меню станет неподвижной картинкой. "
-                          "Исходный образ не меняется — сохраняется новый. Меню Blu-ray пока не поддерживаются."),
+                          "Исходный образ не меняется — сохраняется новый. Меню Blu-ray пока не поддерживаются.<br><b>Щёлкните по рамке кнопки</b> — "
+                          "старая надпись исчезнет, останется напечатать новую."),
                         this);
     m_hint->setObjectName(QStringLiteral("Muted"));
     m_hint->setWordWrap(true);
@@ -372,14 +475,14 @@ void MenuEditor::loadPage(int index)
     const double sx = double(p.display.width()) / vi.size.width(), sy = double(p.display.height()) / vi.size.height();
     for (int i = 0; i < p.menu.buttons.size(); ++i) {
         const QRect r = p.menu.buttons[i].rect;
-        auto *rect = p.scene->addRect(QRectF(r.x() * sx, r.y() * sy, r.width() * sx, r.height() * sy), QPen(QColor(232, 190, 90), 2, Qt::DashLine));
-        rect->setData(0, kButtonTag);
-        rect->setZValue(20);
+        auto *rect = new ButtonFrame(QRectF(r.x() * sx, r.y() * sy, r.width() * sx, r.height() * sy),
+                                     [this](const QRectF &area) { replaceButtonText(area); });
+        p.scene->addItem(rect);
         auto *num = p.scene->addSimpleText(QString::number(i + 1));
         num->setBrush(QColor(232, 190, 90));
         num->setPos(r.x() * sx + 3, r.y() * sy + 1);
         num->setData(0, kButtonTag);
-        num->setZValue(20);
+        num->setZValue(2);
     }
     const QString iso = m_iso;
     const DvdImage::Menu menu = p.menu;
@@ -413,6 +516,47 @@ void MenuEditor::addText()
     p->scene->addItem(t);
     p->scene->clearSelection();
     t->setSelected(true);
+    p->edited = true;
+}
+
+void MenuEditor::replaceButtonText(const QRectF &area)
+{
+    Page *p = current();
+    if (!p || !p->scene || !p->loaded)
+        return;
+    const QImage bg = p->background->pixmap().toImage().convertToFormat(QImage::Format_RGB32);
+    const QRect r = area.toAlignedRect();
+    // Фон вокруг кнопки и цвет её надписи
+    const QColor around = averageColor(bg, QRect(r.left() - 4, r.top(), 3, r.height()));
+    const QColor textColor = textColorIn(bg, r, around);
+    const QImage healed = healBackground(bg, r);
+    auto *patch = new PatchItem(QPixmap::fromImage(healed));
+    patch->setPos(r.adjusted(-2, -2, 2, 2).intersected(bg.rect().adjusted(3, 3, -3, -3)).topLeft());
+    p->scene->addItem(patch);
+    // Новая надпись по центру кнопки, высота шрифта — по высоте кнопки
+    auto *t = new TextItem(T("Текст кнопки"));
+    QFont f(QStringLiteral("Arial"));
+    f.setBold(true);
+    f.setPixelSize(qBound(10, int(r.height() * 0.62), 120));
+    t->setFont(f);
+    t->setDefaultTextColor(textColor);
+    p->scene->addItem(t);
+    const QRectF tb = t->boundingRect();
+    t->setPos(r.center().x() - tb.width() / 2, r.center().y() - tb.height() / 2);
+    // Сразу в режим правки, текст выделен — остаётся напечатать новый
+    p->scene->clearSelection();
+    t->setSelected(true);
+    t->setTextInteractionFlags(Qt::TextEditorInteraction);
+    t->setFocus();
+    QTextCursor c = t->textCursor();
+    c.select(QTextCursor::Document);
+    t->setTextCursor(c);
+    const QPointF center = r.center();
+    QObject::connect(t->document(), &QTextDocument::contentsChanged, t, [t, center] {
+        const QRectF b = t->boundingRect();
+        t->setPos(center.x() - b.width() / 2, center.y() - b.height() / 2);
+    });
+    m_view->setFocus();
     p->edited = true;
 }
 
