@@ -14,10 +14,16 @@
 #include <QVector>
 #include <cstring>
 #include <QElapsedTimer>
+#include <QDateTime>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <QThread>
 #include <algorithm>
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <ntddscsi.h>
+#include <cstddef>
 #else
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -514,6 +520,137 @@ struct Range {
     int mode = 0;
 };
 
+// ---- Быстрые ошибки чтения ----
+// Обычно привод на битом секторе сам долго повторяет чтение (останавливает и раскручивает диск — тот самый
+// циклический звук), а Windows повторяет команду ещё несколько раз: один сектор-ловушка = минуты.
+// Как IsoBuster/ImgBurn: на время копирования уменьшаем число повторов в самом приводе (страница режима 01h
+// «Read/Write Error Recovery», MODE SELECT), после — возвращаем как было. Плюс сторож: зависшее чтение
+// отменяется через CancelSynchronousIo.
+#ifdef Q_OS_WIN
+struct Spt {
+    SCSI_PASS_THROUGH_DIRECT sptd;
+    ULONG filler;
+    UCHAR sense[32];
+};
+
+static bool scsi(HANDLE h, const UCHAR *cdb, int cdbLen, void *data, ULONG len, bool in)
+{
+    Spt s{};
+    s.sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
+    s.sptd.CdbLength = UCHAR(cdbLen);
+    s.sptd.SenseInfoLength = sizeof(s.sense);
+    s.sptd.DataIn = in ? SCSI_IOCTL_DATA_IN : SCSI_IOCTL_DATA_OUT;
+    s.sptd.DataTransferLength = len;
+    s.sptd.TimeOutValue = 10;
+    s.sptd.DataBuffer = data;
+    s.sptd.SenseInfoOffset = offsetof(Spt, sense);
+    std::memcpy(s.sptd.Cdb, cdb, size_t(cdbLen));
+    DWORD got = 0;
+    return DeviceIoControl(h, IOCTL_SCSI_PASS_THROUGH_DIRECT, &s, sizeof(s), &s, sizeof(s), &got, nullptr) && s.sptd.ScsiStatus == 0;
+}
+
+class FastErrors
+{
+public:
+    explicit FastErrors(const QString &device)
+    {
+        if (device.size() != 2 || device.at(1) != QLatin1Char(':'))
+            return;
+        const QString path = QStringLiteral("\\\\.\\") + device;
+        h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h == INVALID_HANDLE_VALUE) {
+            h = nullptr;
+            return;
+        }
+        // MODE SENSE(10), страница 01h (текущие значения)
+        UCHAR cdb[10] = {0x5A, 0x08, 0x01, 0, 0, 0, 0, 0, sizeof(orig), 0};
+        if (!scsi(h, cdb, 10, orig, sizeof(orig), true))
+            return;
+        const int bd = (orig[6] << 8) | orig[7];
+        page = 8 + bd;
+        if (page + 4 > int(sizeof(orig)) || (orig[page] & 0x3F) != 0x01)
+            return;
+        len = page + 2 + orig[page + 1];
+        if (len > int(sizeof(orig)))
+            return;
+        UCHAR fast[sizeof(orig)];
+        std::memcpy(fast, orig, sizeof(orig));
+        fast[page + 3] = qMin<UCHAR>(fast[page + 3], 1);   // Read Retry Count: не больше 1
+        saved = select(fast) && true;
+    }
+    ~FastErrors()
+    {
+        if (saved)
+            select(orig);
+        if (h)
+            CloseHandle(h);
+    }
+
+private:
+    bool select(const UCHAR *src)
+    {
+        UCHAR buf[sizeof(orig)];
+        std::memcpy(buf, src, size_t(len));
+        buf[0] = buf[1] = 0;            // длина данных — зарезервирована в MODE SELECT
+        buf[page] &= 0x3F;              // бит PS
+        UCHAR cdb[10] = {0x55, 0x10, 0, 0, 0, 0, 0, UCHAR(len >> 8), UCHAR(len & 0xFF), 0};
+        return scsi(h, cdb, 10, buf, ULONG(len), false);
+    }
+    HANDLE h = nullptr;
+    UCHAR orig[64] = {};
+    int page = 0, len = 0;
+    bool saved = false;
+};
+
+// Сторож: если одно чтение висит дольше 25 с — отменить его (диск-ловушка, привод «крутит» без конца)
+class Watchdog
+{
+public:
+    Watchdog()
+    {
+        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread, 0, FALSE, DUPLICATE_SAME_ACCESS);
+        th = std::thread([this] {
+            while (!stop.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                const qint64 t = since.load();
+                if (t > 0 && QDateTime::currentMSecsSinceEpoch() - t > 25000 && thread) {
+                    CancelSynchronousIo(thread);
+                    since.store(QDateTime::currentMSecsSinceEpoch());   // не чаще раза в 25 с
+                }
+            }
+        });
+    }
+    ~Watchdog()
+    {
+        stop.store(true);
+        th.join();
+        if (thread)
+            CloseHandle(thread);
+    }
+    void begin() { since.store(QDateTime::currentMSecsSinceEpoch()); }
+    void end() { since.store(0); }
+
+private:
+    HANDLE thread = nullptr;
+    std::thread th;
+    std::atomic<bool> stop{false};
+    std::atomic<qint64> since{0};
+};
+#else
+class FastErrors
+{
+public:
+    explicit FastErrors(const QString &) {}
+};
+class Watchdog
+{
+public:
+    void begin() {}
+    void end() {}
+};
+#endif
+
 class Engine
 {
 public:
@@ -635,7 +772,7 @@ public:
             }
         }
         // Второй проход: пропущенное — по одному сектору на минимальной скорости (до 10 минут)
-        if (!bad.isEmpty() && badCount() < 50000) {
+        if (!bad.isEmpty() && badCount() < 4096) {   // только немного пропусков — большие участки это ловушки
             setDriveSpeed(device, 2);
             QElapsedTimer t;
             t.start();
@@ -644,7 +781,7 @@ public:
             for (const Bad &b : qAsConst(bad)) {
                 useKey(b.key);
                 for (int i = 0; i < b.count; ++i) {
-                    if (t.elapsed() > 600000 || !report())
+                    if (t.elapsed() > 300000 || !report())
                         still.append({b.out + i, b.lba + quint32(i), 1, b.key});
                     else if (readAt(b.lba + quint32(i), 1, one.data(), b.key))
                         writeAt(out, b.out + i, one.constData(), 1);
@@ -668,6 +805,8 @@ private:
     };
     Lib &l;
     QString device;
+    FastErrors fastErrors{device};   // меньше внутренних повторов привода — на время копирования
+    Watchdog watchdog;
     int maxSpeed;
     int speed = 0;
     std::function<bool(int, qint64, int)> progress;
@@ -703,9 +842,10 @@ private:
     }
     bool readAt(quint32 lba, int n, char *dst, quint32 key)
     {
-        if (l.seek(h, int(lba), kNoFlags) != int(lba))
-            return false;
-        return l.read(h, dst, n, key ? kReadDecrypt : kNoFlags) == n;
+        watchdog.begin();
+        bool ok = l.seek(h, int(lba), kNoFlags) == int(lba) && l.read(h, dst, n, key ? kReadDecrypt : kNoFlags) == n;
+        watchdog.end();
+        return ok;
     }
     static bool writeAt(QFile &out, qint64 sector, const char *data, int n)
     {
