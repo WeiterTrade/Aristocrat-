@@ -24,10 +24,12 @@ set(SOURCES
     src/core/LocalServer.cpp
     src/core/Dvd.cpp
     src/core/DvdCss.cpp
+    src/core/DvdImage.cpp
     src/core/Chapters.cpp
     src/core/Release.cpp
     src/core/Gender.cpp
     src/ui/MainWindow.cpp
+    src/ui/DiscStudio.cpp
     src/ui/ConvertPage.cpp
     src/ui/TaskCard.cpp
     src/ui/DropZone.cpp

@@ -2,6 +2,7 @@
 #include "core/Theme.h"
 #include "core/Tools.h"
 #include "core/DvdCss.h"
+#include "core/DvdImage.h"
 #include <cstdio>
 #include "ui/MainWindow.h"
 
@@ -104,6 +105,32 @@ int main(int argc, char *argv[])
         Tools::hardwareH264Encoder();
         Tools::hardwareHevcEncoder();
     });
+
+    // Автопроверка правки меню DVD: --dvd-menu-test=<образ>|<новый образ>|<картинка>
+    for (const QString &a : app.arguments())
+        if (a.startsWith(QLatin1String("--dvd-menu-test="))) {
+            const QStringList p = a.mid(16).split(QLatin1Char('|'));
+            QString err;
+            const QList<DvdImage::Menu> ms = DvdImage::menus(p.value(0), &err);
+            for (const auto &m : ms)
+                fprintf(stderr, "dvdmenu: %s cells=%d still=%d buttons=%d\n", qPrintable(m.title), int(m.cells.size()), int(m.still),
+                        int(m.buttons.size()));
+            if (ms.isEmpty()) {
+                fprintf(stderr, "dvdmenu: none %s\n", qPrintable(err));
+                return 1;
+            }
+            const QSize ds = DvdImage::videoInfo(p.value(0), ms.first()).display();
+            const QImage before = DvdImage::frame(p.value(0), ms.first(), &err);
+            QImage pic(p.value(2));
+            pic = pic.scaled(ds);
+            const bool ok = DvdImage::save(p.value(0), p.value(1), {{ms.first(), pic}}, {}, &err);
+            const QImage after = DvdImage::frame(p.value(1), DvdImage::menus(p.value(1), nullptr).value(0), &err);
+            const QRgb b = before.isNull() ? 0 : before.pixel(before.width() / 2, before.height() / 2);
+            const QRgb c = after.isNull() ? 0 : after.pixel(after.width() / 2, after.height() / 2);
+            fprintf(stderr, "dvdmenu: display=%dx%d save=%d before=%d,%d,%d after=%d,%d,%d err=%s\n", ds.width(), ds.height(), ok, qRed(b),
+                    qGreen(b), qBlue(b), qRed(c), qGreen(c), qBlue(c), qPrintable(err));
+            return ok && qGreen(c) > 150 && qRed(c) < 100 ? 0 : 1;
+        }
 
     // Регион привода (Linux: запускается через pkexec из окна «Копирование DVD»): --set-dvd-region=<привод>|<регион>
     for (const QString &a : app.arguments())

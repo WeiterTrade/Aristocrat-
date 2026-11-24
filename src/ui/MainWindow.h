@@ -35,6 +35,7 @@ protected:
     void changeEvent(QEvent *e) override;
 
 private:
+    class MenuEditor *m_menuEditor = nullptr;
 #ifdef HAVE_WEBENGINE
     void schedulerDone(const QList<struct SchedItem> &done);
 #endif

@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "DiscStudio.h"
 #include <QSharedPointer>
 #include <QPushButton>
 #include "core/MediaInfo.h"
@@ -81,8 +82,13 @@ MainWindow::MainWindow(QWidget *parent)
     auto *download = new DownloadPage(m_pages);
     m_download = download;
     m_pages->addWidget(download);
-    m_pages->addWidget(new PlaceholderPage("burn", T("Запись DVD"),
-                                           T("Запись видео на DVD появится в одной из следующих версий."), m_pages));
+    {
+        // «Запись»: инструменты для дисков (выдвижная панель разделов)
+        auto *studio = new DiscStudioPage(m_pages);
+        m_menuEditor = new MenuEditor(studio);
+        studio->addTool(QStringLiteral("dvd"), T("Редактировать ISO (DVD)"), m_menuEditor);
+        m_pages->addWidget(studio);
+    }
     m_pages->addWidget(new PlaceholderPage("transfer", T("Передача на устройство"),
                                            T("Передача видео на телефон появится в одной из следующих версий. "
                                                           "Пока выберите формат нужного устройства во вкладке «Устройства»."), m_pages));
