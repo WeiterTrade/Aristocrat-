@@ -242,10 +242,10 @@ QVector<Vobu> splitVobus(const QByteArray &buf)
             v.capacity += p.length;
         }
         for (int i = 0; i + 3 < es.size(); ++i)
-            if (es[i] == 0 && es[i + 1] == 0 && es[i + 2] == 1) {
-                if (uchar(es[i + 3]) == 0x00)
+            if (at(es, i) == 0 && at(es, i + 1) == 0 && at(es, i + 2) == 1) {
+                if (at(es, i + 3) == 0x00)
                     ++v.pictures;
-                else if (uchar(es[i + 3]) == 0xB7)
+                else if (at(es, i + 3) == 0xB7)
                     v.seqEnd = true;
             }
     }
@@ -270,7 +270,7 @@ bool runFfmpeg(const QStringList &args, QString *err)
     p.start(Tools::ffmpeg(), QStringList{QStringLiteral("-hide_banner"), QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y")} + args);
     if (!p.waitForFinished(120000) || p.exitCode() != 0) {
         if (err)
-            *err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed().right(400);
+            *err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed().left(400);
         return false;
     }
     return true;
@@ -427,7 +427,8 @@ bool save(const QString &iso, const QString &outIso, const QList<QPair<Menu, QIm
                             QStringLiteral("-r"), vi.ntsc ? QStringLiteral("30000/1001") : QStringLiteral("25"),
                             QStringLiteral("-aspect"), vi.wide ? QStringLiteral("16:9") : QStringLiteral("4:3"),
                             QStringLiteral("-g"), QString::number(qMax(1, frames)), QStringLiteral("-bf"), QStringLiteral("0"),
-                            QStringLiteral("-flags"), QStringLiteral("+cgop"), QStringLiteral("-q:v"), QString::number(q),
+                            QStringLiteral("-flags"), QStringLiteral("+cgop"),
+                            QStringLiteral("-sc_threshold"), QStringLiteral("1000000000"), QStringLiteral("-q:v"), QString::number(q),
                             QStringLiteral("-maxrate"), QStringLiteral("9000k"), QStringLiteral("-bufsize"), QStringLiteral("1835k"),
                             QStringLiteral("-f"), QStringLiteral("mpeg2video"), m2v},
                            &err)) {
@@ -460,7 +461,7 @@ bool save(const QString &iso, const QString &outIso, const QList<QPair<Menu, QIm
                 // Первый кадр не больше буфера DVD-плеера (224 КБ), иначе бытовой плеер его не покажет
                 int second = -1;
                 for (int i = 4; i + 3 < es.size(); ++i)
-                    if (es[i] == 0 && es[i + 1] == 0 && es[i + 2] == 1 && es[i + 3] == 0) {
+                    if (at(es, i) == 0 && at(es, i + 1) == 0 && at(es, i + 2) == 1 && at(es, i + 3) == 0) {
                         if (second == -2) {
                             second = i;
                             break;
