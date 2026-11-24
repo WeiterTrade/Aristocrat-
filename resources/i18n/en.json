@@ -894,6 +894,7 @@
  "Чёрные поля убраны: слева %1, справа %2, сверху %3, снизу %4 пикс.": "Black bars removed: left %1, right %2, top %3, bottom %4 px.",
  "Чёрных полей не найдено. Кадр будет заполнен целиком под выбранное разрешение.": "No black bars found. The frame will be filled completely for the selected resolution.",
  "Ширина": "Width",
+ "Шрифт:": "Font:",
  "Шумоподавление": "Noise reduction",
  "Экспорт глав": "Export chapters",
  "Экспорт…": "Export…",

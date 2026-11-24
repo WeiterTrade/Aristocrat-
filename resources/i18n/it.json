@@ -894,6 +894,7 @@
  "Чёрные поля убраны: слева %1, справа %2, сверху %3, снизу %4 пикс.": "Bande nere rimosse: sinistra %1, destra %2, sopra %3, sotto %4 px.",
  "Чёрных полей не найдено. Кадр будет заполнен целиком под выбранное разрешение.": "Nessuna banda nera trovata. Il fotogramma verrà riempito completamente per la risoluzione scelta.",
  "Ширина": "Larghezza",
+ "Шрифт:": "Carattere:",
  "Шумоподавление": "Riduzione del rumore",
  "Экспорт глав": "Esporta capitoli",
  "Экспорт…": "Esporta…",

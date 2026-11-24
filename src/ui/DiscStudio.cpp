@@ -54,6 +54,8 @@ DiscStudioPage::DiscStudioPage(QWidget *parent)
     side->addWidget(m_burger, 0, Qt::AlignLeft);
     m_list = new QListWidget(m_side);
     m_list->setIconSize(QSize(20, 20));
+    m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_list->setTextElideMode(Qt::ElideRight);
     side->addWidget(m_list, 1);
     root->addWidget(m_side);
     m_stack = new QStackedWidget(this);
@@ -233,7 +235,8 @@ MenuEditor::MenuEditor(QWidget *parent)
 
     auto *body = new QHBoxLayout;
     m_menus = new QListWidget(this);
-    m_menus->setFixedWidth(260);
+    m_menus->setFixedWidth(220);
+    m_menus->setWordWrap(true);
     body->addWidget(m_menus);
     auto *right = new QVBoxLayout;
     auto *tools = new QHBoxLayout;
@@ -253,15 +256,25 @@ MenuEditor::MenuEditor(QWidget *parent)
     auto *showButtons = new QCheckBox(T("Рамки кнопок"), this);
     showButtons->setChecked(true);
     showButtons->setToolTip(T("Показать, где на диске находятся кнопки (в итоговое меню не попадают)"));
+    // Два ряда: действия и оформление — чтобы подписи не обрезались в узком окне
+    auto *tools2 = new QHBoxLayout;
     for (QWidget *w : {static_cast<QWidget *>(addText), static_cast<QWidget *>(cover), static_cast<QWidget *>(bg),
-                       static_cast<QWidget *>(del), static_cast<QWidget *>(reset), static_cast<QWidget *>(m_size),
-                       static_cast<QWidget *>(m_color), static_cast<QWidget *>(showButtons)}) {
+                       static_cast<QWidget *>(del), static_cast<QWidget *>(reset)}) {
+        w->setMinimumWidth(w->sizeHint().width());
         tools->addWidget(w);
         m_editTools << w;
         w->setEnabled(false);
     }
+    tools2->addWidget(new QLabel(T("Шрифт:"), this));
+    for (QWidget *w : {static_cast<QWidget *>(m_size), static_cast<QWidget *>(m_color), static_cast<QWidget *>(showButtons)}) {
+        tools2->addWidget(w);
+        m_editTools << w;
+        w->setEnabled(false);
+    }
     tools->addStretch();
+    tools2->addStretch();
     right->addLayout(tools);
+    right->addLayout(tools2);
     m_view = new QGraphicsView(this);
     m_view->setRenderHint(QPainter::Antialiasing);
     m_view->setRenderHint(QPainter::SmoothPixmapTransform);
