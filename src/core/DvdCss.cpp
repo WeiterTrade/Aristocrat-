@@ -23,10 +23,13 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <ntddscsi.h>
+#include <ntddcdvd.h>
 #include <cstddef>
 #else
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <linux/cdrom.h>
+#include <cerrno>
 #include <unistd.h>
 #endif
 
@@ -1117,6 +1120,141 @@ bool isoBackup(const QString &device, const QString &outIso, int maxSpeed, const
     return e.copy(ranges, out, error, badSectors);
 }
 
+
+
+QStringList opticalDrives()
+{
+    QStringList out;
+#ifdef Q_OS_WIN
+    const DWORD mask = GetLogicalDrives();
+    for (int i = 0; i < 26; ++i)
+        if (mask & (1u << i)) {
+            const QString root = QStringLiteral("%1:\\").arg(QChar('A' + i));
+            if (GetDriveTypeW(reinterpret_cast<LPCWSTR>(root.utf16())) == DRIVE_CDROM)
+                out << root.left(2);
+        }
+#else
+    for (int i = 0; i < 8; ++i)
+        if (QFileInfo::exists(QStringLiteral("/dev/sr%1").arg(i)))
+            out << QStringLiteral("/dev/sr%1").arg(i);
+#endif
+    return out;
+}
+
+static int regionFromMask(int mask)
+{
+    // Маска запрещённых регионов: разрешён ровно один бит — это регион привода
+    int found = 0;
+    for (int i = 0; i < 8; ++i)
+        if (!(mask & (1 << i))) {
+            if (found)
+                return 0;
+            found = i + 1;
+        }
+    return found;
+}
+
+DriveRegion driveRegion(const QString &device)
+{
+    DriveRegion r;
+#ifdef Q_OS_WIN
+    if (device.size() != 2)
+        return r;
+    const QString path = QStringLiteral("\\\\.\\") + device;
+    HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return r;
+    DWORD got = 0;
+    // Без диска: ключ RPC (REPORT KEY, формат 8)
+    alignas(8) UCHAR buf[DVD_RPC_KEY_LENGTH] = {};
+    auto *k = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(buf);
+    k->KeyLength = DVD_RPC_KEY_LENGTH;
+    k->KeyType = DvdGetRpcKey;
+    if (DeviceIoControl(h, IOCTL_DVD_READ_KEY, k, k->KeyLength, k, k->KeyLength, &got, nullptr)) {
+        const auto *rpc = reinterpret_cast<const DVD_RPC_KEY *>(k->KeyData);
+        r.ok = true;
+        r.region = regionFromMask(rpc->RegionMask);
+        r.changesLeft = rpc->UserResetsAvailable;
+    } else {
+        struct {
+            UCHAR copySystem, regionData, systemRegion, resetCount;
+        } g{};
+        if (DeviceIoControl(h, 0x335014 /* IOCTL_DVD_GET_REGION */, nullptr, 0, &g, sizeof(g), &got, nullptr)) {
+            r.ok = true;
+            r.region = regionFromMask(g.systemRegion);
+            r.changesLeft = g.resetCount;
+        }
+    }
+    CloseHandle(h);
+#else
+    const int fd = ::open(QFile::encodeName(device).constData(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0)
+        return r;
+    dvd_authinfo ai;
+    std::memset(&ai, 0, sizeof(ai));
+    ai.type = DVD_LU_SEND_RPC_STATE;
+    if (::ioctl(fd, DVD_AUTH, &ai) == 0) {
+        r.ok = true;
+        r.region = regionFromMask(ai.lrpcs.region_mask);
+        r.changesLeft = ai.lrpcs.ucca;
+    }
+    ::close(fd);
+#endif
+    return r;
+}
+
+bool setDriveRegion(const QString &device, int region, QString *error)
+{
+    auto fail = [error](const QString &e) {
+        if (error)
+            *error = e;
+        return false;
+    };
+    if (region < 1 || region > 8)
+        return fail(QStringLiteral("region"));
+    const UCHAR mask = UCHAR(~(1u << (region - 1)));
+#ifdef Q_OS_WIN
+    const QString path = QStringLiteral("\\\\.\\") + device;
+    HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return fail(T("не удалось открыть привод %1").arg(device));
+    DWORD got = 0;
+    DVD_SESSION_ID sid = 0;
+    if (!DeviceIoControl(h, IOCTL_DVD_START_SESSION, nullptr, 0, &sid, sizeof(sid), &got, nullptr)) {
+        CloseHandle(h);
+        return fail(T("привод не принял команду (код %1)").arg(GetLastError()));
+    }
+    alignas(8) UCHAR buf[DVD_SET_RPC_KEY_LENGTH] = {};
+    auto *k = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(buf);
+    k->KeyLength = DVD_SET_RPC_KEY_LENGTH;
+    k->SessionId = sid;
+    k->KeyType = DvdSetRpcKey;
+    reinterpret_cast<PDVD_SET_RPC_KEY>(k->KeyData)->PreferredDriveRegionCode = mask;
+    const BOOL ok = DeviceIoControl(h, IOCTL_DVD_SEND_KEY2, k, k->KeyLength, nullptr, 0, &got, nullptr);
+    const DWORD code = GetLastError();
+    DeviceIoControl(h, IOCTL_DVD_END_SESSION, &sid, sizeof(sid), nullptr, 0, &got, nullptr);
+    CloseHandle(h);
+    if (!ok)
+        return fail(T("привод не принял команду (код %1)").arg(code));
+    return true;
+#else
+    const int fd = ::open(QFile::encodeName(device).constData(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0)
+        return fail(T("не удалось открыть привод %1").arg(device));
+    dvd_authinfo ai;
+    std::memset(&ai, 0, sizeof(ai));
+    ai.type = DVD_HOST_SEND_RPC_STATE;
+    ai.hrpcs.pdrc = mask;
+    const int rc = ::ioctl(fd, DVD_AUTH, &ai);
+    const int e = errno;
+    ::close(fd);
+    if (rc != 0)
+        return fail(QString::fromLocal8Bit(strerror(e)));
+    return true;
+#endif
+}
 
 QString regionInfo(const QString &device)
 {

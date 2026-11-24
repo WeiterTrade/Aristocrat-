@@ -105,6 +105,17 @@ int main(int argc, char *argv[])
         Tools::hardwareHevcEncoder();
     });
 
+    // Регион привода (Linux: запускается через pkexec из окна «Копирование DVD»): --set-dvd-region=<привод>|<регион>
+    for (const QString &a : app.arguments())
+        if (a.startsWith(QLatin1String("--set-dvd-region="))) {
+            const QStringList p = a.mid(17).split(QLatin1Char('|'));
+            QString err;
+            const bool ok = DvdCss::setDriveRegion(p.value(0), p.value(1).toInt(), &err);
+            if (!ok)
+                fprintf(stderr, "%s\n", qPrintable(err));
+            return ok ? 0 : 1;
+        }
+
     // Автопроверка копирования DVD через libdvdcss: --dvd-css-test=<образ или привод>|<папка>
     for (const QString &a : app.arguments())
         if (a.startsWith(QLatin1String("--dvd-css-test="))) {

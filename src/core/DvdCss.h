@@ -64,6 +64,18 @@ bool rip(const QString &device, const DiscTitle &title, const QString &outFile, 
 bool isoBackup(const QString &device, const QString &outIso, int maxSpeed, const QList<DiscTitle> &titles, const Cells &traps,
                const std::function<bool(int, qint64, int)> &progress, QString *error, int *badSectors = nullptr);
 
+// Приводы DVD: «E:» (Windows) или /dev/sr0 (Linux)
+QStringList opticalDrives();
+// Регион привода: region 0 — не задан; changesLeft — сколько смен осталось (-1 — неизвестно)
+struct DriveRegion {
+    bool ok = false;
+    int region = 0;
+    int changesLeft = -1;
+};
+DriveRegion driveRegion(const QString &device);
+// Задать регион привода (1–8). Тратит одну из ограниченных смен. В Linux нужны права администратора.
+bool setDriveRegion(const QString &device, int region, QString *error);
+
 // Регионы: «диск: 2 · привод: 5 (смен осталось 4)». Пусто — не удалось узнать (только Windows).
 QString regionInfo(const QString &device);
 

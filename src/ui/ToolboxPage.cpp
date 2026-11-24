@@ -32,6 +32,8 @@
 #include <QAtomicInt>
 #include <QPointer>
 #include <QEventLoop>
+#include <QCoreApplication>
+#include <QProcess>
 #include <QUrl>
 #include <QDesktopServices>
 #include <QSettings>
@@ -151,6 +153,105 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     dvdNote->setObjectName(QStringLiteral("Muted"));
     dvdNote->setWordWrap(true);
     b3->addWidget(dvdNote);
+
+    // Регион привода: без него многие приводы не отдают ключи защиты, и копирование идёт очень медленно
+    auto *regRow = new QHBoxLayout;
+    regRow->addWidget(new QLabel(T("Регион привода:"), dvd));
+    auto *regionBox = new QComboBox(dvd);
+    regionBox->addItem(T("— выберите страну —"), 0);
+    const QList<QPair<QString, int>> countries = {{T("Россия"), 5}, {T("Казахстан"), 5}, {T("США"), 1},
+                                                  {T("Италия"), 2}, {T("Испания"), 2}, {T("Франция"), 2}};
+    for (const auto &c : countries)
+        regionBox->addItem(T("%1 (регион %2)").arg(c.first).arg(c.second), c.second);
+    regRow->addWidget(regionBox, 1);
+    b3->addLayout(regRow);
+    auto *regState = new QLabel(dvd);
+    regState->setObjectName(QStringLiteral("Muted"));
+    regState->setWordWrap(true);
+    b3->addWidget(regState);
+    auto refreshRegion = [this, regState] {
+        QPointer<QLabel> lbl(regState);
+        auto text = QSharedPointer<QString>::create();
+        Ui::runAsync(this, [text] {
+            const QStringList drives = DvdCss::opticalDrives();
+            if (drives.isEmpty()) {
+                *text = T("Привод DVD не найден.");
+                return;
+            }
+            const DvdCss::DriveRegion r = DvdCss::driveRegion(drives.first());
+            if (!r.ok)
+                *text = T("Привод %1: регион узнать не удалось.").arg(drives.first());
+            else
+                *text = T("Привод %1: регион %2 · смен осталось: %3")
+                            .arg(drives.first(), r.region ? QString::number(r.region) : T("не задан"),
+                                 r.changesLeft >= 0 ? QString::number(r.changesLeft) : QStringLiteral("?"));
+        }, [lbl, text] {
+            if (lbl)
+                lbl->setText(*text);
+        });
+    };
+    refreshRegion();
+    connect(regionBox, QOverload<int>::of(&QComboBox::activated), this, [this, regionBox, refreshRegion](int idx) {
+        const int region = regionBox->itemData(idx).toInt();
+        regionBox->setCurrentIndex(0);
+        if (region <= 0)
+            return;
+        const QStringList drives = DvdCss::opticalDrives();
+        if (drives.isEmpty()) {
+            Ui::message(this, T("Регион привода"), T("Привод DVD не найден. Подключите привод и попробуйте снова."));
+            return;
+        }
+        const QString dev = drives.first();
+        const DvdCss::DriveRegion cur = DvdCss::driveRegion(dev);
+        if (cur.ok && cur.region == region) {
+            Ui::message(this, T("Регион привода"), T("У привода %1 уже стоит регион %2.").arg(dev).arg(region));
+            return;
+        }
+        const QString left = cur.changesLeft >= 0 ? T("Осталось смен: %1 — после этой станет %2.").arg(cur.changesLeft).arg(qMax(0, cur.changesLeft - 1))
+                                                  : T("Число смен у привода ограничено (обычно 5).");
+        if (!Ui::ask(this, T("Регион привода"),
+                     T("Задать приводу %1 регион %2?<br><br>%3 Когда смены закончатся, регион станет постоянным.").arg(dev).arg(region).arg(left),
+                     T("Задать"), T("Отмена")))
+            return;
+        QString err;
+        bool ok = DvdCss::setDriveRegion(dev, region, &err);
+#ifdef Q_OS_WIN
+        if (!ok) {
+            // Не вышло напрямую — открываем окно свойств привода (вкладка «Регион DVD»)
+            QProcess ps;
+            ps.start(QStringLiteral("powershell"), {QStringLiteral("-NoProfile"), QStringLiteral("-Command"),
+                                                     QStringLiteral("(Get-WmiObject Win32_CDROMDrive | Where-Object {$_.Drive -eq '%1'}).PNPDeviceID").arg(dev)});
+            ps.waitForFinished(15000);
+            const QString id = QString::fromLocal8Bit(ps.readAllStandardOutput()).trimmed();
+            if (!id.isEmpty()) {
+                QProcess::startDetached(QStringLiteral("rundll32.exe"),
+                                        {QStringLiteral("devmgr.dll,DeviceProperties_RunDLL"), QStringLiteral("/DeviceID"), id});
+                Ui::message(this, T("Регион привода"),
+                            T("Привод не принял команду напрямую (%1). Открыл свойства привода — перейдите на вкладку "
+                              "«Регион DVD», выберите страну и нажмите ОК.").arg(err));
+                return;
+            }
+        }
+#else
+        if (!ok) {
+            // Linux: нужны права администратора — запускаем эту же программу через pkexec
+            const QString self = qEnvironmentVariable("APPIMAGE", QCoreApplication::applicationFilePath());
+            QProcess p;
+            p.start(QStringLiteral("pkexec"), {QStringLiteral("env"), QStringLiteral("APPIMAGE_EXTRACT_AND_RUN=1"),
+                                                QStringLiteral("QT_QPA_PLATFORM=offscreen"), self,
+                                                QStringLiteral("--set-dvd-region=%1|%2").arg(dev).arg(region)});
+            p.waitForFinished(180000);
+            ok = p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+            if (!ok)
+                err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed().right(300);
+        }
+#endif
+        if (ok)
+            Ui::message(this, T("Регион привода"), T("Готово: у привода %1 теперь регион %2.").arg(dev).arg(region));
+        else
+            Ui::message(this, T("Регион привода"), T("Не удалось задать регион: %1").arg(err));
+        refreshRegion();
+    });
     b3->addStretch();
     connect(pickDvd, &QPushButton::clicked, this, [this, pickDvd] {
         QMenu menu(this);
