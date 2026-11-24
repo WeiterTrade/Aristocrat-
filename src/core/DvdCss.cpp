@@ -1213,7 +1213,7 @@ bool setDriveRegion(const QString &device, int region, QString *error)
     };
     if (region < 1 || region > 8)
         return fail(QStringLiteral("region"));
-    const UCHAR mask = UCHAR(~(1u << (region - 1)));
+    const unsigned char mask = static_cast<unsigned char>(~(1u << (region - 1)));
 #ifdef Q_OS_WIN
     const QString path = QStringLiteral("\\\\.\\") + device;
     HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
