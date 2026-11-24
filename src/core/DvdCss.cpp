@@ -927,7 +927,7 @@ bool isoBackup(const QString &device, const QString &outIso, int maxSpeed, const
     QVector<Range> ranges;
     auto addVob = [&](quint32 a, quint32 b, quint32 key) {
         QVector<quint32> cuts{a, b + 1};
-        for (const Cells *cs : {&important, &traps})
+        for (const Cells *cs : std::initializer_list<const Cells *>{&important, &traps})
             for (const auto &c : *cs) {
                 if (c.first > a && c.first <= b)
                     cuts << c.first;
