@@ -24,6 +24,7 @@ public:
     void demoUpload();
     void demoCovers(const QString &stampFile);
     void demoScheduler();
+    void demoMenu(const QString &iso);
     void demoServer();
     void demoRelease(const QString &url, const QString &video, const QString &scenes = QString());
     void openSettings(int tab = 0);

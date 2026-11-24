@@ -330,6 +330,7 @@ jobs:
           SHOT_WAIT=25 ARISTOCRAT_LANG=ru shot covers "--demo-covers=$PWD/stamp.jpg"
           identify stamp.jpg || true
           ARISTOCRAT_LANG=ru shot scheduler --demo-scheduler
+          ARISTOCRAT_LANG=ru shot discmenu "--demo-menu=$PWD/menu2.iso"
           convert stamp.jpg -resize 400x -quality 85 stamp-small.jpg && { echo "SCREENSHOT_BEGIN stamp"; base64 -w 8000 stamp-small.jpg; echo "SCREENSHOT_END"; }
           ARISTOCRAT_LANG=ru ARISTOCRAT_THEME=ruby shot ruby "$PWD/Кассета 1994.mp4"
 

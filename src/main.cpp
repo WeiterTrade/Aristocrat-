@@ -231,6 +231,8 @@ int main(int argc, char *argv[])
             w.demoServer();
         else if (a == QLatin1String("--demo-upload"))
             w.demoUpload();
+        else if (a.startsWith(QLatin1String("--demo-menu=")))
+            w.demoMenu(a.mid(12));
         else if (a == QLatin1String("--demo-scheduler"))
             w.demoScheduler();
         else if (a.startsWith(QLatin1String("--demo-covers")))

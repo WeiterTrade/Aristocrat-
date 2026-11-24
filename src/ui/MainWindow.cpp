@@ -334,6 +334,13 @@ void MainWindow::schedulerDone(const QList<SchedItem> &done)
 }
 #endif
 
+void MainWindow::demoMenu(const QString &iso)
+{
+    showPage(2);
+    if (m_menuEditor)
+        m_menuEditor->openIso(iso);
+}
+
 void MainWindow::demoScheduler()
 {
     showPage(4);
