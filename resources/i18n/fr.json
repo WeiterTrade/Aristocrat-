@@ -674,6 +674,7 @@
  "Растянуть на весь кадр": "Étirer sur toute l'image",
  "Расширение для браузера": "Extension du navigateur",
  "Регион диска: %1 · регион привода: %2 (смен осталось: %3)": "Zone du disque : %1 · zone du lecteur : %2 (changements restants : %3)",
+ "Регион привода не задан — привод не выдаёт ключи защиты, и их приходится подбирать, читая диск (на дисках Disney это очень долго). Задайте регион 5 один раз: Диспетчер устройств → DVD-дисководы → ваш привод → Свойства → вкладка «Регион DVD».": "La zone du lecteur n’est pas définie — le lecteur ne fournit pas les clés de protection, il faut les retrouver en lisant le disque (très lent sur les disques Disney). Définissez la zone 5 une fois : Gestionnaire de périphériques → Lecteurs de DVD/CD-ROM → votre lecteur → Propriétés → onglet « Zone DVD ».",
  "Режиссёр": "Réalisateur",
  "Режиссёр:": "Réalisateur :",
  "Результат": "Résultat",

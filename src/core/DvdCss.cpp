@@ -837,8 +837,14 @@ private:
     bool report() { return !progress || progress(total ? int(done * 100 / total) : 100, done * kBlock, badCount()); }
     void useKey(quint32 key)
     {
-        if (key && key != curKey && l.seek(h, int(key), kSeekKey) >= 0)
+        if (!key || key == curKey)
+            return;
+        // Ключ фильма: привод отдаёт его сразу, если регион привода задан; иначе libdvdcss подбирает ключ,
+        // читая сектора фильма, — на ловушках это долго. Сторож прерывает каждое зависшее чтение.
+        watchdog.begin();
+        if (l.seek(h, int(key), kSeekKey) >= 0)
             curKey = key;
+        watchdog.end();
     }
     bool readAt(quint32 lba, int n, char *dst, quint32 key)
     {
@@ -1147,6 +1153,10 @@ QString regionInfo(const QString &device)
         match = match || disc.contains(x);
     if (!match)
         text += T(" — регионы не совпадают: привод может не отдавать зашифрованные сектора");
+    else if (drive.isEmpty() || drive.size() >= 8)
+        text += QStringLiteral("\n") + T("Регион привода не задан — привод не выдаёт ключи защиты, и их приходится подбирать, читая диск "
+                                         "(на дисках Disney это очень долго). Задайте регион 5 один раз: Диспетчер устройств → "
+                                         "DVD-дисководы → ваш привод → Свойства → вкладка «Регион DVD».");
     return text;
 #else
     Q_UNUSED(device)

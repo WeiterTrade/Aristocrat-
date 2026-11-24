@@ -674,6 +674,7 @@
  "Растянуть на весь кадр": "Stretch to fill the frame",
  "Расширение для браузера": "Browser extension",
  "Регион диска: %1 · регион привода: %2 (смен осталось: %3)": "Disc region: %1 · drive region: %2 (changes left: %3)",
+ "Регион привода не задан — привод не выдаёт ключи защиты, и их приходится подбирать, читая диск (на дисках Disney это очень долго). Задайте регион 5 один раз: Диспетчер устройств → DVD-дисководы → ваш привод → Свойства → вкладка «Регион DVD».": "The drive region is not set — the drive does not hand out protection keys, so they have to be cracked by reading the disc (very slow on Disney discs). Set region 5 once: Device Manager → DVD/CD-ROM drives → your drive → Properties → “DVD Region” tab.",
  "Режиссёр": "Director",
  "Режиссёр:": "Director:",
  "Результат": "Output",
