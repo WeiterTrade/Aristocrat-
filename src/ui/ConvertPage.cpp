@@ -33,6 +33,9 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QUrl>
@@ -92,6 +95,20 @@ ConvertPage::ConvertPage(QWidget *parent)
     root->addWidget(buildBottomBar());
 
     connect(m_engine, &ConversionEngine::taskChanged, this, &ConvertPage::onTaskChanged);
+    connect(m_engine, &ConversionEngine::taskChanged, this, [this](int id) {
+        for (const TaskPtr &t : m_tasks)
+            if (t->id == id && t->upscale.isAI() && t->status == ConversionTask::Running)
+                saveResume();
+    });
+    connect(m_engine, &ConversionEngine::taskFinished, this, [this](int id) {
+        for (const TaskPtr &t : m_tasks)
+            if (t->id == id) {
+                if (t->status == ConversionTask::Done || t->status == ConversionTask::Failed)
+                    emit taskDone(t->outputFileName(), t->outputPath, t->upscale.isAI(), t->status == ConversionTask::Done);
+                if (t->upscale.isAI())
+                    saveResume();
+            }
+    });
     connect(m_engine, &ConversionEngine::queueFinished, this, &ConvertPage::onQueueFinished);
     connect(m_engine, &ConversionEngine::message, this, [this](const QString &m) { m_statusLine->setText(m); });
     connect(m_engine, &ConversionEngine::taskFinished, this, [this](int id) {
@@ -603,6 +620,8 @@ void ConvertPage::removeTask(const TaskPtr &t)
     if (t->status == ConversionTask::Waiting)
         return;
     m_tasks.removeAll(t);
+    if (t->upscale.isAI())
+        saveResume();
     if (TaskCard *c = m_cards.take(t->id))
         c->deleteLater();
     updateView();
@@ -846,4 +865,143 @@ void ConvertPage::addDvdTitles(const QList<QPair<QString, QString>> &titles, int
     }
     m_segConverting->setChecked(true);
     updateView();
+}
+
+
+// ---------------- Продолжение апскейла после перезапуска ----------------
+
+static QJsonObject taskToJson(const ConversionTask &t)
+{
+    QJsonObject o;
+    o["input"] = t.input;
+    o["preset"] = t.preset.toJson();
+    o["outputName"] = t.outputName;
+    o["outputDir"] = t.outputDir;
+    o["chapters"] = t.chaptersMeta;
+    o["mode"] = int(t.upscale.mode);
+    o["vhs"] = t.upscale.vhsRestore;
+    o["vbitrate"] = t.customVBitrate;
+    o["resW"] = t.customResolution.width();
+    o["resH"] = t.customResolution.height();
+    const EditOptions &e = t.edit;
+    QJsonObject ed;
+    ed["trimStart"] = e.trimStart;
+    ed["trimEnd"] = e.trimEnd;
+    ed["crop"] = QJsonArray{e.crop.x(), e.crop.y(), e.crop.width(), e.crop.height()};
+    ed["fit"] = e.fit;
+    ed["rotate"] = e.rotate;
+    ed["flipH"] = e.flipH;
+    ed["flipV"] = e.flipV;
+    ed["brightness"] = e.brightness;
+    ed["contrast"] = e.contrast;
+    ed["saturation"] = e.saturation;
+    ed["deinterlace"] = e.deinterlace;
+    ed["denoise"] = e.denoise;
+    ed["wmText"] = e.watermarkText;
+    ed["wmImage"] = e.watermarkImage;
+    ed["wmPos"] = e.watermarkPos;
+    ed["wmOpacity"] = e.watermarkOpacity;
+    ed["wmSize"] = e.watermarkSize;
+    ed["subFile"] = e.subtitleFile;
+    ed["subTrack"] = e.subtitleTrack;
+    ed["audio"] = e.audioTrack;
+    ed["volume"] = e.volume;
+    o["edit"] = ed;
+    return o;
+}
+
+static void taskFromJson(ConversionTask &t, const QJsonObject &o)
+{
+    t.preset = Preset::fromJson(o["preset"].toObject());
+    t.outputName = o["outputName"].toString();
+    t.outputDir = o["outputDir"].toString();
+    t.chaptersMeta = o["chapters"].toString();
+    t.upscale.mode = UpscaleOptions::Mode(o["mode"].toInt());
+    t.upscale.vhsRestore = o["vhs"].toBool();
+    t.customVBitrate = o["vbitrate"].toInt();
+    t.customResolution = QSize(o["resW"].toInt(), o["resH"].toInt());
+    const QJsonObject ed = o["edit"].toObject();
+    EditOptions &e = t.edit;
+    e.trimStart = ed["trimStart"].toDouble();
+    e.trimEnd = ed["trimEnd"].toDouble();
+    const QJsonArray c = ed["crop"].toArray();
+    e.crop = QRect(c.at(0).toInt(), c.at(1).toInt(), c.at(2).toInt(), c.at(3).toInt());
+    e.fit = ed["fit"].toInt();
+    e.rotate = ed["rotate"].toInt();
+    e.flipH = ed["flipH"].toBool();
+    e.flipV = ed["flipV"].toBool();
+    e.brightness = ed["brightness"].toInt();
+    e.contrast = ed["contrast"].toInt();
+    e.saturation = ed["saturation"].toInt();
+    e.deinterlace = ed["deinterlace"].toBool();
+    e.denoise = ed["denoise"].toBool();
+    e.watermarkText = ed["wmText"].toString();
+    e.watermarkImage = ed["wmImage"].toString();
+    e.watermarkPos = ed["wmPos"].toInt(3);
+    e.watermarkOpacity = ed["wmOpacity"].toInt(70);
+    e.watermarkSize = ed["wmSize"].toInt(24);
+    e.subtitleFile = ed["subFile"].toString();
+    e.subtitleTrack = ed["subTrack"].toInt(-1);
+    e.audioTrack = ed["audio"].toInt();
+    e.volume = ed["volume"].toInt(100);
+}
+
+void ConvertPage::saveResume()
+{
+    if (m_quitting)
+        return;
+    // Апскейлы, которые идут или ждут очереди; остановленные вручную не продолжаем сами
+    QJsonArray list;
+    for (const TaskPtr &t : m_tasks)
+        if (t->upscale.isAI() && (t->status == ConversionTask::Running || t->status == ConversionTask::Waiting))
+            list.append(taskToJson(*t));
+    QSettings().setValue(QStringLiteral("resume/tasks"), QString::fromUtf8(QJsonDocument(list).toJson(QJsonDocument::Compact)));
+    emit resumeChanged(list.size());
+}
+
+int ConvertPage::pendingResumeCount()
+{
+    return QJsonDocument::fromJson(QSettings().value(QStringLiteral("resume/tasks")).toString().toUtf8()).array().size();
+}
+
+int ConvertPage::resumePending()
+{
+    const QJsonArray list = QJsonDocument::fromJson(QSettings().value(QStringLiteral("resume/tasks")).toString().toUtf8()).array();
+    int n = 0;
+    for (const QJsonValue &v : list) {
+        const QJsonObject o = v.toObject();
+        const QString input = o["input"].toString();
+        if (!QFileInfo::exists(input))
+            continue;
+        bool already = false;
+        for (const TaskPtr &t : m_tasks)
+            already |= t->input == input;
+        if (already)
+            continue;
+        TaskPtr t = addTask(input);
+        taskFromJson(*t, o);
+        if (TaskCard *c = m_cards.value(t->id))
+            c->refresh();
+        m_autoStart.insert(t->id);   // начать, как только прочитаются сведения; готовые куски пропускаются
+        ++n;
+    }
+    if (n) {
+        m_segConverting->setChecked(true);
+        updateView();
+    }
+    return n;
+}
+
+void ConvertPage::prepareQuit()
+{
+    saveResume();
+    m_quitting = true;
+}
+
+QString ConvertPage::runningSummary() const
+{
+    for (const TaskPtr &t : m_tasks)
+        if (t->status == ConversionTask::Running)
+            return QStringLiteral("%1 — %2%").arg(t->outputFileName()).arg(int(t->progress * 100));
+    return {};
 }

@@ -25,6 +25,7 @@ set(SOURCES
     src/core/Dvd.cpp
     src/core/DvdCss.cpp
     src/core/DvdImage.cpp
+    src/core/Autostart.cpp
     src/core/Chapters.cpp
     src/core/Release.cpp
     src/core/Gender.cpp

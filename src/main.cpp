@@ -14,6 +14,8 @@
 #include <QSplashScreen>
 #include <QSvgRenderer>
 #include <QTimer>
+#include <QLocalSocket>
+#include <QLocalServer>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
@@ -184,6 +186,41 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
+    // Одна копия программы: если уже запущена (например, свёрнута в трей) — показать её и передать файлы
+    const bool autostart = app.arguments().contains(QStringLiteral("--autostart"));
+    bool testRun = false;
+    for (const QString &a : app.arguments().mid(1))
+        testRun |= a.startsWith(QLatin1String("--demo")) || a.startsWith(QLatin1String("--dvd-")) || a.startsWith(QLatin1String("--set-dvd"));
+    const QString serverName = QStringLiteral("aristocrat-videoconverter-") + qEnvironmentVariable("USERNAME", qEnvironmentVariable("USER"));
+    QLocalServer instance;
+    if (!testRun) {
+        // После «Перезапустить» старая копия ещё закрывается — подождать её
+        for (int i = 0; i < (app.arguments().contains(QStringLiteral("--restarted")) ? 20 : 1); ++i) {
+            QLocalSocket probe;
+            probe.connectToServer(serverName);
+            if (!probe.waitForConnected(300))
+                break;
+            if (i + 1 < (app.arguments().contains(QStringLiteral("--restarted")) ? 20 : 1)) {
+                probe.disconnectFromServer();
+                QThread::msleep(500);
+                continue;
+            }
+            if (!autostart) {   // автозапуск при уже открытой программе ничего не делает
+                QStringList files;
+                for (const QString &a : app.arguments().mid(1))
+                    if (!a.startsWith(QLatin1String("--")))
+                        files << QFileInfo(a).absoluteFilePath();
+                probe.write((QStringLiteral("show\n") + files.join(QLatin1Char('\n'))).toUtf8());
+                probe.waitForBytesWritten(1000);
+            }
+            return 0;
+        }
+        QLocalServer::removeServer(serverName);
+        instance.listen(serverName);
+    }
+    // Свёрнутая в трей программа закрывается только через «Выход»
+    QApplication::setQuitOnLastWindowClosed(false);
+
     // Заставка (не в автопроверке сборки — там служебные ключи --demo-… и т. п.)
     bool service = false;
     for (const QString &a : app.arguments().mid(1))
@@ -206,9 +243,24 @@ int main(int argc, char *argv[])
             w.raise();
             w.activateWindow();
         });
+    } else if (autostart) {
+        QTimer::singleShot(0, &w, [&w] { w.startInBackground(); });
     } else {
         w.show();
     }
+    // Вторая копия просит показаться и открыть файлы
+    QObject::connect(&instance, &QLocalServer::newConnection, &w, [&instance, &w] {
+        QLocalSocket *c = instance.nextPendingConnection();
+        QObject::connect(c, &QLocalSocket::readyRead, &w, [c, &w] {
+            const QStringList lines = QString::fromUtf8(c->readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            w.showNormal();
+            w.raise();
+            w.activateWindow();
+            if (lines.size() > 1)
+                w.openFiles(lines.mid(1));
+        });
+        QObject::connect(c, &QLocalSocket::disconnected, c, &QObject::deleteLater);
+    });
 
     // Файлы, переданные при запуске («Открыть с помощью…»).
     // Служебные ключи для автопроверки сборки: --page=N (открыть раздел), --demo-trim (окно обрезки).
@@ -218,7 +270,7 @@ int main(int argc, char *argv[])
             w.showPage(a.mid(7).toInt());
         else if (a == QLatin1String("--demo-trim"))
             w.demoTrim();
-        else if (a == QLatin1String("--restarted"))
+        else if (a == QLatin1String("--restarted") || a == QLatin1String("--autostart"))
             continue;
         else if (a.startsWith(QLatin1String("--demo-dvd=")))
             w.demoDvd(a.mid(11));

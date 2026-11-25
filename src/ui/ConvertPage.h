@@ -26,6 +26,12 @@ public:
     void addFileAndConvert(const QString &file, bool autoStart);
     void addFilesWithUpscale(const QStringList &paths, UpscaleOptions::Mode mode, bool vhs);
     bool isBusy() const { return m_engine->isRunning(); }
+    // Незаконченный нейросетевой апскейл: сохраняется и продолжается после перезапуска программы/компьютера
+    void saveResume();
+    int resumePending();            // восстановить и запустить; вернуть, сколько задач
+    static int pendingResumeCount();
+    void prepareQuit();             // программа закрывается — список больше не трогаем
+    QString runningSummary() const; // «Фильм.mkv — 38%» для подсказки в трее
     void openFirstTrim();
     void reloadSettings();
     void addDvdTitles(const QList<QPair<QString, QString>> &titles, int mode, const QString &tempDir = QString());   // 0 MKV без потерь, 1 MP4 для любого плеера, 2 выбранный формат
@@ -41,7 +47,9 @@ public:
     QString releaseStatus(const QString &dir) const;   // видео релиза в обработке (для планировщика)
 
 signals:
-    void releaseVideoDone(const QString &dir, bool ok);   // видео релиза обработано (для планировщика)
+    void releaseVideoDone(const QString &dir, bool ok);
+    void resumeChanged(int pending);                      // сколько апскейлов осталось доделать
+    void taskDone(const QString &name, const QString &path, bool ai, bool ok);   // для уведомлений   // видео релиза обработано (для планировщика)
 
 private:
     QWidget *buildSubBar();
@@ -69,6 +77,7 @@ private:
     QHash<int, TaskCard *> m_cards;
     int m_nextId = 1;
     QSet<int> m_autoStart;
+    bool m_quitting = false;
 
     QStackedWidget *m_stack;
     QVBoxLayout *m_cardLayout;

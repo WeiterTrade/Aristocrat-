@@ -30,6 +30,8 @@ public:
     void openSettings(int tab = 0);
     void applyTheme();
     void restartApp();
+    void startInBackground();   // запуск с Windows/Linux: в трей, продолжить апскейл, уведомить
+    void quitApp();             // выход по-настоящему (из меню трея)
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -49,4 +51,9 @@ private:
     DownloadPage *m_download = nullptr;
     QVBoxLayout *m_frameLayout = nullptr;
     bool m_forceClose = false;
+    void setupTray();
+    void notify(const QString &title, const QString &text);
+    void hideToTray();
+    class QSystemTrayIcon *m_tray = nullptr;
+    bool m_trayHintShown = false;
 };

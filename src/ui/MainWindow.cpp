@@ -1,4 +1,7 @@
 #include "MainWindow.h"
+#include "core/Autostart.h"
+#include <QCheckBox>
+#include <QSystemTrayIcon>
 #include "DiscStudio.h"
 #include <QSharedPointer>
 #include <QPushButton>
@@ -76,6 +79,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_pages = new QStackedWidget(central);
     m_convert = new ConvertPage(m_pages);
+    QTimer::singleShot(0, this, &MainWindow::setupTray);
     auto *toolbox = new ToolboxPage(m_pages);
     m_toolbox = toolbox;
     m_pages->addWidget(m_convert);
@@ -501,11 +505,153 @@ QWidget *MainWindow::buildHeader()
     return header;
 }
 
+void MainWindow::setupTray()
+{
+    if (!QSystemTrayIcon::isSystemTrayAvailable())
+        return;
+    m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/logo/logo.svg")), this);
+    m_tray->setToolTip(T("Aristocrat Видеоконвертер"));
+    auto *menu = new QMenu(this);
+    menu->addAction(T("Открыть"), this, [this] {
+        showNormal();
+        raise();
+        activateWindow();
+    });
+    auto *resume = menu->addAction(T("Продолжать апскейл после перезагрузки компьютера"));
+    resume->setCheckable(true);
+    resume->setChecked(Autostart::enabledByUser());
+    connect(resume, &QAction::toggled, this, [this](bool on) {
+        Autostart::setEnabledByUser(on);
+        Autostart::set(on && ConvertPage::pendingResumeCount() > 0);
+    });
+    auto *ask = menu->addAction(T("Спрашивать при закрытии окна"));
+    ask->setCheckable(true);
+    connect(menu, &QMenu::aboutToShow, this, [ask] { ask->setChecked(QSettings().value(QStringLiteral("general/closeAction"), 0).toInt() == 0); });
+    connect(ask, &QAction::toggled, this, [](bool on) {
+        if (on)
+            QSettings().setValue(QStringLiteral("general/closeAction"), 0);
+    });
+    menu->addSeparator();
+    menu->addAction(T("Выход"), this, &MainWindow::quitApp);
+    m_tray->setContextMenu(menu);
+    connect(m_tray, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason r) {
+        if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick) {
+            showNormal();
+            raise();
+            activateWindow();
+        }
+    });
+    // Подсказка с ходом работы
+    auto *tip = new QTimer(this);
+    connect(tip, &QTimer::timeout, this, [this] {
+        const QString run = m_convert->runningSummary();
+        m_tray->setToolTip(run.isEmpty() ? T("Aristocrat Видеоконвертер") : T("Aristocrat: %1").arg(run));
+    });
+    tip->start(5000);
+    m_tray->show();
+
+    // Автозапуск нужен, пока есть незаконченный апскейл
+    connect(m_convert, &ConvertPage::resumeChanged, this, [](int pending) { Autostart::set(pending > 0 && Autostart::enabledByUser()); });
+    Autostart::set(ConvertPage::pendingResumeCount() > 0 && Autostart::enabledByUser());
+    connect(m_convert, &ConvertPage::taskDone, this, [this](const QString &name, const QString &, bool ai, bool ok) {
+        if (ai && ok)
+            notify(T("Апскейл завершён"), name);
+        else if (ai)
+            notify(T("Апскейл не удался"), name);
+        else if (!isVisible())
+            notify(ok ? T("Конвертация завершена") : T("Конвертация не удалась"), name);
+    });
+}
+
+void MainWindow::notify(const QString &title, const QString &text)
+{
+    if (m_tray && m_tray->isVisible())
+        m_tray->showMessage(title, text, QIcon(QStringLiteral(":/logo/logo.svg")), 8000);
+}
+
+void MainWindow::hideToTray()
+{
+    hide();
+    if (!m_trayHintShown) {
+        m_trayHintShown = true;
+        notify(T("Программа работает в фоне"), T("Значок — в трее рядом с часами. Нажмите на него, чтобы открыть окно."));
+    }
+}
+
+void MainWindow::startInBackground()
+{
+    const int n = m_convert->resumePending();
+    if (n == 0) {   // доделывать нечего — убрать автозапуск и выйти
+        Autostart::set(false);
+        quitApp();
+        return;
+    }
+    showPage(0);
+    if (m_tray) {
+        hide();
+        notify(T("Aristocrat Видеоконвертер запущен"), T("Апскейл продолжается в фоне (%1). Готовые части не пересчитываются.").arg(n));
+    } else {
+        showMinimized();
+    }
+}
+
+void MainWindow::quitApp()
+{
+    m_convert->prepareQuit();   // незаконченный апскейл продолжится при следующем запуске
+    m_forceClose = true;
+    if (m_tray)
+        m_tray->hide();
+    close();
+    qApp->quit();
+}
+
 void MainWindow::closeEvent(QCloseEvent *e)
 {
     if (m_forceClose) {
         e->accept();
         return;
+    }
+    // Крестик: свернуть в трей или закрыть (с запоминанием выбора)
+    if (m_tray) {
+        int action = QSettings().value(QStringLiteral("general/closeAction"), 0).toInt();   // 0 спросить, 1 трей, 2 закрыть
+        if (action == 0) {
+            FramedDialog d(this);
+            d.setWindowTitle(T("Закрытие"));
+            auto *lay = d.contentLayout();
+            lay->setContentsMargins(24, 18, 24, 18);
+            lay->setSpacing(12);
+            auto *text = new QLabel(m_convert->isBusy()
+                                        ? T("Идёт конвертация. Свернуть программу в трей, чтобы она продолжала работать в фоне, или закрыть?")
+                                        : T("Свернуть программу в трей (она продолжит работать в фоне) или закрыть?"),
+                                    &d);
+            text->setWordWrap(true);
+            lay->addWidget(text);
+            auto *remember = new QCheckBox(T("Запомнить выбор"), &d);
+            lay->addWidget(remember);
+            auto *btns = new QHBoxLayout;
+            btns->addStretch();
+            auto *quitBtn = new QPushButton(T("Закрыть"), &d);
+            auto *trayBtn = Ui::primaryButton(T("Свернуть в трей"), &d);
+            btns->addWidget(quitBtn);
+            btns->addWidget(trayBtn);
+            lay->addLayout(btns);
+            int chosen = 0;
+            connect(trayBtn, &QPushButton::clicked, &d, [&] { chosen = 1; d.accept(); });
+            connect(quitBtn, &QPushButton::clicked, &d, [&] { chosen = 2; d.accept(); });
+            d.exec();
+            if (chosen == 0) {   // окно закрыли крестиком — ничего не делаем
+                e->ignore();
+                return;
+            }
+            if (remember->isChecked())
+                QSettings().setValue(QStringLiteral("general/closeAction"), chosen);
+            action = chosen;
+        }
+        if (action == 1) {
+            e->ignore();
+            hideToTray();
+            return;
+        }
     }
     if (m_convert->isBusy() || m_download->isBusy()) {
         if (!Ui::ask(this, T("Идёт работа"),
@@ -515,6 +661,9 @@ void MainWindow::closeEvent(QCloseEvent *e)
             return;
         }
     }
+    m_convert->prepareQuit();   // незаконченный апскейл продолжится при следующем запуске
+    if (m_tray)
+        m_tray->hide();
     QSettings s;
     s.setValue("window/geometry", saveGeometry());
     // Отдельные окна (менеджер Adult Empire) закрываются вместе с программой
@@ -522,6 +671,7 @@ void MainWindow::closeEvent(QCloseEvent *e)
         if (w != this && w->isVisible() && !w->parentWidget() && qobject_cast<QDialog *>(w))
             w->close();
     e->accept();
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
 void MainWindow::changeEvent(QEvent *e)
