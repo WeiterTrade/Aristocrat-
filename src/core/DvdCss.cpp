@@ -537,8 +537,6 @@ static void dlog(const QString &line)
         f.write((QDateTime::currentDateTime().toString(QStringLiteral("dd.MM HH:mm:ss.zzz ")) + line + QLatin1Char('\n')).toUtf8());
 }
 
-QString logPath() { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/dvd-log.txt"); }
-
 // ---- Быстрые ошибки чтения ----
 // Обычно привод на битом секторе сам долго повторяет чтение (останавливает и раскручивает диск — тот самый
 // циклический звук), а Windows повторяет команду ещё несколько раз: один сектор-ловушка = минуты.
@@ -1284,6 +1282,8 @@ bool setDriveRegion(const QString &device, int region, QString *error)
     return true;
 #endif
 }
+
+QString logPath() { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/dvd-log.txt"); }
 
 QString regionInfo(const QString &device)
 {
