@@ -265,7 +265,7 @@ QString ConversionWorker::workDirFor(const ConversionTask &t) const
 {
     QFileInfo fi(t.input);
     QString key = t.input + QString::number(fi.size()) + QString::number(fi.lastModified().toMSecsSinceEpoch())
-                  + t.upscale.model + QString::number(t.upscale.mode) + QString::number(t.upscale.vhsRestore)
+                  + t.upscale.aiModel() + QString::number(t.upscale.mode) + QString::number(t.upscale.vhsRestore)
                   + t.preset.id + QString::number(t.videoBitrateKbps())
                   + QString::number(t.edit.trimStart) + QString::number(t.edit.trimEnd)
                   + QStringLiteral("%1,%2,%3,%4").arg(t.edit.crop.x()).arg(t.edit.crop.y()).arg(t.edit.crop.width()).arg(t.edit.crop.height())

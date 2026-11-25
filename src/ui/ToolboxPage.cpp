@@ -97,7 +97,9 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     mode->addItem(UpscaleOptions::modeName(UpscaleOptions::Fast4K), int(UpscaleOptions::Fast4K));
     mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI1080), int(UpscaleOptions::AI1080));
     mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI4K), int(UpscaleOptions::AI4K));
-    mode->setCurrentIndex(Tools::hasRealesrgan() ? 3 : 1);
+    mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI1080Film), int(UpscaleOptions::AI1080Film));
+    mode->addItem(UpscaleOptions::modeName(UpscaleOptions::AI4KFilm), int(UpscaleOptions::AI4KFilm));
+    mode->setCurrentIndex(Tools::hasRealesrgan() ? 4 : 1);   // старые записи — живые съёмки: модель «для кино»
     auto *pick = Ui::primaryButton(T("Выбрать записи…"), vhs);
     b1->addSpacing(6);
     b1->addWidget(mode);
@@ -164,6 +166,15 @@ ToolboxPage::ToolboxPage(QWidget *parent)
     for (const auto &c : countries)
         regionBox->addItem(T("%1 (регион %2)").arg(c.first).arg(c.second), c.second);
     regRow->addWidget(regionBox, 1);
+    auto *logBtn = new QPushButton(T("Журнал копирования"), dvd);
+    logBtn->setToolTip(T("Что происходило при чтении диска: сбои, отмены зависших чтений, смена скорости"));
+    connect(logBtn, &QPushButton::clicked, this, [this] {
+        if (!QFileInfo::exists(DvdCss::logPath()))
+            Ui::message(this, T("Журнал копирования"), T("Журнал пока пуст — он появится после первого копирования."));
+        else
+            QDesktopServices::openUrl(QUrl::fromLocalFile(DvdCss::logPath()));
+    });
+    regRow->addWidget(logBtn);
     b3->addLayout(regRow);
     auto *regState = new QLabel(dvd);
     regState->setObjectName(QStringLiteral("Muted"));

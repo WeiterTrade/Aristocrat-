@@ -79,4 +79,7 @@ bool setDriveRegion(const QString &device, int region, QString *error);
 // Регионы: «диск: 2 · привод: 5 (смен осталось 4)». Пусто — не удалось узнать (только Windows).
 QString regionInfo(const QString &device);
 
+// Журнал копирования DVD (сбои чтения, сторож, скорость) — для разбора проблемных дисков
+QString logPath();
+
 } // namespace DvdCss

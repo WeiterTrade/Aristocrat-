@@ -23,6 +23,8 @@ QString UpscaleOptions::modeName(Mode m)
     case Fast4K: return T("4K — быстро");
     case AI1080: return T("1080p — нейросеть");
     case AI4K: return T("4K — нейросеть");
+    case AI1080Film: return T("1080p — нейросеть для кино");
+    case AI4KFilm: return T("4K — нейросеть для кино");
     case Fast720: return T("720p — улучшение");
     }
     return {};
@@ -66,9 +68,9 @@ int ConversionTask::videoBitrateKbps() const
 {
     if (customVBitrate > 0)
         return customVBitrate;
-    if (upscale.mode == UpscaleOptions::Fast4K || upscale.mode == UpscaleOptions::AI4K)
+    if (upscale.is4K())
         return qMax(preset.vbitrate, 20000);
-    if (upscale.mode == UpscaleOptions::Fast1080 || upscale.mode == UpscaleOptions::AI1080)
+    if (upscale.mode == UpscaleOptions::Fast1080 || upscale.mode == UpscaleOptions::AI1080 || upscale.mode == UpscaleOptions::AI1080Film)
         return qMax(preset.vbitrate, 8000);
     return preset.vbitrate;
 }

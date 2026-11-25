@@ -44,13 +44,16 @@ struct EditOptions {
 
 // Наш апскейл — функции нет в оригинале.
 struct UpscaleOptions {
-    enum Mode { None = 0, Fast1080 = 1, Fast4K = 2, AI1080 = 3, AI4K = 4, Fast720 = 5 };
+    enum Mode { None = 0, Fast1080 = 1, Fast4K = 2, AI1080 = 3, AI4K = 4, Fast720 = 5, AI1080Film = 6, AI4KFilm = 7 };
     Mode mode = None;
     bool vhsRestore = false;    // устранение чересстрочности, шумоподавление, обрезка полосы снизу
     QString model = QStringLiteral("realesr-animevideov3"); // или realesrgan-x4plus
-    bool isAI() const { return mode == AI1080 || mode == AI4K; }
-    int targetHeight() const { return (mode == Fast4K || mode == AI4K) ? 2160 : mode == Fast720 ? 720 : (mode == None ? 0 : 1080); }
-    int targetWidth() const { return (mode == Fast4K || mode == AI4K) ? 3840 : mode == Fast720 ? 1280 : (mode == None ? 0 : 1920); }
+    bool isAI() const { return mode == AI1080 || mode == AI4K || mode == AI1080Film || mode == AI4KFilm; }
+    bool is4K() const { return mode == Fast4K || mode == AI4K || mode == AI4KFilm; }
+    // Модель: «кино» — realesrgan-x4plus (живые съёмки, старые фильмы), иначе — быстрая модель для мультфильмов
+    QString aiModel() const { return (mode == AI1080Film || mode == AI4KFilm) ? QStringLiteral("realesrgan-x4plus") : model; }
+    int targetHeight() const { return is4K() ? 2160 : mode == Fast720 ? 720 : (mode == None ? 0 : 1080); }
+    int targetWidth() const { return is4K() ? 3840 : mode == Fast720 ? 1280 : (mode == None ? 0 : 1920); }
     static QString modeName(Mode m);
 };
 

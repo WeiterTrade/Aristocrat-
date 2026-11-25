@@ -351,7 +351,7 @@ double preUpscaleFps(const ConversionTask &t)
 
 int aiScaleFactor(const ConversionTask &t)
 {
-    if (t.upscale.model == QLatin1String("realesrgan-x4plus"))
+    if (t.upscale.aiModel() == QLatin1String("realesrgan-x4plus"))
         return 4;
     int srcH = t.edit.crop.isNull() ? t.info.height : t.edit.crop.height();
     if (srcH <= 0) srcH = 480;
@@ -374,7 +374,7 @@ QStringList aiExtractFrames(const ConversionTask &t, double start, int frames, c
 QStringList aiUpscale(const ConversionTask &t, const QString &inDir, const QString &outDir)
 {
     QStringList a;
-    a << "-i" << inDir << "-o" << outDir << "-n" << t.upscale.model
+    a << "-i" << inDir << "-o" << outDir << "-n" << t.upscale.aiModel()
       << "-s" << QString::number(aiScaleFactor(t)) << "-f" << "jpg";
     const QString models = Tools::realesrganModelsDir();
     if (!models.isEmpty() && QDir(models).exists())

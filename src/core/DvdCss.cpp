@@ -523,6 +523,22 @@ struct Range {
     int mode = 0;
 };
 
+// ---- Журнал копирования (для разбора проблемных дисков) ----
+static void dlog(const QString &line)
+{
+    static QMutex m;
+    QMutexLocker lock(&m);
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    QFile f(dir + QStringLiteral("/dvd-log.txt"));
+    if (f.size() > 4 * 1024 * 1024)
+        f.remove();
+    if (f.open(QIODevice::Append | QIODevice::Text))
+        f.write((QDateTime::currentDateTime().toString(QStringLiteral("dd.MM HH:mm:ss.zzz ")) + line + QLatin1Char('\n')).toUtf8());
+}
+
+QString logPath() { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/dvd-log.txt"); }
+
 // ---- Быстрые ошибки чтения ----
 // Обычно привод на битом секторе сам долго повторяет чтение (останавливает и раскручивает диск — тот самый
 // циклический звук), а Windows повторяет команду ещё несколько раз: один сектор-ловушка = минуты.
@@ -581,6 +597,7 @@ public:
         std::memcpy(fast, orig, sizeof(orig));
         fast[page + 3] = qMin<UCHAR>(fast[page + 3], 1);   // Read Retry Count: не больше 1
         saved = select(fast) && true;
+        dlog(QStringLiteral("быстрые ошибки: повторов было %1, %2").arg(orig[page + 3]).arg(saved ? QStringLiteral("снижено до 1") : QStringLiteral("привод не принял")));
     }
     ~FastErrors()
     {
@@ -618,7 +635,8 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 const qint64 t = since.load();
                 if (t > 0 && QDateTime::currentMSecsSinceEpoch() - t > 25000 && thread) {
-                    CancelSynchronousIo(thread);
+                    const BOOL c = CancelSynchronousIo(thread);
+                    dlog(QStringLiteral("сторож: чтение висит >25 с, отмена: %1 (код %2)").arg(c ? QStringLiteral("да") : QStringLiteral("нет")).arg(c ? 0 : GetLastError()));
                     since.store(QDateTime::currentMSecsSinceEpoch());   // не чаще раза в 25 с
                 }
             }
@@ -669,6 +687,7 @@ public:
     }
     bool open(QString *err)
     {
+        dlog(QStringLiteral("=== открытие %1, скорость %2").arg(device).arg(maxSpeed ? QString::number(maxSpeed) + QLatin1Char('x') : QStringLiteral("макс")));
         h = l.open(QFile::encodeName(device).constData());
         if (!h && err)
             *err = T("не удалось открыть диск %1").arg(device);
@@ -844,16 +863,25 @@ private:
             return;
         // Ключ фильма: привод отдаёт его сразу, если регион привода задан; иначе libdvdcss подбирает ключ,
         // читая сектора фильма, — на ловушках это долго. Сторож прерывает каждое зависшее чтение.
+        QElapsedTimer t;
+        t.start();
         watchdog.begin();
-        if (l.seek(h, int(key), kSeekKey) >= 0)
+        const bool ok = l.seek(h, int(key), kSeekKey) >= 0;
+        if (ok)
             curKey = key;
         watchdog.end();
+        if (!ok || t.elapsed() > 3000)
+            dlog(QStringLiteral("ключ для сектора %1: %2 за %3 с").arg(key).arg(ok ? QStringLiteral("получен") : QStringLiteral("не получен")).arg(t.elapsed() / 1000.0, 0, 'f', 1));
     }
     bool readAt(quint32 lba, int n, char *dst, quint32 key)
     {
+        QElapsedTimer t;
+        t.start();
         watchdog.begin();
         bool ok = l.seek(h, int(lba), kNoFlags) == int(lba) && l.read(h, dst, n, key ? kReadDecrypt : kNoFlags) == n;
         watchdog.end();
+        if (!ok || t.elapsed() > 5000)
+            dlog(QStringLiteral("чтение %1+%2: %3 за %4 с").arg(lba).arg(n).arg(ok ? QStringLiteral("ok") : QStringLiteral("сбой")).arg(t.elapsed() / 1000.0, 0, 'f', 1));
         return ok;
     }
     static bool writeAt(QFile &out, qint64 sector, const char *data, int n)
@@ -885,7 +913,7 @@ private:
         if (next == 0)
             return false;
         speed = next;
-        setDriveSpeed(device, speed);
+        dlog(QStringLiteral("скорость → %1x: %2").arg(speed).arg(setDriveSpeed(device, speed) ? QStringLiteral("ok") : QStringLiteral("привод не принял")));
         QThread::msleep(1000);
         return true;
     }
@@ -893,6 +921,7 @@ private:
     {
         l.close(h);
         h = nullptr;
+        dlog(QStringLiteral("перезапуск привода"));
         QThread::msleep(8000);   // привод останавливается и раскручивается заново
         h = l.open(QFile::encodeName(device).constData());
         if (!h)

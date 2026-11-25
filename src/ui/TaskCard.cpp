@@ -183,6 +183,10 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::Fast4K), int(UpscaleOptions::Fast4K));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI1080), int(UpscaleOptions::AI1080));
     m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI4K), int(UpscaleOptions::AI4K));
+    m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI1080Film), int(UpscaleOptions::AI1080Film));
+    m_upscale->addItem(Ui::icon("upscale"), UpscaleOptions::modeName(UpscaleOptions::AI4KFilm), int(UpscaleOptions::AI4KFilm));
+    m_upscale->setItemData(m_upscale->count() - 2, T("Для живых съёмок и старых фильмов: естественнее лица и детали, но медленнее"), Qt::ToolTipRole);
+    m_upscale->setItemData(m_upscale->count() - 1, T("Для живых съёмок и старых фильмов: естественнее лица и детали, но медленнее"), Qt::ToolTipRole);
     m_upscale->insertSeparator(m_upscale->count());
     m_upscale->addItem(T("☐ Восстановление VHS"), 100);
     for (QComboBox *c : {m_subs, m_audio, m_upscale}) {
@@ -309,7 +313,7 @@ TaskCard::TaskCard(const TaskPtr &task, QWidget *parent)
             m_task->upscale.vhsRestore = !m_task->upscale.vhsRestore;
         } else {
             const auto mode = UpscaleOptions::Mode(v);
-            if ((mode == UpscaleOptions::AI1080 || mode == UpscaleOptions::AI4K) && !Tools::hasRealesrgan()) {
+            if (UpscaleOptions{mode}.isAI() && !Tools::hasRealesrgan()) {
                 Ui::message(this, T("Нейросетевой апскейл"),
                             T("Модуль Real-ESRGAN не найден.<br><br>Положите папку realesrgan (с файлом realesrgan-ncnn-vulkan "
                                            "и папкой models) в папку tools рядом с программой. Пока можно использовать быстрый апскейл."));
