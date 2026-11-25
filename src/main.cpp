@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QLocalSocket>
 #include <QLocalServer>
+#include <QFileInfo>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
